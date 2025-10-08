@@ -7,7 +7,7 @@ import Image from 'next/image';
 // WITA = +08:00
 const TARGET_ISO = '2025-11-01T00:00:00+08:00';
 const TITLE = 'SPMB 2026';
-const SUBTITLE = 'Sistem Penerimaan Murid Baru Pondok Pondok pesantren Assunnah Lombok';
+const SUBTITLE = 'Sistem Penerimaan Murid Baru Pondok pesantren Assunnah Lombok';
 
 // ---- util waktu ----
 function diffParts(ms) {
