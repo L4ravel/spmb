@@ -2,8 +2,8 @@
 import "./globals.css";
 
 export const metadata = {
-  title: "PPDB 2025",
-  description: "Penerimaan Peserta Didik Baru 2025/2026",
+  title: "SPMB 2026",
+  description: "Sistem Penerimaan Murid Baru Pondok Pondok pesantren Assunnah Lombok",
 };
 
 export default function RootLayout({ children }) {
