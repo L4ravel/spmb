@@ -3,7 +3,7 @@ import { NextResponse } from "next/server";
 
 /* ========================= PPDB COUNTDOWN GATE (TOGGLE) ========================= */
 const COUNTDOWN_ENABLED = true; // <<=== TOGGLE UTAMA
-const COUNTDOWN_TARGET_ISO = "2025-11-01T00:00:00+07:00";
+const COUNTDOWN_TARGET_ISO = "2025-11-01T08:00:00+08:00";
 const COUNTDOWN_TIMER_PATH = "/timer";
 
 // Prefix yang tidak di-redirect saat gate aktif (biar aset & API tetap jalan)
