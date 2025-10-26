@@ -4,12 +4,17 @@ import React, { useEffect, useMemo, useState } from 'react';
 import Image from 'next/image';
 
 // ====== CONFIG ======
-// WITA = +08:00
+// NOTE: Ini mengikuti input kamu. Jika yang benar 08:00 WITA, ganti ke '2025-11-01T08:00:00+08:00'
 const TARGET_ISO = '2025-11-01T00:00:00+08:00';
 const TITLE = 'SPMB 2026';
 const SUBTITLE = 'Sistem Penerimaan Murid Baru Pondok pesantren Assunnah Lombok';
 
 // ---- util waktu ----
+const SEC = 1000;
+const MIN = 60 * SEC;
+const HOUR = 60 * MIN;
+const DAY = 24 * HOUR;
+
 function diffParts(ms) {
   const clamp = Math.max(0, ms);
   const s = Math.floor(clamp / 1000);
@@ -43,22 +48,33 @@ function useCircleSize() {
 }
 
 export default function TimerPage() {
-  const target = useMemo(() => new Date(TARGET_ISO).getTime(), []);
+  // target epoch
+  const target = useMemo(() => Date.parse(TARGET_ISO), []);
+  // time state
   const [now, setNow] = useState(Date.now());
+  // total awal (untuk progress), cegah 0
   const [initialTotal, setInitialTotal] = useState(() =>
-    Math.max(1, new Date(TARGET_ISO).getTime() - Date.now())
+    Math.max(1, (isNaN(target) ? 0 : target) - Date.now())
   );
   const [hovered, setHovered] = useState(false);
 
+  // interval adaptif: per menit jika >=1 hari, per detik kalau <1 hari
   useEffect(() => {
-    setInitialTotal(Math.max(1, target - Date.now()));
-    const t = setInterval(() => setNow(Date.now()), 1000);
-    return () => clearInterval(t);
+    setInitialTotal(Math.max(1, (isNaN(target) ? 0 : target) - Date.now()));
+    const tick = () => setNow(Date.now());
+    const id = setInterval(tick, 1000); // start per detik
+    return () => clearInterval(id);
   }, [target]);
 
-  const remaining = Math.max(0, target - now);
-  const { days, hours, minutes, seconds } = diffParts(remaining);
+  const remaining = Math.max(0, (isNaN(target) ? 0 : target) - now);
   const opened = remaining <= 0;
+
+  // mode tampilan
+  const showHMS = remaining > 0 && remaining < DAY; // < 1 hari → HH:MM:SS
+  const daysRounded = remaining >= DAY ? Math.ceil(remaining / DAY) : 0;
+
+  // pecahan waktu untuk kotak kecil (sudah dipakai ketika < 1 hari)
+  const { hours, minutes, seconds } = diffParts(remaining);
 
   // Progress circle (pakai ukuran responsif)
   const size = useCircleSize();
@@ -74,7 +90,7 @@ export default function TimerPage() {
 
   return (
     <main className="min-h-screen w-full bg-white flex items-center justify-center p-6 relative overflow-hidden">
-      {/* === KEYFRAMES & HOVER EFFECT CSS (tanpa styled-jsx) === */}
+      {/* === KEYFRAMES & HOVER EFFECT CSS === */}
       <style
         dangerouslySetInnerHTML={{
           __html: `
@@ -169,37 +185,34 @@ export default function TimerPage() {
           className="text-center mb-12 md:mb-16"
           style={{ animation: 'slideIn 0.8s ease-out' }}
         >
-          {/* NEW: Logo card putih dengan 2 logo berdampingan */}
+          {/* Logo card putih */}
           <div className="mx-auto max-w-md mb-6">
             <div className="relative bg-white rounded-2xl border border-emerald-700/15 shadow-lg shadow-emerald-200/40 px-5 py-4 md:px-6 md:py-5">
               <div className="absolute inset-0 bg-emerald-700/5 blur-2xl rounded-2xl" />
               <div className="relative flex items-center justify-center gap-6 md:gap-8">
-                {/* Ganti ekstensi jika file-mu bukan .png */}
                 <div className="relative flex items-center justify-center gap-6 md:gap-8 overflow-visible">
-  <Image
-    src="/logo/pondok-assunnah.png"
-    alt="Logo Pondok Assunnah"
-    width={160}
-    height={48}
-    className="h-10 md:h-12 w-auto object-contain transform scale-[1.4] md:scale-[1.6]
-               drop-shadow-[0_10px_22px_rgba(6,95,70,0.28)] hover:drop-shadow-[0_14px_30px_rgba(6,95,70,0.34)]
-               transition-shadow duration-300"
-  />
+                  <Image
+                    src="/logo/pondok-assunnah.png"
+                    alt="Logo Pondok Assunnah"
+                    width={160}
+                    height={48}
+                    className="h-10 md:h-12 w-auto object-contain transform scale-[1.4] md:scale-[1.6]
+                               drop-shadow-[0_10px_22px_rgba(6,95,70,0.28)] hover:drop-shadow-[0_14px_30px_rgba(6,95,70,0.34)]
+                               transition-shadow duration-300"
+                  />
 
-  <div className="h-8 md:h-10 w-px bg-emerald-800/20 mx-4 md:mx-6" />
+                  <div className="h-8 md:h-10 w-px bg-emerald-800/20 mx-4 md:mx-6" />
 
-  <Image
-    src="/logo/spmb.png"
-    alt="Logo SPMB"
-    width={140}
-    height={48}
-    className="h-10 md:h-12 w-auto object-contain transform scale-[1.4] md:scale-[1.6]
-               drop-shadow-[0_10px_22px_rgba(6,95,70,0.28)] hover:drop-shadow-[0_14px_30px_rgba(6,95,70,0.34)]
-               transition-shadow duration-300"
-  />
-</div>
-
-
+                  <Image
+                    src="/logo/spmb.png"
+                    alt="Logo SPMB"
+                    width={140}
+                    height={48}
+                    className="h-10 md:h-12 w-auto object-contain transform scale-[1.4] md:scale-[1.6]
+                               drop-shadow-[0_10px_22px_rgba(6,95,70,0.28)] hover:drop-shadow-[0_14px_30px_rgba(6,95,70,0.34)]
+                               transition-shadow duration-300"
+                  />
+                </div>
               </div>
             </div>
           </div>
@@ -356,34 +369,62 @@ export default function TimerPage() {
                     <span className="w-2 h-2 rounded-full bg-emerald-700 animate-pulse" />
                   </div>
 
-                  <div className="relative mb-1.5">
-                    <div className="absolute inset-0 bg-emerald-800/15 blur-3xl" />
-                    <div
-                      className="relative font-black text-transparent bg-clip-text tabular-nums text-6xl md:text-7xl lg:text-8xl leading-none"
-                      style={{
-                        background: 'linear-gradient(180deg, #059669 0%, #065f46 100%)',
-                        WebkitBackgroundClip: 'text',
-                        WebkitTextFillColor: 'transparent',
-                        filter: 'drop-shadow(0 2px 14px rgba(6,95,70,0.28))',
-                      }}
-                    >
-                      {days}
-                    </div>
-                  </div>
+                  {/* MODE: Hari (>=1 hari) */}
+                  {!showHMS && (
+                    <>
+                      <div className="relative mb-1.5">
+                        <div className="absolute inset-0 bg-emerald-800/15 blur-3xl" />
+                        <div
+                          className="relative font-black text-transparent bg-clip-text tabular-nums text-6xl md:text-7xl lg:text-8xl leading-none"
+                          style={{
+                            background: 'linear-gradient(180deg, #059669 0%, #065f46 100%)',
+                            WebkitBackgroundClip: 'text',
+                            WebkitTextFillColor: 'transparent',
+                            filter: 'drop-shadow(0 2px 14px rgba(6,95,70,0.28))',
+                          }}
+                        >
+                          {daysRounded}
+                        </div>
+                      </div>
 
-                  <div className="px-3 py-0.5 rounded-full bg-emerald-800/10 border border-emerald-800/30 backdrop-blur-sm mb-4">
-                    <span className="text-emerald-800 text-[10px] md:text-xs font-bold uppercase tracking-[0.28em]">
-                      HARI 
-                    </span>
-                  </div>
+                      <div className="px-3 py-0.5 rounded-full bg-emerald-800/10 border border-emerald-800/30 backdrop-blur-sm mb-1.5">
+                        <span className="text-emerald-800 text-[10px] md:text-xs font-bold uppercase tracking-[0.28em]">
+                          HARI
+                        </span>
+                      </div>
 
-                  <div className="flex items-center gap-3 md:gap-4">
-                    <TimeBox label="Jam" value={pad(hours)} />
-                    <div className="text-emerald-800/40 text-2xl md:text-3xl font-bold">:</div>
-                    <TimeBox label="Menit" value={pad(minutes)} />
-                    <div className="text-emerald-800/40 text-2xl md:text-3xl font-bold">:</div>
-                    <TimeBox label="Detik" value={pad(seconds)} />
-                  </div>
+                      {/* Hint kecil */}
+                      <div className="text-emerald-800/60 text-[10px] md:text-xs tracking-widest uppercase mt-1">
+                        {daysRounded === 1 ? '1 hari lagi' : `${daysRounded} hari lagi`}
+                      </div>
+                    </>
+                  )}
+
+                  {/* MODE: < 1 hari → HH:MM:SS */}
+                  {showHMS && (
+                    <>
+                      <div className="relative mb-3">
+                        <div className="absolute inset-0 bg-emerald-800/15 blur-3xl" />
+                        <div
+                          className="relative font-black text-transparent bg-clip-text tabular-nums text-6xl md:text-7xl lg:text-8xl leading-none"
+                          style={{
+                            background: 'linear-gradient(180deg, #059669 0%, #065f46 100%)',
+                            WebkitBackgroundClip: 'text',
+                            WebkitTextFillColor: 'transparent',
+                            filter: 'drop-shadow(0 2px 14px rgba(6,95,70,0.28))',
+                          }}
+                        >
+                          {`${pad(hours)}:${pad(minutes)}:${pad(seconds)}`}
+                        </div>
+                      </div>
+
+                      <div className="px-3 py-0.5 rounded-full bg-emerald-800/10 border border-emerald-800/30 backdrop-blur-sm mb-2">
+                        <span className="text-emerald-800 text-[10px] md:text-xs font-bold uppercase tracking-[0.28em]">
+                          MENUJU PEMBUKAAN
+                        </span>
+                      </div>
+                    </>
+                  )}
                 </>
               ) : (
                 <>
@@ -434,8 +475,6 @@ export default function TimerPage() {
             </div>
           </div>
         </div>
-
-        {/* ——— Info kecil (3 card) DIHAPUS sesuai permintaan ——— */}
 
         {/* Footer kecil */}
         <div className="text-center">
