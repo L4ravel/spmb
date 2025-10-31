@@ -289,73 +289,73 @@ const validateDetailed = () => {
     return username;
   };
 
-const onSubmit = async (e) => {
-  e.preventDefault();
+  const onSubmit = async (e) => {
+    e.preventDefault();
 
-  const miss = validateDetailed();
-  if (miss.length > 0) {
-    setMissing(miss);
-    const first = miss[0];
-    const el =
-      document.getElementById(first.anchor || first.name) ||
-      document.querySelector(`[name="${first.anchor || first.name}"]`);
-    if (el?.scrollIntoView) el.scrollIntoView({ behavior: "smooth", block: "center" });
-    if (el?.focus) setTimeout(() => el.focus({ preventScroll: true }), 300);
-    return;
-  }
-
-  if (digits(form.nik).length !== 16) {
-    setMissing([{ name: "nik", label: "NIK harus 16 digit", anchor: "nik" }]);
-    const el = document.getElementById("nik");
-    if (el?.scrollIntoView) el.scrollIntoView({ behavior: "smooth", block: "center" });
-    if (el?.focus) setTimeout(() => el.focus({ preventScroll: true }), 300);
-    return;
-  }
-
-  const showPendidikan = !isEarlyEducation(form.jenjang);
-  if (showPendidikan) {
-    const nisnD = digits(form.nisn);
-    if (!(nisnD.length >= 8 && nisnD.length <= 12)) {
-      setMissing([{ name: "nisn", label: "NISN tidak valid (8–12 digit).", anchor: "nisn" }]);
-      const el = document.getElementById("nisn");
+    const miss = validateDetailed();
+    if (miss.length > 0) {
+      setMissing(miss);
+      const first = miss[0];
+      const el =
+        document.getElementById(first.anchor || first.name) ||
+        document.querySelector(`[name="${first.anchor || first.name}"]`);
       if (el?.scrollIntoView) el.scrollIntoView({ behavior: "smooth", block: "center" });
       if (el?.focus) setTimeout(() => el.focus({ preventScroll: true }), 300);
       return;
     }
-  }
 
-  setMissing([]);
-  setSubmitting(true);
-  let quotaClaimed = false;
-
-  try {
-    // 1) Klaim kuota dulu (tetap sama)
-    await claimQuota(form.jenjang);
-    quotaClaimed = true;
-
-    // 2) DELEGASIKAN UPLOAD KE KOMPONEN
-    //    - kecil: FormData legacy (aman)
-    //    - besar: init → resumable → finalize (aman 20MB+)
-    const result = await filesRef.current.submit({ ...form });
-
-    // 3) Buat akun user seperti sebelumnya
-    const registrationId = result?.registrationId;
-    if (!registrationId) throw new Error("registrationId tidak ditemukan dari server.");
-    const username = await createUserAccount(registrationId, form.nama, form.jenjang, form.nik, form.nisn);
-
-    const namaEnc = encodeURIComponent(form.nama);
-    router.push(`/spmb/success?id=${registrationId}&username=${username}&nama=${namaEnc}`);
-  } catch (err) {
-    console.error(err);
-    if (quotaClaimed) {
-      try { await releaseQuota(form.jenjang); } catch {}
+    if (digits(form.nik).length !== 16) {
+      setMissing([{ name: "nik", label: "NIK harus 16 digit", anchor: "nik" }]);
+      const el = document.getElementById("nik");
+      if (el?.scrollIntoView) el.scrollIntoView({ behavior: "smooth", block: "center" });
+      if (el?.focus) setTimeout(() => el.focus({ preventScroll: true }), 300);
+      return;
     }
-    alert("❌ " + (err?.message || "Terjadi kesalahan saat pendaftaran."));
-  } finally {
-    setSubmitting(false);
-  }
-};
 
+    const showPendidikan = !isEarlyEducation(form.jenjang);
+    if (showPendidikan) {
+      const nisnD = digits(form.nisn);
+      if (!(nisnD.length >= 8 && nisnD.length <= 12)) {
+        setMissing([{ name: "nisn", label: "NISN tidak valid (8–12 digit).", anchor: "nisn" }]);
+        const el = document.getElementById("nisn");
+        if (el?.scrollIntoView) el.scrollIntoView({ behavior: "smooth", block: "center" });
+        if (el?.focus) setTimeout(() => el.focus({ preventScroll: true }), 300);
+        return;
+      }
+    }
+
+    setMissing([]);
+    setSubmitting(true);
+    let quotaClaimed = false;
+
+    try {
+      await claimQuota(form.jenjang);
+      quotaClaimed = true;
+
+      const fd = new FormData();
+      Object.entries(form).forEach(([k, v]) => fd.append(k, v));
+      const files = filesRef.current?.getFiles?.() ?? {};
+      Object.entries(files).forEach(([k, f]) => { if (f) fd.append(k, f); });
+
+      const res = await fetch("/api/ppdb", { method: "POST", body: fd });
+      const data = await res.json();
+      if (!res.ok || !data.success) throw new Error(data.error || "Gagal menyimpan data PPDB.");
+
+      const registrationId = data.registrationId;
+      const username = await createUserAccount(registrationId, form.nama, form.jenjang, form.nik, form.nisn);
+
+      const namaEnc = encodeURIComponent(form.nama);
+      router.push(`/spmb/success?id=${registrationId}&username=${username}&nama=${namaEnc}`);
+    } catch (err) {
+      console.error(err);
+      if (quotaClaimed) {
+        try { await releaseQuota(form.jenjang); } catch {}
+      }
+      alert("❌ " + (err?.message || "Terjadi kesalahan saat pendaftaran."));
+    } finally {
+      setSubmitting(false);
+    }
+  };
 
   const showPendidikanSebelumnya = !isEarlyEducation(form.jenjang);
 
