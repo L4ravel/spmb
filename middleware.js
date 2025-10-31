@@ -4,8 +4,7 @@ import { NextResponse } from "next/server";
 const SESSION_COOKIE = "ppdb_session";
 const UNLOCK_COOKIE = "spmb_unlock";
 
-// === Target buka: 1 Nov 2025 06:00 WITA (+08:00) ===
-// Dalam UTC = 2025-10-31T22:00:00Z
+// (Opsional / legacy) Target buka sebelumnya. Dibiarkan untuk arsip.
 const TARGET_OPEN_UTC = "2025-10-31T22:00:00Z";
 
 // ---------- Helper ----------
@@ -43,7 +42,7 @@ const LOGIN_ONLY = [
   /^\/portal\/daftar-ulang(?:\/|$)/,
 ];
 
-// ⬇️ TIMER dihapus dari PROTECTED agar publik (tidak perlu login)
+// TIMER bukan protected (publik)
 const PROTECTED = [
   /^\/portal(?:\/|$)/,
   /^\/tes-ujian(?:\/|$)/,
@@ -69,10 +68,15 @@ export function middleware(req) {
     status === "verified" ||
     session?.accountEnabled === true;
 
-  // ====== Fitur "ketik: buka" di /timer → set cookie unlock ======
+  // ====== Fitur "ketik: buka" di /timer → set cookie unlock (tetap) ======
   if (/^\/timer(?:\/|$)/.test(pathname) && urlHasUnlockParam(url)) {
     const res = NextResponse.next();
-    res.cookies.set(UNLOCK_COOKIE, "buka", { path: "/", httpOnly: false, sameSite: "Lax", maxAge: 60 * 60 * 4 }); // 4 jam
+    res.cookies.set(UNLOCK_COOKIE, "buka", {
+      path: "/",
+      httpOnly: false,
+      sameSite: "Lax",
+      maxAge: 60 * 60 * 4, // 4 jam
+    });
     const next = url.searchParams.get("next");
     if (next && next.startsWith("/")) {
       const to = url.clone();
@@ -83,22 +87,9 @@ export function middleware(req) {
     return res;
   }
 
-  // ====== Gate khusus /spmb → redirect ke /timer sebelum jam buka ======
-  if (/^\/spmb(?:\/|$)/.test(pathname)) {
-    const unlocked = isAfterOpenWindow() || hasUnlock(req) || urlHasUnlockParam(url);
-    if (!unlocked) {
-      const to = url.clone();
-      to.pathname = "/timer";
-      to.search = "";
-      to.searchParams.set("next", pathname);
-      return NextResponse.redirect(to);
-    }
-    if (urlHasUnlockParam(url)) {
-      const res = NextResponse.next();
-      res.cookies.set(UNLOCK_COOKIE, "buka", { path: "/", httpOnly: false, sameSite: "Lax", maxAge: 60 * 60 * 4 });
-      return res;
-    }
-  }
+  // ====== SPMB SELALU TERBUKA ======
+  // Tidak ada lagi gate/redirect ke /timer untuk /spmb.
+  // Dibiarkan publik, tidak login-only, tidak protected.
 
   // ====== LOGIN-ONLY (tetap) ======
   if (isLoginOnly(pathname)) {
@@ -139,7 +130,9 @@ export function middleware(req) {
   if (pathname === "/login" && session) {
     const next = url.searchParams.get("next");
     const to = url.clone();
-    to.pathname = next && next.startsWith("/") ? next : (isAdmin ? "/admin" : "/portal");
+    to.pathname = next && next.startsWith("/")
+      ? next
+      : (isAdmin ? "/admin" : "/portal");
     to.search = "";
     return NextResponse.redirect(to);
   }
@@ -147,7 +140,7 @@ export function middleware(req) {
   return NextResponse.next();
 }
 
-// Matcher (tetap): timer tetap dimonitor untuk menangkap key=buka, tapi tidak diproteksi login
+// Matcher: /spmb dikeluarkan (opsional, biar rapi).
 export const config = {
   matcher: [
     "/ganti-password",
@@ -167,9 +160,6 @@ export const config = {
 
     "/timer",
     "/timer/:path*",
-
-    "/spmb",
-    "/spmb/:path*",
 
     "/login",
   ],
