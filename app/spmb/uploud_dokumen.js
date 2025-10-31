@@ -141,24 +141,44 @@ async function initResumable(identifier, items) {
   return data.uploads; // { key: { path, uploadURL } }
 }
 
-/** Jalankan upload besar ke GCS Resumable: POST (init) → PUT (body) */
 async function resumableUpload(uploadURL, file) {
-  // Step-1: inisiasi
+  // Inisiasi sesi: kirim "x-goog-resumable: start"
   const init = await fetch(uploadURL, {
     method: "POST",
-    headers: { "x-upload-content-type": file.type || "application/octet-stream" },
+    headers: {
+      "x-goog-resumable": "start",
+      "X-Upload-Content-Type": file.type || "application/octet-stream",
+    },
   });
-  const sessionURL = init.headers.get("location") || uploadURL;
 
-  // Step-2: unggah body file
+  // GCS mengembalikan 201 + header Location (session URL)
+  const sessionURL =
+    init.headers.get("Location") ||
+    init.headers.get("location") || // fallback
+    uploadURL; // fallback terakhir
+
+  if (!init.ok || !sessionURL) {
+    const body = await init.text().catch(() => "");
+    throw new Error(
+      `Gagal mulai sesi upload (${init.status}). ${body.slice(0,160)}`
+    );
+  }
+
+  // Kirim file penuhnya (boleh di-chunk kalau mau)
   const put = await fetch(sessionURL, {
     method: "PUT",
-    headers: { "content-type": file.type || "application/octet-stream" },
+    headers: {
+      "Content-Type": file.type || "application/octet-stream",
+    },
     body: file,
   });
-  if (!put.ok) throw new Error(`Upload gagal (${put.status}).`);
+  if (!put.ok) {
+    const t = await put.text().catch(() => "");
+    throw new Error(`Upload gagal (${put.status}). ${t.slice(0,160)}`);
+  }
   return sessionURL;
 }
+
 
 /** Minta downloadURL via Firebase Storage SDK (untuk finalize) */
 async function getDownloadURLByPath(path) {
