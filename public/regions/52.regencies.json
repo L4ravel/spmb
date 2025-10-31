@@ -1,0 +1,12 @@
+[
+  { "code": "52.01", "name": "Lombok Barat" },
+  { "code": "52.02", "name": "Lombok Tengah" },
+  { "code": "52.03", "name": "Lombok Timur" },
+  { "code": "52.04", "name": "Sumbawa" },
+  { "code": "52.05", "name": "Dompu" },
+  { "code": "52.06", "name": "Bima" },
+  { "code": "52.07", "name": "Sumbawa Barat" },
+  { "code": "52.08", "name": "Lombok Utara" },
+  { "code": "52.09", "name": "Kota Mataram" },
+  { "code": "52.10", "name": "Kota Bima" }
+]
