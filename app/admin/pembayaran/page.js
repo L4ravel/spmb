@@ -231,7 +231,10 @@ function ProofModal({ open, onClose, row, url }) {
 }
 
 /* ====== NEW: Modal Detail – nominal terlihat oleh semua ====== */
-function RowDetailModal({ open, onClose, row, onOpenViewer, onOpenProof, onApprove }) {
+function RowDetailModal({
+  open, onClose, row, onOpenViewer, onOpenProof, onApprove,
+  uploading, onUploadProof
+}) {
   const escHandler = useCallback((e) => { if (e.key === "Escape") onClose?.(); }, [onClose]);
   useEffect(() => { if (!open) return; document.addEventListener("keydown", escHandler); return () => document.removeEventListener("keydown", escHandler); }, [open, escHandler]);
 
@@ -254,6 +257,7 @@ function RowDetailModal({ open, onClose, row, onOpenViewer, onOpenProof, onAppro
   if (!open || !row) return null;
   const isVerified = row.verifiedPayment === true;
   const hasProof = !!row.registrationPaymentProof;
+  const up = uploading?.[row.id] || { busy: false, progress: 0 };
 
   return (
     <div className="fixed inset-0 z-[65]">
@@ -295,15 +299,58 @@ function RowDetailModal({ open, onClose, row, onOpenViewer, onOpenProof, onAppro
               </select>
             </Item>
             <Item label="Bukti">
-              {hasProof ? (
-                <button
-                  onClick={onOpenProof}
-                  className="inline-flex items-center gap-2 rounded-xl bg-gradient-to-r from-violet-600 to-violet-500 text-white px-4 py-2 text-xs font-bold hover:shadow-lg hover:shadow-violet-500/30 transition-all"
-                >
-                  <Eye className="h-3.5 w-3.5" /> Lihat Bukti
-                </button>
-              ) : <span className="text-slate-500 text-sm">Belum ada</span>}
-            </Item>
+  {hasProof ? (
+    <div className="flex items-center gap-2">
+      <button
+        onClick={onOpenProof}
+        className="inline-flex items-center gap-2 rounded-xl bg-gradient-to-r from-violet-600 to-violet-500 text-white px-4 py-2 text-xs font-bold hover:shadow-lg hover:shadow-violet-500/30 transition-all"
+      >
+        <Eye className="h-3.5 w-3.5" /> Lihat Bukti
+      </button>
+
+      {/* Opsional: izinkan ganti bukti kalau belum diverifikasi */}
+      {!isVerified && (
+        <label
+          className={[
+            "inline-flex items-center gap-2 rounded-xl border px-4 py-2 cursor-pointer text-xs font-medium transition-all",
+            up.busy ? "opacity-60 pointer-events-none" : "hover:bg-violet-50 hover:border-violet-300 hover:text-violet-700",
+            "border-slate-300"
+          ].join(" ")}
+          title="Ganti bukti pembayaran"
+        >
+          <input
+            type="file"
+            accept="image/*,application/pdf"
+            className="hidden"
+            disabled={up.busy}
+            onChange={(e) => onUploadProof?.(row.id, e.target.files?.[0])}
+          />
+          <Upload className="h-3.5 w-3.5" />
+          <span>{up.busy ? `Mengunggah… ${up.progress}%` : "Ganti Bukti"}</span>
+        </label>
+      )}
+    </div>
+  ) : (
+    <label
+      className={[
+        "inline-flex items-center gap-2 rounded-xl border px-4 py-2 cursor-pointer text-xs font-medium transition-all",
+        up.busy ? "opacity-60 pointer-events-none" : "hover:bg-violet-50 hover:border-violet-300 hover:text-violet-700",
+        "border-slate-300"
+      ].join(" ")}
+      title="Upload bukti pembayaran"
+    >
+      <input
+        type="file"
+        accept="image/*,application/pdf"
+        className="hidden"
+        disabled={up.busy}
+        onChange={(e) => onUploadProof?.(row.id, e.target.files?.[0])}
+      />
+      <Upload className="h-3.5 w-3.5" />
+      <span>{up.busy ? `Mengunggah… ${up.progress}%` : "Upload Bukti"}</span>
+    </label>
+  )}
+</Item>
             <Item label="Kelengkapan Data">
               <button
                 onClick={onOpenViewer}
@@ -949,31 +996,31 @@ export default function AdminPembayaranPage() {
 
       {/* ===== MOBILE/ALL: ROW DETAIL MODAL (CENTERED) ===== */}
       <RowDetailModal
-        open={showRowDetail}
-        onClose={()=>setShowRowDetail(false)}
-        row={rowDetail}
-        onOpenViewer={() => {
-          if (!rowDetail) return;
-          // Tutup detail dulu supaya tidak menutup layar
-          setShowRowDetail(false);
-          // Buka viewer (centered)
-          openViewer(rowDetail);
-        }}
-        onOpenProof={() => {
-          if (!rowDetail) return;
-          setShowRowDetail(false);
-          openProof(rowDetail);
-        }}
-        onApprove={(action, payload) => {
-          if (!rowDetail) return;
-          if (action === "setMethod") {
-            logic.setRowMethod(rowDetail.id, payload);
-            setRowDetail({ ...rowDetail, _method: payload });
-          } else if (action === "verify") {
-            logic.openConfirm(rowDetail.id);
-          }
-        }}
-      />
+  open={showRowDetail}
+  onClose={()=>setShowRowDetail(false)}
+  row={rowDetail}
+  onOpenViewer={() => {
+    if (!rowDetail) return;
+    setShowRowDetail(false);
+    openViewer(rowDetail);
+  }}
+  onOpenProof={() => {
+    if (!rowDetail) return;
+    setShowRowDetail(false);
+    openProof(rowDetail);
+  }}
+  onApprove={(action, payload) => {
+    if (!rowDetail) return;
+    if (action === "setMethod") {
+      logic.setRowMethod(rowDetail.id, payload);
+      setRowDetail({ ...rowDetail, _method: payload });
+    } else if (action === "verify") {
+      logic.openConfirm(rowDetail.id);
+    }
+  }}
+  uploading={logic.uploading}
+  onUploadProof={(id, file) => logic.handleUploadProof(id, file)}
+/>
 
       {/* ===== MOBILE FILTER MODAL ===== */}
       {showFilterModal && (
