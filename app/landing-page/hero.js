@@ -178,11 +178,11 @@ export default function Hero() {
                 </Link>
 
                 <Link
-                  href="/pengumuman"
+                  href="/login"
                   className="group rounded-xl border-2 border-violet-300 bg-white/80 px-8 py-4 text-base font-bold text-violet-700 backdrop-blur-sm transition-all duration-300 hover:border-violet-500 hover:bg-violet-50 hover:shadow-lg md:text-lg"
                 >
                   <span className="flex items-center gap-3">
-                    Lihat Pengumuman
+                    Login
                     <ArrowRight className="h-5 w-5 transition-transform group-hover:translate-x-1" />
                   </span>
                 </Link>
@@ -309,3 +309,4 @@ export default function Hero() {
     </>
   );
 }
+
