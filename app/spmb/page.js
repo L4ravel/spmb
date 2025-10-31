@@ -289,73 +289,78 @@ const validateDetailed = () => {
     return username;
   };
 
-  const onSubmit = async (e) => {
-    e.preventDefault();
 
-    const miss = validateDetailed();
-    if (miss.length > 0) {
-      setMissing(miss);
-      const first = miss[0];
-      const el =
-        document.getElementById(first.anchor || first.name) ||
-        document.querySelector(`[name="${first.anchor || first.name}"]`);
-      if (el?.scrollIntoView) el.scrollIntoView({ behavior: "smooth", block: "center" });
-      if (el?.focus) setTimeout(() => el.focus({ preventScroll: true }), 300);
+const onSubmit = async (e) => {
+  e.preventDefault();
+
+  // === validasi existing (tetap) ===
+  const miss = validateDetailed();
+  if (miss.length) { setMissing(miss); /* scroll to first error */ return; }
+  if (digits(form.nik).length !== 16) { setMissing([{name:"nik",label:"NIK harus 16 digit",anchor:"nik"}]); return; }
+  if (!isEarlyEducation(form.jenjang)) {
+    const nisnD = digits(form.nisn);
+    if (!(nisnD.length >= 8 && nisnD.length <= 12)) {
+      setMissing([{ name:"nisn", label:"NISN tidak valid (8–12 digit).", anchor:"nisn"}]);
       return;
     }
+  }
 
-    if (digits(form.nik).length !== 16) {
-      setMissing([{ name: "nik", label: "NIK harus 16 digit", anchor: "nik" }]);
-      const el = document.getElementById("nik");
-      if (el?.scrollIntoView) el.scrollIntoView({ behavior: "smooth", block: "center" });
-      if (el?.focus) setTimeout(() => el.focus({ preventScroll: true }), 300);
-      return;
+  setMissing([]);
+  setSubmitting(true);
+  let quotaClaimed = false;
+
+  try {
+    // 1) klaim kuota dulu
+    await claimQuota(form.jenjang);
+    quotaClaimed = true;
+
+    // 2) tentukan identifier utk folder Storage & validasi API
+    const identifier = isEarlyEducation(form.jenjang) ? digits(form.nik) : digits(form.nisn);
+
+    // 3) upload SEMUA file ke Firebase Storage (resumable, sequential)
+    //    -> KEMBALIKAN filesMeta (path,url,size,contentType)
+    const { filesMeta } = await filesRef.current.uploadSequential(identifier);
+
+    // 4) panggil API FINALIZE (JSON kecil, aman dari limit)
+    const res = await fetch("/api/ppdb", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({
+        op: "finalize",
+        identifier,
+        form,
+        filesMeta, // hanya metadata hasil upload client
+      }),
+    });
+
+    // 5) tangani respons yang mungkin non-JSON (mis. 413 halaman html)
+    const ct = (res.headers.get("content-type") || "").toLowerCase();
+    const payload = ct.includes("application/json") ? await res.json() : { success:false, error:(await res.text()) };
+
+    if (!res.ok || !payload.success) {
+      throw new Error(payload.error || "Gagal menyimpan data PPDB.");
     }
 
-    const showPendidikan = !isEarlyEducation(form.jenjang);
-    if (showPendidikan) {
-      const nisnD = digits(form.nisn);
-      if (!(nisnD.length >= 8 && nisnD.length <= 12)) {
-        setMissing([{ name: "nisn", label: "NISN tidak valid (8–12 digit).", anchor: "nisn" }]);
-        const el = document.getElementById("nisn");
-        if (el?.scrollIntoView) el.scrollIntoView({ behavior: "smooth", block: "center" });
-        if (el?.focus) setTimeout(() => el.focus({ preventScroll: true }), 300);
-        return;
-      }
+    // 6) buat akun user (sudah ada), lalu redirect sukses
+    const registrationId = payload.registrationId;
+    const username = await createUserAccount(registrationId, form.nama, form.jenjang, form.nik, form.nisn);
+    const namaEnc = encodeURIComponent(form.nama);
+    router.push(`/spmb/success?id=${registrationId}&username=${username}&nama=${namaEnc}`);
+  } catch (err) {
+    // jika gagal setelah klaim kuota, kembalikan kuota
+    if (quotaClaimed) { try { await releaseQuota(form.jenjang); } catch {} }
+
+    // Pesan ramah untuk batas unggahan
+    const msg = String(err?.message || err || "");
+    if (/entity too large|413/i.test(msg)) {
+      alert("❌ Ukuran unggahan terlalu besar. Dokumen sudah otomatis diunggah per-berkas; coba perkecil ukuran file dan kirim ulang.");
+    } else {
+      alert("❌ " + msg);
     }
-
-    setMissing([]);
-    setSubmitting(true);
-    let quotaClaimed = false;
-
-    try {
-      await claimQuota(form.jenjang);
-      quotaClaimed = true;
-
-      const fd = new FormData();
-      Object.entries(form).forEach(([k, v]) => fd.append(k, v));
-      const files = filesRef.current?.getFiles?.() ?? {};
-      Object.entries(files).forEach(([k, f]) => { if (f) fd.append(k, f); });
-
-      const res = await fetch("/api/ppdb", { method: "POST", body: fd });
-      const data = await res.json();
-      if (!res.ok || !data.success) throw new Error(data.error || "Gagal menyimpan data PPDB.");
-
-      const registrationId = data.registrationId;
-      const username = await createUserAccount(registrationId, form.nama, form.jenjang, form.nik, form.nisn);
-
-      const namaEnc = encodeURIComponent(form.nama);
-      router.push(`/spmb/success?id=${registrationId}&username=${username}&nama=${namaEnc}`);
-    } catch (err) {
-      console.error(err);
-      if (quotaClaimed) {
-        try { await releaseQuota(form.jenjang); } catch {}
-      }
-      alert("❌ " + (err?.message || "Terjadi kesalahan saat pendaftaran."));
-    } finally {
-      setSubmitting(false);
-    }
-  };
+  } finally {
+    setSubmitting(false);
+  }
+};
 
   const showPendidikanSebelumnya = !isEarlyEducation(form.jenjang);
 
