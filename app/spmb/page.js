@@ -64,6 +64,24 @@ async function releaseQuota(jenjangLabel) {
   });
 }
 
+function scrollToAnchor(anchor) {
+  if (!anchor) return;
+  const el =
+    document.getElementById(anchor) ||
+    document.querySelector(`[name="${anchor}"]`) ||
+    document.querySelector(`[data-anchor="${anchor}"]`);
+  if (!el) return;
+
+  el.scrollIntoView({ behavior: "smooth", block: "center" });
+  // fokus kalau bisa
+  setTimeout(() => {
+    if (typeof el.focus === "function") el.focus();
+    // highlight singkat biar “ketemu”
+    el.classList?.add("ring-2", "ring-rose-500");
+    setTimeout(() => el.classList?.remove("ring-2", "ring-rose-500"), 1500);
+  }, 200);
+}
+
 /* ===== Password hashing ===== */
 async function sha256Hex(text) {
   const enc = new TextEncoder().encode(text);
@@ -295,7 +313,12 @@ const onSubmit = async (e) => {
 
   // === validasi existing (tetap) ===
   const miss = validateDetailed();
-  if (miss.length) { setMissing(miss); /* scroll to first error */ return; }
+  if (miss.length) {
+  setMissing(miss);
+  const first = miss[0];
+  scrollToAnchor(first.anchor || first.name);   // ⬅️ ini kuncinya
+  return;
+}
   if (digits(form.nik).length !== 16) { setMissing([{name:"nik",label:"NIK harus 16 digit",anchor:"nik"}]); return; }
   if (!isEarlyEducation(form.jenjang)) {
     const nisnD = digits(form.nisn);
