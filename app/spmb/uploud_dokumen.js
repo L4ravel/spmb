@@ -10,7 +10,8 @@ const KB = 1024;
 const MB = 1024 * KB;
 const TARGET_BYTES = 3 * MB;       // target kompres (UX)
 const LARGE_THRESHOLD = 6 * MB;    // >6MB → pakai resumable direct upload
-const HARD_LIMIT_BYTES = 40 * MB;  // pagar atas untuk mencegah salah pilih
+const FORM_LIMIT_BYTES = 4 * MB;   // ~4–5MB total FormData → alihkan ke resumable
+const HARD_LIMIT_BYTES = 40 * MB;  // pagar atas
 
 const clamp = (v, min, max) => Math.max(min, Math.min(max, v));
 const safeName = (name, fallback = "dokumen.jpg") =>
@@ -133,14 +134,14 @@ async function initResumable(identifier, items) {
 
 /** Jalankan upload besar ke GCS Resumable: POST (init) → PUT (body) */
 async function resumableUpload(uploadURL, file) {
-  // Step-1: inisiasi sesi (beberapa env sudah langsung terinisiasi; tetap lakukan POST untuk aman)
+  // Step-1: inisiasi
   const init = await fetch(uploadURL, {
     method: "POST",
     headers: { "x-upload-content-type": file.type || "application/octet-stream" },
   });
   const sessionURL = init.headers.get("location") || uploadURL;
 
-  // Step-2: PUT body file
+  // Step-2: unggah body file
   const put = await fetch(sessionURL, {
     method: "PUT",
     headers: { "content-type": file.type || "application/octet-stream" },
@@ -150,7 +151,7 @@ async function resumableUpload(uploadURL, file) {
   return sessionURL;
 }
 
-/** Minta downloadURL via Firebase Storage SDK (agar finalize punya url) */
+/** Minta downloadURL via Firebase Storage SDK (untuk finalize) */
 async function getDownloadURLByPath(path) {
   try {
     const { storage } = await import("@/lib/firebase");
@@ -159,7 +160,7 @@ async function getDownloadURLByPath(path) {
     return await getDownloadURL(r);
   } catch (e) {
     console.warn("getDownloadURLByPath failed:", e);
-    return null; // server masih bisa pakai signedURL jika perlu
+    return null;
   }
 }
 
@@ -228,11 +229,9 @@ const UploudDokumen = forwardRef(function UploudDokumen(props, ref) {
     },
 
     /**
-     * Kirim berkas: otomatis pilih jalur
-     * - Kecil (<= LARGE_THRESHOLD): FormData ke /api/ppdb (legacy)
-     * - Besar  (> LARGE_THRESHOLD): resumable direct upload + finalize JSON
-     * @param {Object} formValues field text (nik/nisn/jenjang/...)
-     * @returns Promise<any> hasil finalize API
+     * Kirim berkas: auto pilih jalur
+     * - Kecil: FormData → /api/ppdb
+     * - Besar: resumable → finalize JSON
      */
     async submit(formValues) {
       // identitas: NIK (TK/SD) → 16 digit; selain itu NISN
@@ -245,9 +244,10 @@ const UploudDokumen = forwardRef(function UploudDokumen(props, ref) {
       const identifier = isEarly ? digits(formValues?.nik || "") : digits(formValues?.nisn || "");
       if (!identifier) throw new Error("Identifier kosong. Pastikan NIK/NISN diisi.");
 
-      // pisahkan file kecil vs besar
+      // klasifikasi file kecil vs besar
       const smallKeys = [];
       const largeItems = []; // { key, file, filename, contentType }
+      let smallTotal = 0;
 
       for (const k of FILE_KEYS) {
         const f = files[k];
@@ -259,39 +259,45 @@ const UploudDokumen = forwardRef(function UploudDokumen(props, ref) {
           largeItems.push({ key: k, file: f, filename: safeName(f.name || `${k}.bin`), contentType: f.type || "application/octet-stream" });
         } else {
           smallKeys.push(k);
+          smallTotal += f.size || 0;
         }
       }
 
-      // 1) jika ADA file besar → jalur resumable
-      const filesMeta = {};
-      if (largeItems.length) {
-        // INIT
-        const uploads = await initResumable(identifier, largeItems.map(it => ({
-          key: it.key, filename: it.filename, contentType: it.contentType
-        }))); // { key: { path, uploadURL } }
+      // Jika total FormData > ambang → pindahkan semuanya ke resumable
+      if (smallTotal > FORM_LIMIT_BYTES) {
+        for (const k of [...smallKeys]) {
+          const f = files[k];
+          largeItems.push({ key: k, file: f, filename: safeName(f.name || `${k}.bin`), contentType: f.type || "application/octet-stream" });
+        }
+        smallKeys.length = 0;
+      }
 
-        // UPLOAD tiap key
+      const filesMeta = {};
+
+      // === 1) Upload besar (resumable) jika ada
+      if (largeItems.length) {
+        const uploads = await initResumable(
+          identifier,
+          largeItems.map(it => ({ key: it.key, filename: it.filename, contentType: it.contentType }))
+        ); // { key: { path, uploadURL } }
+
         for (const it of largeItems) {
           const { path, uploadURL } = uploads[it.key] || {};
           if (!path || !uploadURL) throw new Error(`Init upload gagal untuk ${it.key}.`);
           await resumableUpload(uploadURL, it.file);
-          const url = await getDownloadURLByPath(path); // bisa null jika rules tak mengizinkan membaca
-          filesMeta[it.key] = {
-            path, url, size: it.file.size, contentType: it.contentType, uploadedAt: Date.now(),
-          };
+          const url = await getDownloadURLByPath(path);
+          filesMeta[it.key] = { path, url, size: it.file.size, contentType: it.contentType, uploadedAt: Date.now() };
         }
       }
 
-      // 2) jika ADA file kecil → kirim FormData legacy (sekali tembak)
+      // === 2) Upload kecil via FormData (legacy) kalau masih ada
       let legacyResult = null;
       if (smallKeys.length) {
         const fd = new FormData();
-        // append fields text
         Object.entries(formValues || {}).forEach(([k, v]) => {
           if (v == null) return;
           fd.append(k, typeof v === "string" ? v : String(v));
         });
-        // append file kecil
         for (const k of smallKeys) {
           const f = files[k];
           if (f) fd.append(k, f, safeName(f.name || `${k}.bin`));
@@ -299,28 +305,41 @@ const UploudDokumen = forwardRef(function UploudDokumen(props, ref) {
 
         try {
           legacyResult = await postFormData("/api/ppdb", fd);
-          // merge filesMeta dari server legacy (kalau ada)
-          if (legacyResult?.filesMeta) {
-            Object.assign(filesMeta, legacyResult.filesMeta);
-          }
+          if (legacyResult?.filesMeta) Object.assign(filesMeta, legacyResult.filesMeta);
         } catch (e) {
-          // Jika FormData ditolak (proxy 413), informasikan untuk kecilkan/ambil ulang
-          // tapi kita sudah memfilter >6MB ke jalur besar, jadi mestinya aman
-          throw e;
+          // Jika FormData ditolak (proxy 413) → fallback auto ke resumable
+          if (String(e.message || "").includes("jalur upload besar otomatis")) {
+            const fallbackItems = smallKeys.map(k => {
+              const f = files[k];
+              return { key: k, file: f, filename: safeName(f.name || `${k}.bin`), contentType: f.type || "application/octet-stream" };
+            });
+            if (fallbackItems.length) {
+              const uploads2 = await initResumable(
+                identifier,
+                fallbackItems.map(it => ({ key: it.key, filename: it.filename, contentType: it.contentType }))
+              );
+              for (const it of fallbackItems) {
+                const { path, uploadURL } = uploads2[it.key] || {};
+                if (!path || !uploadURL) throw new Error(`Init upload gagal untuk ${it.key}.`);
+                await resumableUpload(uploadURL, it.file);
+                const url = await getDownloadURLByPath(path);
+                filesMeta[it.key] = { path, url, size: it.file.size, contentType: it.contentType, uploadedAt: Date.now() };
+              }
+            } else {
+              throw e;
+            }
+          } else {
+            throw e;
+          }
         }
       }
 
-      // 3) FINALIZE jika ada file besar (atau jika kamu ingin konsisten satu pintu)
-      if (largeItems.length) {
-        const finalizePayload = {
-          identifier,
-          form: formValues,
-          filesMeta, // sudah berisi path/url untuk yang besar; plus (opsional) hasil legacyResult
-        };
-        return await finalizePPDB(finalizePayload);
+      // === 3) Finalize jika ada upload besar / fallback
+      if (largeItems.length || (smallKeys.length && legacyResult == null)) {
+        return await finalizePPDB({ identifier, form: formValues, filesMeta });
       }
 
-      // Hanya file kecil → hasil legacy sudah cukup
+      // Hanya FormData kecil → hasil legacy sudah cukup
       return legacyResult;
     },
   }), [files, benefitType, isBenefitMode, isUniversity, needIjazah]);
@@ -334,7 +353,7 @@ const UploudDokumen = forwardRef(function UploudDokumen(props, ref) {
     if (!f) return;
 
     try {
-      // Kompres bila perlu (gambar kamera besar); tetap izinkan >6MB (akan dialihkan ke jalur besar)
+      // Kompres bila perlu (gambar kamera besar); tetap izinkan >6MB (dialihkan ke jalur besar)
       const { compressImageIfNeeded } = await import("@/lib/imageCompress").catch(() => ({}));
       if (compressImageIfNeeded) {
         f = await compressImageIfNeeded(f, TARGET_BYTES);
