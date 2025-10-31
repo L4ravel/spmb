@@ -1,24 +1,14 @@
+// app/admin/page.js
 'use client';
 
-import React, { useEffect, useMemo, useState } from 'react';
+import React, { useEffect, useMemo, useRef, useState, useCallback } from 'react';
 import Link from 'next/link';
 import {
-  Users,
-  CreditCard,
-  UserCheck,
-  Trophy,
-  Calendar,
-  FileText,
-  BarChart3,
-  MessageSquare,
-  BookOpenCheck,
-  DollarSign,
-  Megaphone,
+  Users, CreditCard, UserCheck, Calendar, FileText, BarChart3, MessageSquare,
+  BookOpenCheck, DollarSign, Megaphone, KeyRound, LineChart, Wallet, ClipboardList,
+  PieChart, MapPin, Table, RefreshCw,
 } from 'lucide-react';
 
-// === Firestore ===
-// Pastikan kamu sudah punya export db di `@/lib/firebase` (initializeApp + getFirestore).
-// Jika path-mu beda, cukup ganti import di bawah ini:
 import { db } from '@/lib/firebase';
 import {
   collection,
@@ -26,18 +16,111 @@ import {
   query,
   where,
   getDocs,
+  doc, getDoc, collection as fbCollection, getDocs as fbGetDocs,
+  orderBy, limit as fbLimit, startAfter
 } from 'firebase/firestore';
 
+// ===== Ambil pager yang sama persis dengan halaman Statistik Daftar Ulang =====
+import { listUsersWithPaymentPage } from '@/app/admin/data-daftar-ulang/data/firestore'; // pastikan path ini sama seperti di page statistikmu
+
+/* ================== UTIL LOGIKA: disamakan dengan halaman Statistik Daful ================== */
+// normalisasi teks
+const up = (v) => (v ?? '').toString().trim().toUpperCase();
+// normalisasi status PTK
+const normPTK = (v) => {
+  const s = up(v);
+  if (['APPROVED','VERIFIED','ACCEPTED','CONFIRMED'].includes(s)) return 'APPROVED';
+  if (['REJECTED','DENIED','DECLINED'].includes(s)) return 'REJECTED';
+  return s || 'PENDING';
+};
+// kandidat kunci dokumen
+const pickDocKeys = (r) =>
+  [r?.id, r?.docId, r?.username, r?.uid, r?.userId, r?.NIS, r?.NISN, r?.nisn]
+    .map((x) => (x ?? '').toString().trim())
+    .filter(Boolean);
+
+// prefetch finalDecision & status ptk_confirmation/current → sama persis seperti di statistik
+async function prefetchMetaForKeys(keys, cache) {
+  const unique = Array.from(new Set(keys)).filter(Boolean);
+  const missing = unique.filter((k) => !cache.has(k));
+  if (missing.length === 0) return cache;
+
+  await Promise.all(
+    missing.map(async (k) => {
+      let fd = ''; let ptkApproved = false;
+      try {
+        const [userDoc, ptkDoc] = await Promise.all([
+          getDoc(doc(db, 'users_app', k)),
+          getDoc(doc(db, 'users_app', k, 'ptk_confirmation', 'current')),
+        ]);
+        if (userDoc.exists()) fd = up(userDoc.data()?.finalDecision);
+        if (ptkDoc.exists())  ptkApproved = normPTK(ptkDoc.data()?.status) === 'APPROVED';
+      } catch {}
+      cache.set(k, { fd, ptkApproved });
+    })
+  );
+
+  // fallback cari finalDecision terbaru di subkoleksi finalDecision
+  const needFd = missing.filter((k) => !cache.get(k)?.fd);
+  const CONCURRENCY = 6;
+  for (let i = 0; i < needFd.length; i += CONCURRENCY) {
+    const slice = needFd.slice(i, i + CONCURRENCY);
+    await Promise.all(
+      slice.map(async (k) => {
+        try {
+          const qref = query(
+            fbCollection(db, 'users_app', k, 'finalDecision'),
+            orderBy('finalDecidedAt', 'desc'),
+            fbLimit(1)
+          );
+          const snap = await fbGetDocs(qref);
+          if (!snap.empty) {
+            const fd = up(snap.docs[0].data()?.finalDecision);
+            const prev = cache.get(k) || { fd:'', ptkApproved:false };
+            cache.set(k, { ...prev, fd });
+          }
+        } catch {}
+      })
+    );
+  }
+  return cache;
+}
+
+async function enrichBatch(rows, cache) {
+  const allKeys = rows.flatMap((r) => pickDocKeys(r));
+  await prefetchMetaForKeys(allKeys, cache);
+  return rows.map((r) => {
+    const keys = pickDocKeys(r);
+    let fd = up(r?.finalDecision);
+    let ptkApproved = false;
+    for (const k of keys) {
+      const m = cache.get(k);
+      if (!m) continue;
+      if (!fd && m.fd) fd = m.fd;
+      if (m.ptkApproved) ptkApproved = true;
+      if (fd && ptkApproved) break;
+    }
+    return { ...r, __finalDecision: fd, __ptkApproved: !!ptkApproved };
+  });
+}
+
+const isRowPTK     = (r) => !!r.__ptkApproved;
+const isRowNonPTK  = (r) => !r.__ptkApproved && up(r.__finalDecision) === 'LULUS';
+const isRowValid   = (r) => isRowPTK(r) || isRowNonPTK(r); // dataset "total" persis seperti statistik
+const isLunas      = (r) => Number(r?.tunggakan || 0) <= 0 && Number(r?.kewajibanTotal || 0) > 0;
+
+/* ================== HALAMAN DASHBOARD (UI dipertahankan) ================== */
 export default function AdminDashboard() {
-  // === Pintasan SERAGAM dengan sidebar; tanpa "Dashboard" ===
   const shortcutGroups = [
     {
       id: 'data-master',
       label: 'Data Master',
       items: [
         { label: 'Data Peserta', href: '/admin/data-master', icon: Users },
+        { label: 'Geografi Peserta', shortLabel: 'Geografi', href: '/admin/geografi', icon: MapPin },
+          { label: "Penghasilan Orang Tua", shortLabel: "Penghasilan", href: "/admin/penghasilan-ortu", icon: Wallet },
         { label: 'Hasil Penilain Al-Quran', href: '/admin/hasil-tahfidz', icon: BarChart3 },
-        { label: 'Hasil Final', href: '/admin/hasil-final', icon: Trophy },
+        { label: 'Hasil Final', href: '/admin/hasil-final', icon: Table },
         { label: 'Umumkan', href: '/admin/hasil-final/umumkan', icon: Megaphone },
       ],
     },
@@ -47,6 +130,10 @@ export default function AdminDashboard() {
       items: [
         { label: 'Verifikasi Pembayaran', href: '/admin/pembayaran', icon: CreditCard },
         { label: 'Rekap Pembayaran', href: '/admin/data-peserta', icon: BarChart3 },
+        { label: 'Statistik Pembayaran', shortLabel: 'Statistik', href: '/admin/statistik-pembayaran', icon: LineChart },
+        { label: 'Verifikasi Daftar Ulang', shortLabel: 'Rekap Daful', href: '/admin/daftar-ulang', icon: ClipboardList },
+        { label: 'Data Daftar Ulang', shortLabel: 'Data Daful', href: '/admin/data-daftar-ulang', icon: Table },
+        { label: 'Statistik Daftar Ulang', shortLabel: 'Stat Daful', href: '/admin/statistik-daftar-ulang', icon: PieChart },
       ],
     },
     {
@@ -77,148 +164,413 @@ export default function AdminDashboard() {
       id: 'lainnya',
       label: 'Lainnya',
       items: [
-        { label: 'Input Pembayaran', href: '/admin/input-pembayaran', icon: CreditCard },
+        { label: 'Input Biaya Pendaftaran', href: '/admin/input-pembayaran', icon: CreditCard },
+        { label: 'Input Biaya Daftar Ulang', shortLabel: 'Input Bayar', href: '/admin/biaya-daftar-ulang', icon: Wallet },
         { label: 'Kuota', href: '/admin/kuota', icon: UserCheck },
         { label: 'WhatsApp', href: '/admin/whatshap', icon: MessageSquare },
         { label: 'Kelengkapan Berkas', href: '/admin/kelengkapan-berkas', icon: FileText },
+        { label: 'Reset Password Peserta', href: '/admin/reset-password', icon: KeyRound },
       ],
     },
   ];
 
-  // Bagi grup menjadi dua kolom: kiri & kanan (selang-seling)
   const [leftGroups, rightGroups] = useMemo(() => {
     const L = [], R = [];
     shortcutGroups.forEach((g, i) => (i % 2 === 0 ? L : R).push(g));
     return [L, R];
   }, [shortcutGroups]);
 
-  // === STATE Statistik ===
+  // === STATE Statistik umum (tetap, UI kamu)
   const [loading, setLoading] = useState(true);
   const [totalPeserta, setTotalPeserta] = useState(0);
+  const [verifiedCount, setVerifiedCount] = useState(0);
   const [pendingRegistrations, setPendingRegistrations] = useState(0);
   const [quotaTotal, setQuotaTotal] = useState(0);
   const [quotaUsed, setQuotaUsed] = useState(0);
+  const [totalPembayaran, setTotalPembayaran] = useState(0);       // uang masuk (registrasi)
+  const [totalTargetPayment, setTotalTargetPayment] = useState(0); // potensi (pendaftar × fee)
+  const [potentialCount, setPotentialCount] = useState(0);
 
-useEffect(() => {
-  let alive = true;
+  // === Tambahan: angka Daftar Ulang dari LOGIKA STATISTIK (dataset TOTAL) ===
+  const [totalDafulPendapatan, setTotalDafulPendapatan] = useState(0);
+  const [totalDafulTunggakan, setTotalDafulTunggakan]   = useState(0);
+  const [totalDafulPotensi, setTotalDafulPotensi]       = useState(0);
+  const metaCacheRef = useRef(new Map());
+  const [loadingDaful, setLoadingDaful] = useState(false);
 
-  async function fetchStats() {
-    try {
-      const usersCol = collection(db, 'users_app');
-      const quotasCol = collection(db, 'quotas');
+  // === Mode tampilan kartu uang (UI tetap)
+  const [moneyCardMode, setMoneyCardMode] = useState('pembayaran'); // 'pembayaran' | 'daful_pendapatan' | 'daful_tunggakan'
+  const onToggleMoneyCard = () => {
+    setMoneyCardMode((m) =>
+      m === 'pembayaran' ? 'daful_pendapatan' :
+      m === 'daful_pendapatan' ? 'daful_tunggakan' :
+      'pembayaran'
+    );
+  };
 
-      // susun query dulu
-      const pendingQ = query(usersCol, where('registrationPaymentStatus', '==', 'waiting_review'));
+  // ====== Ambil statistik umum (SEPERTI VERSI MU SEBELUMNYA, TANPA UBAH UI) ======
+  useEffect(() => {
+    let alive = true;
+    async function fetchStats() {
+      try {
+        const usersCol   = collection(db, 'users_app');
+        const quotasCol  = collection(db, 'quotas');
+        const feesCol    = collection(db, 'fees');
 
-      // JALANKAN PARALEL
-      const [totalSnap, pendingSnap, quotasSnap] = await Promise.all([
-        getCountFromServer(usersCol),
-        getCountFromServer(pendingQ),
-        getDocs(quotasCol),
-      ]);
+        // --- Ambil semua fees sekali: build map label -> fee
+        const feesSnap = await getDocs(feesCol);
+        const feeByLabel = new Map();
+        feesSnap.forEach((d) => {
+          const x = d.data() || {};
+          const label = (x.label || '').trim();
+          const fee   = Number(x.fee ?? 0);
+          if (label) feeByLabel.set(label, fee);
+        });
 
-      if (!alive) return;
+        // --- Query counts dasar
+        const pendingQ  = query(usersCol, where('registrationPaymentStatus', '==', 'waiting_review'));
+        const verifiedQ = query(usersCol, where('registrationPaymentStatus', '==', 'verified'));
 
-      // hitung kuota (sum limit & used)
-      let limitSum = 0;
-      let usedSum = 0;
-      quotasSnap.forEach((d) => {
-        const x = d.data() || {};
-        limitSum += Number(x.limit ?? 0);
-        usedSum += Number(x.used ?? 0);
-      });
+        const [totalSnap, pendingSnap, quotasSnap, verifiedSnap, allUsersSnap] = await Promise.all([
+          getCountFromServer(usersCol),
+          getCountFromServer(pendingQ),
+          getDocs(quotasCol),
+          getDocs(verifiedQ),
+          getDocs(usersCol),
+        ]);
 
-      setTotalPeserta(totalSnap.data().count || 0);
-      setPendingRegistrations(pendingSnap.data().count || 0);
-      setQuotaTotal(limitSum);
-      setQuotaUsed(usedSum);
-    } catch (err) {
-      console.error('[AdminDashboard] fetchStats error:', err);
-    } finally {
-      if (alive) setLoading(false);
+        if (!alive) return;
+
+        // === Index user & hitung per level
+        const existingIds = new Set();
+        const countByLevel = new Map();
+        allUsersSnap.forEach((s) => {
+          const id = s.id;
+          existingIds.add(id);
+          const u = s.data() || {};
+          const level = (u.registrationLevel || '').trim();
+          if (level) countByLevel.set(level, (countByLevel.get(level) || 0) + 1);
+        });
+
+        // === Kuota tervalidasi
+        let limitSum = 0;
+        let usedSum  = 0;
+
+        quotasSnap.forEach((d) => {
+          const q = d.data() || {};
+          const label = (q.label ?? d.id ?? '').trim();
+          const limit = Number(q.limit ?? 0);
+          limitSum += limit;
+
+          if (Array.isArray(q.assignedUsernames)) {
+            const validUsed = q.assignedUsernames.filter((u) => existingIds.has(String(u))).length;
+            usedSum += validUsed;
+            return;
+          }
+
+          if (q.usedBy && typeof q.usedBy === 'object') {
+            const validUsed = Object.keys(q.usedBy).filter((u) => existingIds.has(String(u))).length;
+            usedSum += validUsed;
+            return;
+          }
+
+          if (label) usedSum += Number(countByLevel.get(label) || 0);
+        });
+
+        setTotalPeserta(totalSnap.data().count || 0);
+        setPendingRegistrations(pendingSnap.data().count || 0);
+        setQuotaTotal(limitSum);
+        setQuotaUsed(usedSum);
+        setVerifiedCount(verifiedSnap.size || 0);
+
+        // === Total Pembayaran (uang real) = jumlah verified per level × fee(label)
+        const countVerifiedByLevel = new Map();
+        verifiedSnap.forEach((docSnap) => {
+          const u = docSnap.data() || {};
+          const levelLabel = (u.registrationLevel || '').trim();
+          if (!levelLabel) return;
+          countVerifiedByLevel.set(levelLabel, (countVerifiedByLevel.get(levelLabel) || 0) + 1);
+        });
+
+        let totalPaid = 0;
+        countVerifiedByLevel.forEach((cnt, label) => {
+          totalPaid += Number(feeByLabel.get(label) || 0) * Number(cnt || 0);
+        });
+        setTotalPembayaran(totalPaid);
+
+        // === Target Pembayaran (potensi)
+        const countAllByLevel = new Map();
+        let totalPotentialUsers = 0;
+        allUsersSnap.forEach((s) => {
+          const u = s.data() || {};
+          const label = (u.registrationLevel || '').trim();
+          if (!label) return;
+          countAllByLevel.set(label, (countAllByLevel.get(label) || 0) + 1);
+          totalPotentialUsers += 1;
+        });
+
+        let target = 0;
+        countAllByLevel.forEach((cnt, label) => {
+          target += Number(feeByLabel.get(label) || 0) * Number(cnt || 0);
+        });
+
+        setPotentialCount(totalPotentialUsers);
+        setTotalTargetPayment(target);
+      } catch (err) {
+        console.error('[AdminDashboard] fetchStats error:', err);
+      } finally {
+        if (alive) setLoading(false);
+      }
     }
-  }
 
-  fetchStats();
-  return () => { alive = false; };
-}, []);
+    fetchStats();
+    return () => { alive = false; };
+  }, []);
 
+  // ====== Ambil angka Daftar Ulang via pager (PERSIS seperti page statistik) ======
+  const reloadDaful = useCallback(async () => {
+    setLoadingDaful(true);
+    try {
+      const cache = metaCacheRef.current;
+      let local = [];
+      let cursor = null;
+      let safety = 0;
+      const SAFETY_LIMIT = 200;
 
+      while (safety < SAFETY_LIMIT) {
+        safety += 1;
+        const res = await listUsersWithPaymentPage({ pageSize: 200, cursor });
+        const batch = res?.list || [];
+        if (!batch.length) break;
+        const enriched = await enrichBatch(batch, cache);
+        local = local.concat(enriched);
+        cursor = res?.lastDoc || null;
+        if (!cursor) break;
+      }
+
+      // dataset TOTAL: PTK + NonPTK LULUS (identik statistik)
+      const effectiveRows = local.filter(isRowValid); // :contentReference[oaicite:2]{index=2}
+      let totalTunggakan = 0, totalPendapatan = 0;
+
+      for (const r of effectiveRows) {
+        const tunggakan = Number(r?.tunggakan || 0);
+        const tagihan   = Number(r?.kewajibanTotal || 0);
+        const pendapatan = Math.max(tagihan - tunggakan, 0);
+        totalTunggakan  += Math.max(tunggakan, 0);
+        totalPendapatan += pendapatan;
+      }
+      const potensi = totalPendapatan + totalTunggakan; // :contentReference[oaicite:3]{index=3}
+
+      setTotalDafulPendapatan(totalPendapatan);
+      setTotalDafulTunggakan(totalTunggakan);
+      setTotalDafulPotensi(potensi);
+    } catch (e) {
+      console.error('[AdminDashboard] reloadDaful error:', e);
+    } finally {
+      setLoadingDaful(false);
+    }
+  }, []);
+
+  useEffect(() => { reloadDaful(); }, [reloadDaful]);
+
+  // === Derive untuk progress bars & label (UI tetap)
   const quotaAvailable = Math.max(0, quotaTotal - quotaUsed);
+  const percentVerified = totalPeserta > 0 ? Math.min(100, Math.round((verifiedCount / totalPeserta) * 100)) : 0;
+  const percentPending  = totalPeserta > 0 ? Math.min(100, Math.round((pendingRegistrations / totalPeserta) * 100)) : 0;
+  const percentRevenue  = totalTargetPayment > 0 ? Math.min(100, Math.round((totalPembayaran / totalTargetPayment) * 100)) : 0;
+
+  const unpaidCount    = Math.max(0, totalPeserta - verifiedCount);
+  const percentUnpaid  = totalPeserta > 0 ? Math.min(100, Math.round((unpaidCount / totalPeserta) * 100)) : 0;
+
+  const moneyLabel = (() => {
+    if (moneyCardMode === 'daful_pendapatan') return 'Pendapatan Daftar Ulang';
+    if (moneyCardMode === 'daful_tunggakan')  return 'Tunggakan Daftar Ulang';
+    return 'Total Pembayaran Pendaftaran';
+  })();
+
+  const moneyValue = (() => {
+    if (loading || loadingDaful) return '…';
+    if (moneyCardMode === 'daful_pendapatan') return formatCurrency(totalDafulPendapatan);
+    if (moneyCardMode === 'daful_tunggakan')  return formatCurrency(totalDafulTunggakan);
+    return formatCurrency(totalPembayaran);
+  })();
+
+  const dafulTotal = Math.max(0, totalDafulPendapatan + totalDafulTunggakan);
+  const percentDafulPendapatan = dafulTotal > 0 ? Math.min(100, Math.round((totalDafulPendapatan / dafulTotal) * 100)) : 0;
+  const percentDafulTunggakan  = dafulTotal > 0 ? Math.min(100, Math.round((totalDafulTunggakan  / dafulTotal) * 100)) : 0;
+
+  const moneySub = (() => {
+    if (loading || loadingDaful) return ' ';
+    if (moneyCardMode === 'daful_pendapatan') return `Share: ${percentDafulPendapatan}% dari total Daful`;
+    if (moneyCardMode === 'daful_tunggakan')  return `Share: ${percentDafulTunggakan}% dari total Daful`;
+    return `Potensi: ${formatCurrency(totalTargetPayment)}`;
+  })();
+
+  // === Styling dinamis kartu uang (UI tetap)
+  const modeStyles = (() => {
+    if (moneyCardMode === 'daful_pendapatan') {
+      return {
+        border: 'border-green-500 hover:border-green-600',
+        iconWrap: 'bg-green-100 group-hover:bg-green-500',
+        icon: 'text-green-600 group-hover:text-white',
+        gradient: 'from-green-50',
+        bar: 'bg-green-500 group-hover:bg-green-600',
+        progressPct: `${loading || loadingDaful ? 0 : percentDafulPendapatan}%`,
+      };
+    }
+    if (moneyCardMode === 'daful_tunggakan') {
+      return {
+        border: 'border-yellow-500 hover:border-yellow-600',
+        iconWrap: 'bg-yellow-100 group-hover:bg-yellow-500',
+        icon: 'text-yellow-600 group-hover:text-white',
+        gradient: 'from-yellow-50',
+        bar: 'bg-yellow-500 group-hover:bg-yellow-600',
+        progressPct: `${loading || loadingDaful ? 0 : percentDafulTunggakan}%`,
+      };
+    }
+    return {
+      border: 'border-purple-500 hover:border-purple-600',
+      iconWrap: 'bg-purple-100 group-hover:bg-purple-500',
+      icon: 'text-purple-600 group-hover:text-white',
+      gradient: 'from-purple-50',
+      bar: 'bg-purple-500 group-hover:bg-purple-600',
+      progressPct: `${loading ? 0 : percentRevenue}%`,
+    };
+  })();
 
   return (
-    <div className="min-h-dvh bg-slate-50 p-4 md:p-6">
-      {/* Header */}
-      <div className="mb-6">
-        <h1 className="text-2xl md:text-3xl font-extrabold text-slate-900">Dashboard PPDB • Admin</h1>       
+    <div className="min-h-dvh bg-slate-10 p-4 md:p-6">
+      <div className="mb-4 flex items-center gap-2">
+        <h1 className="text-2xl md:text-3xl font-extrabold text-slate-900">Dashboard SPMB • Admin</h1>
+        <div className="ml-auto" />
+        <button
+          type="button"
+          onClick={() => { setLoading(true); setLoadingDaful(true); Promise.all([/* umum */ (async()=>{})(), reloadDaful()]).finally(()=>setLoading(false)); }}
+          className="inline-flex items-center gap-2 rounded-xl border border-slate-200 bg-white px-3 py-2 text-sm hover:bg-slate-50 text-black"
+        >
+          <RefreshCw className="h-4 w-4" /> Muat ulang
+        </button>
       </div>
 
-      {/* Stats ringkas (dinamis) */}
+      {/* Stats Cards (UI dipertahankan) */}
       <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-4 mb-6">
-        <StatCard
-          title="Total Peserta"
-          value={loading ? '…' : formatNumber(totalPeserta)}
-          icon={Users}
-          accent="blue"
-          note={!loading && `Terhitung saat ini`}
-          noteColor="text-slate-500"
-        />
-
-        <div className="bg-white rounded-xl shadow-sm p-5 border-l-4 border-green-500">
-          <div className="flex items-center justify-between">
-            <div>
-              <p className="text-slate-500 text-sm">Kuota Tersedia</p>
-              <p className="text-3xl font-bold text-slate-900 mt-1">
-                {loading ? '…' : formatNumber(quotaAvailable)}
-              </p>
-              <p className="text-xs text-slate-400 mt-1">
-                {loading ? ' ' : `dari ${formatNumber(quotaTotal)} kuota`}
-              </p>
+        {/* Total Peserta */}
+        <Link href="/admin/data-master" className="group bg-white rounded-xl shadow-sm hover:shadow-xl p-5 border-l-4 border-blue-500 transition-all duration-300 hover:scale-[1.02] hover:-translate-y-1 cursor-pointer hover:border-blue-600 relative overflow-hidden">
+          <div className="absolute inset-0 bg-gradient-to-br from-blue-50 to-transparent opacity-0 group-hover:opacity-100 transition-opacity duration-300" />
+          <div className="relative z-10">
+            <div className="flex items-center justify-between">
+              <div>
+                <p className="text-slate-500 text-sm group-hover:text-blue-600 transition-colors">Total Peserta</p>
+                <p className="text-3xl font-bold text-slate-900 mt-1 group-hover:text-blue-700 transition-colors">
+                  {loading ? '…' : formatNumber(totalPeserta)}
+                </p>
+                <p className="text-xs text-slate-500 mt-1 group-hover:text-blue-600 transition-colors">
+                  {loading ? ' ' : `Belum bayar: ${percentUnpaid}%`}
+                </p>
+              </div>
+              <div className="w-12 h-12 bg-blue-100 rounded-lg flex items-center justify-center group-hover:bg-blue-500 group-hover:scale-110 transition-all duration-300">
+                <Users className="text-blue-600 group-hover:text-white transition-colors" size={24} />
+              </div>
             </div>
-            <div className="w-12 h-12 bg-green-100 rounded-lg flex items-center justify-center">
-              <UserCheck className="text-green-600" size={24} />
+            <div className="bg-blue-500 h-2 rounded-full transition-all duration-500 group-hover:bg-blue-600" style={{ width: loading ? '0%' : `${percentUnpaid}%` }} />
+          </div>
+        </Link>
+
+        {/* Sudah Bayar */}
+        <Link href="/admin/kuota" className="group bg-white rounded-xl shadow-sm hover:shadow-xl p-5 border-l-4 border-green-500 transition-all duration-300 hover:scale-[1.02] hover:-translate-y-1 cursor-pointer hover:border-green-600 relative overflow-hidden">
+          <div className="absolute inset-0 bg-gradient-to-br from-green-50 to-transparent opacity-0 group-hover:opacity-100 transition-opacity duration-300" />
+          <div className="relative z-10">
+            <div className="flex items-center justify-between">
+              <div>
+                <p className="text-slate-500 text-sm group-hover:text-green-600 transition-colors">Sudah Bayar</p>
+                <p className="text-3xl font-bold text-slate-900 mt-1 group-hover:text-green-700 transition-colors">
+                  {loading ? '…' : formatNumber(verifiedCount)}
+                </p>
+                <p className="text-xs text-slate-500 mt-1 group-hover:text-green-600 transition-colors">
+                  {loading ? ' ' : `Sudah bayar: ${percentVerified}%`}
+                </p>
+              </div>
+              <div className="w-12 h-12 bg-green-100 rounded-lg flex items-center justify-center group-hover:bg-green-500 group-hover:scale-110 transition-all duration-300">
+                <UserCheck className="text-green-600 group-hover:text-white transition-colors" size={24} />
+              </div>
+            </div>
+            <div className="w-full bg-slate-200 rounded-full h-2 mt-3 overflow-hidden">
+              <div className="bg-green-500 h-2 rounded-full transition-all duration-500 group-hover:bg-green-600" style={{ width: loading ? '0%' : `${percentVerified}%` }} />
             </div>
           </div>
-          <div className="w-full bg-slate-200 rounded-full h-2 mt-3">
-            <div
-              className="bg-green-500 h-2 rounded-full"
-              style={{
-                width: loading
-                  ? '0%'
-                  : `${quotaTotal > 0 ? Math.min(100, Math.round(((quotaTotal - quotaAvailable) / quotaTotal) * 100)) : 0}%`,
-              }}
-            />
+        </Link>
+
+        {/* Menunggu Verifikasi */}
+        <Link href="/admin/pembayaran" className="group bg-white rounded-xl shadow-sm hover:shadow-xl p-5 border-l-4 border-yellow-500 transition-all duration-300 hover:scale-[1.02] hover:-translate-y-1 cursor-pointer hover:border-yellow-600 relative overflow-hidden">
+          <div className="absolute inset-0 bg-gradient-to-br from-yellow-50 to-transparent opacity-0 group-hover:opacity-100 transition-opacity duration-300" />
+          <div className="relative z-10">
+            <div className="flex items-center justify-between">
+              <div>
+                <p className="text-slate-500 text-sm group-hover:text-yellow-600 transition-colors">Menunggu Verifikasi</p>
+                <p className="text-3xl font-bold text-slate-900 mt-1 group-hover:text-yellow-700 transition-colors">
+                  {loading ? '…' : formatNumber(pendingRegistrations)}
+                </p>
+                <p className="text-xs text-slate-500 mt-1 group-hover:text-yellow-600 transition-colors">
+                  {loading ? ' ' : `Menunggu: ${percentPending}%`}
+                </p>
+              </div>
+              <div className="w-12 h-12 bg-yellow-100 rounded-lg flex items-center justify-center group-hover:bg-yellow-500 group-hover:scale-110 transition-all duration-300">
+                <CreditCard className="text-yellow-600 group-hover:text-white transition-colors" size={24} />
+              </div>
+            </div>
+            <div className="w-full bg-slate-200 rounded-full h-2 mt-3 overflow-hidden">
+              <div className="bg-yellow-500 h-2 rounded-full transition-all duration-500 group-hover:bg-yellow-600" style={{ width: loading ? '0%' : `${percentPending}%` }} />
+            </div>
           </div>
-        </div>
+        </Link>
 
-        <StatCard
-          title="Menunggu Verifikasi"
-          value={loading ? '…' : formatNumber(pendingRegistrations)}
-          icon={CreditCard}
-          accent="yellow"
-          note={!loading && `Terhitung Saat Ini`}
-          noteColor="text-yellow-700"
-        />
+        {/* KARTU UANG: klik untuk cycle nominal (UI tetap) */}
+        <button
+          type="button"
+          onClick={onToggleMoneyCard}
+          className={`text-left group bg-white rounded-xl shadow-sm hover:shadow-xl p-5 border-l-4 transition-all duration-300 hover:scale-[1.02] hover:-translate-y-1 cursor-pointer relative overflow-hidden ${modeStyles.border}`}
+          title="Klik untuk mengganti tampilan nominal"
+        >
+          <div className={`absolute inset-0 bg-gradient-to-br ${modeStyles.gradient} to-transparent opacity-0 group-hover:opacity-100 transition-opacity duration-300`} />
+          <div className="relative z-10">
+            <div className="flex items-center justify-between">
+              <div>
+                <p className="text-slate-500 text-sm transition-colors">{moneyLabel}</p>
+                <p className="text-3xl font-bold text-slate-900 mt-1 transition-colors">
+                  {moneyValue}
+                </p>
+                <p className="text-xs text-slate-500 mt-1 transition-colors">
+                  {moneySub}
+                </p>
+              </div>
+              <div className={`w-12 h-12 rounded-lg flex items-center justify-center group-hover:scale-110 transition-all duration-300 ${modeStyles.iconWrap}`}>
+                <DollarSign className={`${modeStyles.icon}`} size={24} />
+              </div>
+            </div>
 
-        <StatCard
-          title="Total Pembayaran"
-          value="—"
-          icon={DollarSign}
-          accent="purple"
-          note="(opsional: tarik dari fees)"
-          noteColor="text-slate-400"
-        />
+            {/* Progress bar sesuai mode (UI tetap) */}
+            <div className="w-full bg-slate-200 rounded-full h-2 mt-3 overflow-hidden">
+              <div
+                className={`h-2 rounded-full transition-all duration-500 ${modeStyles.bar}`}
+                style={{ width: loading || loadingDaful ? '0%' : modeStyles.progressPct }}
+              />
+            </div>
+
+            {/* Hint kecil mode */}
+            <div className="mt-2 text-[11px] text-slate-400">
+              Klik untuk ganti: {moneyCardMode === 'pembayaran' ? 'Pendapatan Daful' : moneyCardMode === 'daful_pendapatan' ? 'Tunggakan Daful' : 'Total Pembayaran'}
+            </div>
+          </div>
+        </button>
       </div>
 
-      {/* Dua kolom: kiri & kanan */}
+      {/* Dua kolom pintasan (UI tetap) */}
       <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
-        {/* Kiri */}
         <div className="space-y-6">
           {leftGroups.map((group) => (
             <GroupCard key={group.id} label={group.label} items={group.items} />
           ))}
         </div>
-        {/* Kanan */}
         <div className="space-y-6">
           {rightGroups.map((group) => (
             <GroupCard key={group.id} label={group.label} items={group.items} />
@@ -229,7 +581,7 @@ useEffect(() => {
   );
 }
 
-/** Utils */
+/** Utils tampilan */
 function formatNumber(n) {
   try {
     return new Intl.NumberFormat('id-ID').format(n);
@@ -237,40 +589,15 @@ function formatNumber(n) {
     return String(n ?? '');
   }
 }
-
-/** Kartu statistik mini */
-function StatCard({ title, value, icon: Icon, accent = 'blue', note, noteColor }) {
-  const borderColor = {
-    blue: 'border-blue-500',
-    green: 'border-green-500',
-    yellow: 'border-yellow-500',
-    purple: 'border-purple-500',
-  }[accent];
-
-  const bgIcon = {
-    blue: 'bg-blue-100 text-blue-600',
-    green: 'bg-green-100 text-green-600',
-    yellow: 'bg-yellow-100 text-yellow-600',
-    purple: 'bg-purple-100 text-purple-600',
-  }[accent];
-
-  return (
-    <div className={`bg-white rounded-xl shadow-sm p-5 border-l-4 ${borderColor}`}>
-      <div className="flex items-center justify-between">
-        <div>
-          <p className="text-slate-500 text-sm">{title}</p>
-          <p className="text-3xl font-bold text-slate-900 mt-1">{value}</p>
-        </div>
-        <div className={`w-12 h-12 rounded-lg flex items-center justify-center ${bgIcon}`}>
-          <Icon size={24} />
-        </div>
-      </div>
-      {note && <p className={`${noteColor} text-xs mt-3`}>{note}</p>}
-    </div>
-  );
+function formatCurrency(n) {
+  try {
+    return new Intl.NumberFormat('id-ID', { style: 'currency', currency: 'IDR', maximumFractionDigits: 0 }).format(n || 0);
+  } catch {
+    return `Rp ${formatNumber(n || 0)}`;
+  }
 }
 
-/** Kartu grup pintasan */
+/** Kartu grup pintasan (UI tetap) */
 function GroupCard({ label, items }) {
   return (
     <div className="bg-white rounded-2xl shadow-sm border border-slate-200/60">
@@ -288,7 +615,7 @@ function GroupCard({ label, items }) {
   );
 }
 
-/** Tombol pintasan */
+/** Tombol pintasan (UI tetap) */
 function QuickLink({ href, label, Icon }) {
   return (
     <Link

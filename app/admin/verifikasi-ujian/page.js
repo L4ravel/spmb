@@ -4,6 +4,7 @@ import { useEffect, useMemo, useState } from "react";
 import {
   collection,
   getDocs,
+  getDoc,
   query,
   where,
   orderBy,
@@ -13,7 +14,7 @@ import {
   limit,
 } from "firebase/firestore";
 import { db } from "@/lib/firebase";
-import { CheckSquare, Square, Search, UsersRound } from "lucide-react";
+import { CheckSquare, Square, Search, UsersRound, CheckCircle2 } from "lucide-react";
 
 /* ========== Helpers ========== */
 const toMs = (v) => {
@@ -24,16 +25,12 @@ const toMs = (v) => {
   const t = new Date(String(v)).getTime();
   return Number.isFinite(t) ? t : 0;
 };
-
 const ts = (v) =>
   typeof v?.toMillis === "function" ? v : Timestamp.fromMillis(toMs(v));
-
 const isPaid = (r) =>
   r?.verifiedPayment === true ||
   r?.registrationPaymentStatus === "verified" ||
   r?.reRegistrationPaymentStatus === "verified";
-
-// waktu verifikasi utk prioritas
 const verifiedAtMs = (r) =>
   toMs(r.registrationPaymentVerifiedAt) ||
   toMs(r.reRegistrationPaymentVerifiedAt) ||
@@ -41,23 +38,55 @@ const verifiedAtMs = (r) =>
   toMs(r.updatedAt) ||
   toMs(r.createdAt);
 
+/* ====== Phone utils ====== */
+function normalizePhoneID(raw) {
+  if (!raw) return "";
+  const digits = String(raw).replace(/[^\d]/g, "");
+  if (!digits) return "";
+  if (digits.startsWith("62")) return digits;
+  if (digits.startsWith("0")) return "62" + digits.slice(1);
+  return digits;
+}
+
+/* ====== Date utils (ID) ====== */
+const HARI_ID = ["Ahad", "Senin", "Selasa", "Rabu", "Kamis", "Jumat", "Sabtu"];
+const pad2 = (n) => String(n).padStart(2, "0");
+function fmtTanggalID(d) {
+  // dd/mm/yyyy
+  return `${pad2(d.getDate())}/${pad2(d.getMonth() + 1)}/${d.getFullYear()}`;
+}
+function fmtJamID(d) {
+  // HH:mm (tanpa detik)
+  return `${pad2(d.getHours())}:${pad2(d.getMinutes())}`;
+}
+function fmtJadwalSurat(wsMs, weMs) {
+  if (!wsMs) return null;
+  const ds = new Date(wsMs);
+  const de = weMs ? new Date(weMs) : null;
+  const hari = HARI_ID[ds.getDay()];
+  const tanggal = fmtTanggalID(ds);
+  const jamMulai = fmtJamID(ds);
+  const jamSelesai = de ? fmtJamID(de) : null;
+  return {
+    hari,
+    tanggal,
+    waktu: jamSelesai ? `${jamMulai}–${jamSelesai} WITA` : `${jamMulai} WITA`,
+    kalimat: jamSelesai
+      ? `${hari}, ${tanggal}, ${jamMulai}–${jamSelesai} WITA`
+      : `${hari}, ${tanggal}, ${jamMulai} WITA`,
+  };
+}
+
 /* ========== Page ========== */
 export default function VerifikasiUjian() {
   const [rows, setRows] = useState([]);
   const [loading, setLoading] = useState(true);
 
   const [schedules, setSchedules] = useState([]);
-
-  // Filter gelombang (ALL = semua)
   const [filterScheduleId, setFilterScheduleId] = useState("ALL");
-
-  // Filter Tingkat (dari users_app.registrationLevel)
   const [filterLevel, setFilterLevel] = useState("ALL");
-
-  // 🔎 BARU: Filter status jadwal (ALL | HAS | NONE)
   const [filterScheduleStatus, setFilterScheduleStatus] = useState("ALL");
 
-  // Jadwal target untuk assign
   const [targetScheduleId, setTargetScheduleId] = useState("");
   const targetSchedule = useMemo(
     () => schedules.find((s) => s.id === targetScheduleId) || null,
@@ -67,8 +96,6 @@ export default function VerifikasiUjian() {
   const [selected, setSelected] = useState(new Set());
   const [search, setSearch] = useState("");
   const [saving, setSaving] = useState(false);
-
-  // Kuota input (auto select)
   const [quotaPick, setQuotaPick] = useState("");
 
   /* ===== Load siswa: hanya verified ===== */
@@ -85,7 +112,6 @@ export default function VerifikasiUjian() {
         const snap = await getDocs(qUsers);
         const list = snap.docs.map((d) => ({ id: d.id, ...d.data() }));
         const onlyVerified = list.filter(isPaid);
-        // urut: paling awal diverifikasi → terbaru
         onlyVerified.sort((a, b) => verifiedAtMs(a) - verifiedAtMs(b));
         setRows(onlyVerified);
       } catch (e) {
@@ -97,7 +123,7 @@ export default function VerifikasiUjian() {
     })();
   }, []);
 
-  /* ===== Load jadwal aktif ===== */
+  /* ===== Load jadwal aktif (untuk filter & assign) ===== */
   useEffect(() => {
     (async () => {
       try {
@@ -107,7 +133,6 @@ export default function VerifikasiUjian() {
         const list = snap.docs.map((d) => ({ id: d.id, ...d.data() }));
         list.sort((a, b) => toMs(a.windowStartAt) - toMs(b.windowStartAt));
         setSchedules(list);
-        // default: filter semua; target jadwal = yang pertama (jika ada)
         if (list.length && !targetScheduleId) setTargetScheduleId(list[0].id);
       } catch (e) {
         console.error(e);
@@ -116,7 +141,7 @@ export default function VerifikasiUjian() {
     })();
   }, [targetScheduleId]);
 
-  /* ===== Options Tingkat (unik & terurut) ===== */
+  /* ===== Level options ===== */
   const levelOptions = useMemo(() => {
     const set = new Set();
     rows.forEach((r) => {
@@ -126,7 +151,7 @@ export default function VerifikasiUjian() {
     return Array.from(set).sort((a, b) => a.localeCompare(b, "id"));
   }, [rows]);
 
-  /* ===== Stats jadwal (untuk badge kecil) ===== */
+  /* ===== Stats ===== */
   const stats = useMemo(() => {
     let has = 0,
       none = 0;
@@ -134,30 +159,15 @@ export default function VerifikasiUjian() {
     return { has, none, all: rows.length };
   }, [rows]);
 
-  /* ===== View: filter by schedule + level + status + search ===== */
+  /* ===== View ===== */
   const view = useMemo(() => {
     let base = rows;
+    if (filterScheduleId !== "ALL") base = base.filter((r) => r.examScheduleId === filterScheduleId);
+    if (filterLevel !== "ALL")
+      base = base.filter((r) => (r.registrationLevel || "").toString().trim() === filterLevel);
+    if (filterScheduleStatus === "HAS") base = base.filter((r) => !!r.examScheduleId);
+    else if (filterScheduleStatus === "NONE") base = base.filter((r) => !r.examScheduleId);
 
-    // Filter gelombang spesifik
-    if (filterScheduleId !== "ALL") {
-      base = base.filter((r) => r.examScheduleId === filterScheduleId);
-    }
-
-    // Filter Tingkat
-    if (filterLevel !== "ALL") {
-      base = base.filter(
-        (r) => (r.registrationLevel || "").toString().trim() === filterLevel
-      );
-    }
-
-    // 🔎 Filter Status Jadwal
-    if (filterScheduleStatus === "HAS") {
-      base = base.filter((r) => !!r.examScheduleId);
-    } else if (filterScheduleStatus === "NONE") {
-      base = base.filter((r) => !r.examScheduleId);
-    }
-
-    // Search
     const q = search.trim().toLowerCase();
     if (!q) return base;
     return base.filter((r) => {
@@ -206,30 +216,26 @@ export default function VerifikasiUjian() {
     next.has(id) ? next.delete(id) : next.add(id);
     setSelected(next);
   };
-
-  // Reset pilihan saat ganti filter/target
   useEffect(() => {
     setSelected(new Set());
   }, [filterScheduleId, filterLevel, filterScheduleStatus, targetScheduleId]);
 
-  /* ===== Auto select by Kuota (ambil yang BELUM dijadwalkan dari hasil FILTER) ===== */
+  /* ===== Auto select by Kuota ===== */
   useEffect(() => {
     const n = Number(quotaPick);
     if (!Number.isFinite(n) || n <= 0) return;
-    const pool = view.filter((r) => !r.examScheduleId); // hanya yang belum punya jadwal
+    const pool = view.filter((r) => !r.examScheduleId);
     const chosen = pool.slice(0, n).map((r) => r.id);
     setSelected(new Set(chosen));
   }, [quotaPick, view]);
 
-  /* ===== Assign ke target jadwal (hormati kuota jadwal bila ada) ===== */
+  /* ===== Assign ke target jadwal ===== */
   const assignNow = async () => {
     if (!targetSchedule || selected.size === 0) return;
     try {
       setSaving(true);
-
       const ws = ts(targetSchedule.windowStartAt);
       const we = ts(targetSchedule.windowEndAt);
-
       const max = Number(targetSchedule.maxCandidates || 0) || null;
       const remaining = max ? Math.max(max - filled, 0) : null;
       if (max && remaining === 0) {
@@ -237,19 +243,15 @@ export default function VerifikasiUjian() {
         setSaving(false);
         return;
       }
-
-      // urutkan kandidat terpilih berdasar waktu verifikasi (paling awal → terbaru)
       const chosen = view
         .filter((r) => selected.has(r.id))
         .sort((a, b) => verifiedAtMs(a) - verifiedAtMs(b));
-
       const finalList = remaining == null ? chosen : chosen.slice(0, remaining);
       if (finalList.length === 0) {
         alert("Tidak ada kandidat yang bisa di-assign (periksa kuota).");
         setSaving(false);
         return;
       }
-
       const batch = writeBatch(db);
       finalList.forEach((r) => {
         batch.update(doc(db, "users_app", r.id), {
@@ -261,7 +263,6 @@ export default function VerifikasiUjian() {
       });
       await batch.commit();
 
-      // update UI
       const ids = new Set(finalList.map((r) => r.id));
       setRows((prev) =>
         prev.map((r) =>
@@ -278,12 +279,10 @@ export default function VerifikasiUjian() {
       );
       setSelected(new Set());
 
-      // refresh kuota target
       const snap = await getDocs(
         query(collection(db, "users_app"), where("examScheduleId", "==", targetSchedule.id))
       );
       setFilled(snap.size);
-
       const msg =
         max != null
           ? `Berhasil assign ${finalList.length} siswa. Terisi: ${snap.size}/${max}.`
@@ -296,6 +295,150 @@ export default function VerifikasiUjian() {
       setSaving(false);
     }
   };
+
+  /* ====== WA Cell (WhatsApp Web, "surat" format, hari & waktu) ====== */
+  function WaCell({ nisn, name, wsMs, weMs, scheduleId }) {
+    const [loading, setLoading] = useState(true);
+    const [phoneRaw, setPhoneRaw] = useState("");
+    const [hasPhone, setHasPhone] = useState(false);
+    const [sent, setSent] = useState(false);
+    const [localWs, setLocalWs] = useState(wsMs || 0);
+    const [localWe, setLocalWe] = useState(weMs || 0);
+
+    // restore sent flag
+    useEffect(() => {
+      try {
+        const map = JSON.parse(localStorage.getItem("wa_sent_flags") || "{}");
+        if (map && map[nisn]) setSent(true);
+      } catch {}
+    }, [nisn]);
+
+    // ambil nomor + fallback jadwal dari exam_schedules bila belum ada
+    useEffect(() => {
+      let alive = true;
+      (async () => {
+        try {
+          setLoading(true);
+          // nomor
+          const ppdbRef = doc(db, "ppdb", String(nisn));
+          const ppdbSnap = await getDoc(ppdbRef);
+          if (!alive) return;
+          if (ppdbSnap.exists()) {
+            const d = ppdbSnap.data() || {};
+            const wa = (d.waliWa || "").toString().trim();
+            const telp = (d.waliTelp || d.waliTel || "").toString().trim();
+            const chosen = wa || telp || "";
+            setPhoneRaw(chosen);
+            setHasPhone(!!chosen);
+          } else {
+            setPhoneRaw("");
+            setHasPhone(false);
+          }
+
+          // fallback jadwal
+          if ((!wsMs || !weMs) && scheduleId) {
+            const schRef = doc(db, "exam_schedules", String(scheduleId));
+            const schSnap = await getDoc(schRef);
+            if (!alive) return;
+            if (schSnap.exists()) {
+              const sd = schSnap.data() || {};
+              const a = toMs(sd.windowStartAt);
+              const b = toMs(sd.windowEndAt);
+              if (a) setLocalWs(a);
+              if (b) setLocalWe(b);
+            }
+          }
+        } catch (e) {
+          console.error("Fetch WA/jadwal error:", e);
+          if (!alive) return;
+          setPhoneRaw("");
+          setHasPhone(false);
+        } finally {
+          if (alive) setLoading(false);
+        }
+      })();
+      return () => {
+        alive = false;
+      };
+    }, [nisn, scheduleId, wsMs, weMs]);
+
+    const handleSend = () => {
+      if (!hasPhone) return;
+      const phone = normalizePhoneID(phoneRaw);
+      if (!phone) return;
+
+      const jadwal = fmtJadwalSurat(localWs, localWe);
+      // === Format "surat" (multi-baris) ===
+      const lines = [
+  "Bismillah.",
+  "Panitia SPMB Ponpes As-Sunnah",
+  "",
+  "Kepada Yth. Orang Tua/Wali Peserta,",
+  `Nama   : ${name || "—"}`,
+  `NISN   : ${nisn}`,
+  "",
+  "Undangan Pelaksanaan Ujian SPMB:",
+  jadwal
+    ? `Hari/Tanggal : ${jadwal.hari}, ${jadwal.tanggal}`
+    : "Hari/Tanggal : -",
+  jadwal ? `Waktu        : ${jadwal.waktu}` : "Waktu        : -",
+  "Tempat       : Pondok As-Sunnah",
+  "",
+  "Runtutan Ujian:",
+  "1) Tes Akademik (online—membawa HP/ponsel, baterai cukup & kuota).",
+  "2) Baca Al-Qur’an.",
+  "3) Tes Wawancara.",
+  "4) Pengukuran baju/seragam.",
+  "",
+  "Mohon hadir tepat waktu dan berpakaian rapi. Disarankan datang 10–15 menit lebih awal.",
+  "(Catatan : Bagi yang berada di luar daerah, silakan konfirmasi kepada panitia untuk pelaksanaan ujian secara online.)",
+  "",
+  "Jazakallah khairan.",
+  "Panitia SPMB Ponpes As-Sunnah",
+];
+
+const pesan = lines.join("\n");
+
+
+      const url = `https://web.whatsapp.com/send?phone=${phone}&text=${encodeURIComponent(pesan)}`;
+      try {
+        window.open(url, "_blank", "noopener,noreferrer");
+        setSent(true);
+        try {
+          const map = JSON.parse(localStorage.getItem("wa_sent_flags") || "{}");
+          map[nisn] = true;
+          localStorage.setItem("wa_sent_flags", JSON.stringify(map));
+        } catch {}
+      } catch (e) {
+        console.error("Open WhatsApp Web failed:", e);
+      }
+    };
+
+    if (loading) return <span className="text-slate-500">Memuat…</span>;
+    if (!hasPhone) {
+      return (
+        <span className="inline-flex items-center rounded-full bg-slate-100 px-2.5 py-1 text-xs font-medium text-slate-600">
+          Tidak memiliki nomor WA
+        </span>
+      );
+    }
+
+    return (
+      <div className="flex items-center gap-2">
+        <button
+          onClick={handleSend}
+          className="rounded-lg bg-emerald-600 px-3 py-1.5 text-sm font-semibold text-white hover:bg-emerald-700"
+        >
+          Kirim via WhatsApp
+        </button>
+        {sent && (
+          <span className="inline-flex items-center gap-1 rounded-full bg-emerald-50 px-2.5 py-1 text-xs font-medium text-emerald-700 ring-1 ring-emerald-200">
+            <CheckCircle2 size={14} /> Sudah terkirim
+          </span>
+        )}
+      </div>
+    );
+  }
 
   /* =============== UI =============== */
   return (
@@ -314,12 +457,11 @@ export default function VerifikasiUjian() {
           </div>
         </div>
 
-        {/* Toolbar – kiri & kanan */}
+        {/* Toolbar */}
         <div className="mb-3 rounded-2xl border border-slate-200 bg-white p-3 shadow-sm">
           <div className="flex flex-col gap-3 md:flex-row md:items-center md:justify-between">
-            {/* LEFT group */}
+            {/* LEFT */}
             <div className="flex flex-wrap items-center gap-2 md:gap-3">
-              {/* Select all */}
               <button
                 onClick={toggleAll}
                 className="inline-flex items-center gap-2 rounded-lg border border-slate-300 px-3 py-2 text-sm font-semibold hover:bg-slate-50"
@@ -333,50 +475,45 @@ export default function VerifikasiUjian() {
 
               <div className="mx-1 hidden h-6 w-px bg-slate-200 sm:block" />
 
-              {/* Filter Gelombang */}
               <div className="flex items-center gap-2">
                 <label className="text-sm font-semibold text-slate-800">Gelombang</label>
                 <select
                   value={filterScheduleId}
                   onChange={(e) => setFilterScheduleId(e.target.value)}
                   className="min-w-[280px] rounded-lg border border-slate-300 bg-white px-3 py-2 text-base"
-                  title="Filter gelombang"
                 >
                   <option value="ALL">Semua Gelombang</option>
                   {schedules.map((s) => (
                     <option key={s.id} value={s.id}>
                       {s.title || s.id} — {new Date(toMs(s.windowStartAt)).toLocaleString()} s/d{" "}
-                      {new Date(toMs(s.windowEndAt)).toLocaleString()}{" "}
-                      {s.level ? `(${s.level})` : ""}
+                      {new Date(toMs(s.windowEndAt)).toLocaleString()} {s.level ? `(${s.level})` : ""}
                     </option>
                   ))}
                 </select>
               </div>
 
-              {/* Filter Tingkat */}
               <div className="flex items-center gap-2">
                 <label className="text-sm font-semibold text-slate-800">Tingkat</label>
                 <select
                   value={filterLevel}
                   onChange={(e) => setFilterLevel(e.target.value)}
                   className="min-w-[200px] rounded-lg border border-slate-300 bg-white px-3 py-2 text-base"
-                  title="Filter berdasarkan registrationLevel"
                 >
                   <option value="ALL">Semua Tingkat</option>
                   {levelOptions.map((lv) => (
-                    <option key={lv} value={lv}>{lv}</option>
+                    <option key={lv} value={lv}>
+                      {lv}
+                    </option>
                   ))}
                 </select>
               </div>
 
-              {/* 🔎 Filter Status Jadwal */}
               <div className="flex items-center gap-2">
                 <label className="text-sm font-semibold text-slate-800">Status Jadwal</label>
                 <select
                   value={filterScheduleStatus}
                   onChange={(e) => setFilterScheduleStatus(e.target.value)}
                   className="min-w-[200px] rounded-lg border border-slate-300 bg-white px-3 py-2 text-base"
-                  title="Filter peserta berdasarkan ada/tidaknya jadwal"
                 >
                   <option value="ALL">Semua</option>
                   <option value="HAS">Sudah Dijadwalkan</option>
@@ -384,7 +521,6 @@ export default function VerifikasiUjian() {
                 </select>
               </div>
 
-              {/* Search */}
               <div className="relative">
                 <Search
                   size={16}
@@ -400,16 +536,14 @@ export default function VerifikasiUjian() {
               </div>
             </div>
 
-            {/* RIGHT group */}
+            {/* RIGHT */}
             <div className="flex flex-wrap items-center gap-2 md:gap-3">
-              {/* Jadwal Target */}
               <div className="flex items-center gap-2">
                 <label className="text-sm font-semibold text-slate-800">Jadwal Target</label>
                 <select
                   value={targetScheduleId}
                   onChange={(e) => setTargetScheduleId(e.target.value)}
                   className="min-w-[220px] rounded-lg border border-slate-300 bg-white px-3 py-2 text-base"
-                  title="Jadwal tujuan assign"
                 >
                   {schedules.length === 0 ? (
                     <option value="">— Tidak ada jadwal aktif —</option>
@@ -423,7 +557,6 @@ export default function VerifikasiUjian() {
                 </select>
               </div>
 
-              {/* Kuota pilihan */}
               <div className="flex items-center gap-2">
                 <label className="flex items-center gap-2 text-sm font-semibold text-slate-800">
                   <UsersRound size={16} />
@@ -436,11 +569,9 @@ export default function VerifikasiUjian() {
                   onChange={(e) => setQuotaPick(e.target.value)}
                   placeholder="mis. 30"
                   className="w-28 rounded-lg border border-slate-300 bg-white px-3 py-2 text-base"
-                  title="Masukkan jumlah yang ingin otomatis dipilih (N tertua & belum dijadwalkan)"
                 />
               </div>
 
-              {/* Badges */}
               <span className="inline-flex items-center rounded-full bg-slate-100 px-2.5 py-1 text-xs font-medium text-slate-700">
                 Terpilih: <b className="ml-1">{selected.size}</b>
               </span>
@@ -448,15 +579,13 @@ export default function VerifikasiUjian() {
                 Kuota Jadwal: <b className="ml-1">{targetSchedule?.maxCandidates ?? "—"}</b>
                 {targetSchedule?.maxCandidates ? (
                   <span className="ml-2 text-slate-500">
-                    Terisi: {filled}, Sisa:{" "}
-                    {Math.max(Number(targetSchedule.maxCandidates) - filled, 0)}
+                    Terisi: {filled}, Sisa: {Math.max(Number(targetSchedule.maxCandidates) - filled, 0)}
                   </span>
                 ) : (
                   <span className="ml-2 text-slate-500">(Tidak dibatasi)</span>
                 )}
               </span>
 
-              {/* Assign */}
               <button
                 onClick={assignNow}
                 disabled={!targetSchedule || selected.size === 0 || saving}
@@ -479,21 +608,24 @@ export default function VerifikasiUjian() {
                 <th className="px-3 py-3 text-left">Tingkat</th>
                 <th className="px-3 py-3 text-left">Terverifikasi Pada</th>
                 <th className="px-3 py-3 text-left">Jadwal</th>
+                <th className="px-3 py-3 text-left">Kontak / WhatsApp</th>
               </tr>
             </thead>
             <tbody className="divide-y divide-slate-100">
               {loading ? (
-                <tr><td colSpan={6} className="px-3 py-6 text-center text-slate-600">Memuat data…</td></tr>
+                <tr><td colSpan={7} className="px-3 py-6 text-center text-slate-600">Memuat data…</td></tr>
               ) : view.length === 0 ? (
-                <tr><td colSpan={6} className="px-3 py-6 text-center text-slate-600">Tidak ada data.</td></tr>
+                <tr><td colSpan={7} className="px-3 py-6 text-center text-slate-600">Tidak ada data.</td></tr>
               ) : (
                 view.map((r, i) => {
                   const name =
                     r.fullName || r.namaLengkap || r.nama || r.name ||
                     r.profile?.fullName || r.profile?.name || "—";
                   const verifiedStr = new Date(verifiedAtMs(r)).toLocaleString();
-                  const wsStr = r.examWindowStartAt ? new Date(toMs(r.examWindowStartAt)).toLocaleString() : null;
-                  const weStr = r.examWindowEndAt ? new Date(toMs(r.examWindowEndAt)).toLocaleString() : null;
+                  const wsMs = toMs(r.examWindowStartAt);
+                  const weMs = toMs(r.examWindowEndAt);
+                  const wsStr = wsMs ? new Date(wsMs).toLocaleString() : null;
+                  const weStr = weMs ? new Date(weMs).toLocaleString() : null;
                   const level = (r.registrationLevel || "").toString().trim() || "—";
 
                   return (
@@ -522,6 +654,15 @@ export default function VerifikasiUjian() {
                         ) : (
                           <span className="text-slate-500">Belum</span>
                         )}
+                      </td>
+                      <td className="px-3 py-2">
+                        <WaCell
+                          nisn={r.id}
+                          name={name}
+                          wsMs={wsMs}
+                          weMs={weMs}
+                          scheduleId={r.examScheduleId || ""}
+                        />
                       </td>
                     </tr>
                   );

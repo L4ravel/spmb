@@ -1,3 +1,4 @@
+// app/admin/tes-wawancara/page.js
 "use client";
 
 import { useEffect, useMemo, useState } from "react";
@@ -15,12 +16,16 @@ import {
   startAfter,
   serverTimestamp,
 } from "firebase/firestore";
+import { getAuth, onAuthStateChanged } from "firebase/auth";
 
 /* ========= Konstanta ========= */
 const USERS_COLLECTION = "users_app";
-const QCOLL = "interview_questions";
+// Default koleksi Paket 1 tetap sama agar kompatibel data lama:
+const QCOLL_P1 = "interview_questions";
+const QCOLL_P2 = "interview_questions_p2";
 const SCORE_COLL = "interview_scores";
 const PAGE_SIZE = 50; // maksimal 50 per halaman
+const EXPORT_BATCH = 500; // batch ambil data saat export
 
 /* ========= Util ========= */
 function getNisn(u) {
@@ -37,6 +42,7 @@ function sortLevels(arr) {
   const rest = arr.filter((x) => x !== "ALL").sort((a, b) => String(a).localeCompare(String(b)));
   return ["ALL", ...rest];
 }
+const COLL_BY_PAKET = { p1: QCOLL_P1, p2: QCOLL_P2 };
 
 export default function TesWawancaraPage() {
   /* ======= Filters ======= */
@@ -59,56 +65,76 @@ export default function TesWawancaraPage() {
   /* ======= Modal State ======= */
   const [open, setOpen] = useState(false);
   const [examinerName, setExaminerName] = useState("");
+  const [graderId, setGraderId] = useState(""); // ⬅️ uid penanya (akun login)
   const [currentStudent, setCurrentStudent] = useState(null);
+
+  // Paket aktif dalam modal
+  const [activePaket, setActivePaket] = useState("p1"); // "p1" | "p2"
+
+  // Pertanyaan yang sedang aktif (tergantung paket)
   const [qsStudent, setQsStudent] = useState([]);
   const [qsParent, setQsParent] = useState([]);
+
   const [answers, setAnswers] = useState({ student: {}, parent: {} });
   const [saving, setSaving] = useState(false);
   const [tableQuery, setTableQuery] = useState("");
+  const [exporting, setExporting] = useState(false);
 
   const viewItems = useMemo(() => {
-  const q = tableQuery.trim().toLowerCase();
-  if (!q) return items;
-  return items.filter((r) => {
-    const nisn = String(r.nisn || "").toLowerCase();
-    const name = String(r.name || "").toLowerCase();
-    return nisn.includes(q) || name.includes(q);
-  });
-}, [items, tableQuery]);
+    const q = tableQuery.trim().toLowerCase();
+    if (!q) return items;
+    return items.filter((r) => {
+      const nisn = String(r.nisn || "").toLowerCase();
+      const name = String(r.name || "").toLowerCase();
+      return nisn.includes(q) || name.includes(q);
+    });
+  }, [items, tableQuery]);
 
-  /* ======= Persist examiner name ======= */
+  const useScoresSource = statusFilter === "SELESAI" || sortMode === "NILAI_TERTINGGI";
+  const isLoggedIn = Boolean(graderId);
+
+  /* ======= Examiner from Auth (auto) + fallback localStorage ======= */
   useEffect(() => {
+    // muat preferensi sebelumnya untuk non-login
     if (typeof window !== "undefined") {
       const v = localStorage.getItem("tahfidz_examiner_name");
       if (v) setExaminerName(v);
+      const p = localStorage.getItem("interview_active_paket");
+      if (p === "p1" || p === "p2") setActivePaket(p);
     }
+
+    // ambil dari akun login
+    const auth = getAuth();
+    const unsub = onAuthStateChanged(auth, (user) => {
+      if (user) {
+        const display = user.displayName || user.email || user.uid || "";
+        setExaminerName(display);
+        setGraderId(user.uid || "");
+      } else {
+        setGraderId("");
+        // keep localStorage value if any
+        if (typeof window !== "undefined") {
+          const v = localStorage.getItem("tahfidz_examiner_name");
+          if (v) setExaminerName(v);
+        }
+      }
+    });
+    return () => unsub();
   }, []);
+
+  // simpan ke localStorage hanya jika belum login (agar tidak override data akun)
   useEffect(() => {
-    if (typeof window !== "undefined") {
+    if (typeof window !== "undefined" && !isLoggedIn) {
       localStorage.setItem("tahfidz_examiner_name", examinerName || "");
     }
-  }, [examinerName]);
-
-  /* ======= Load pertanyaan sekali ======= */
-  useEffect(() => {
-    (async () => {
-      try {
-        const s = await getDoc(doc(db, QCOLL, "student"));
-        const p = await getDoc(doc(db, QCOLL, "parent"));
-        setQsStudent(Array.isArray(s.data()?.questions) ? s.data().questions : []);
-        setQsParent(Array.isArray(p.data()?.questions) ? p.data().questions : []);
-      } catch (e) {
-        console.warn("Gagal memuat pertanyaan wawancara:", e?.message);
-      }
-    })();
-  }, []);
+  }, [examinerName, isLoggedIn]);
 
   /* ======= Prefetch semua level (robust + fallback) ======= */
   useEffect(() => {
     (async () => {
       const setLv = new Set(["ALL"]);
       try {
-        // 1) Dari users_app (tanpa orderBy registrationLevel untuk hindari kebutuhan index)
+        // 1) Dari users_app
         {
           const colRef = collection(db, USERS_COLLECTION);
           let qLv = query(colRef, where("role", "==", "siswa"), limit(200));
@@ -124,7 +150,7 @@ export default function TesWawancaraPage() {
             qLv = query(colRef, where("role", "==", "siswa"), startAfter(last), limit(200));
           }
         }
-        // 2) Dari interview_scores (single-field orderBy biasanya aman)
+        // 2) Dari interview_scores
         {
           const colRef = collection(db, SCORE_COLL);
           let qLv2 = query(colRef, orderBy("level", "asc"), limit(200));
@@ -149,8 +175,6 @@ export default function TesWawancaraPage() {
   }, []);
 
   /* ======= Query builder (dua sumber: USERS atau SCORES) ======= */
-  const useScoresSource = statusFilter === "SELESAI" || sortMode === "NILAI_TERTINGGI";
-
   function buildUsersQuery(afterDoc) {
     const colRef = collection(db, USERS_COLLECTION);
     const clauses = [where("role", "==", "siswa"), where("registrationPaymentStatus", "==", "verified")];
@@ -228,12 +252,13 @@ export default function TesWawancaraPage() {
         }));
         setItems(rows);
 
-        // cache skor + union level dari halaman ini (jaga dropdown tetap terisi)
+        // cache skor
         setScores((prev) => {
           const copy = { ...prev };
           filtered.forEach((x) => (copy[x.scoreDoc.nisn] = x.scoreDoc));
           return copy;
         });
+
         if (rows.length) {
           const lastDoc = filtered.length
             ? snap.docs[list.indexOf(filtered[filtered.length - 1])]
@@ -246,10 +271,9 @@ export default function TesWawancaraPage() {
             });
           }
         }
-        // next page?
         setHasNext(snap.size === PAGE_SIZE);
 
-        // union levels dari halaman aktif (fallback jika prefetch gagal)
+        // union levels
         if (rows.length) {
           const union = new Set(levels);
           rows.forEach((r) => r.level && union.add(r.level));
@@ -258,7 +282,7 @@ export default function TesWawancaraPage() {
 
         setPageIndex(targetIndex);
       } else {
-        // ambil dari users_app (langsung hanya verified via where)
+        // ambil dari users_app (verified)
         const qBase = buildUsersQuery(afterDoc);
         const snap = await getDocs(qBase);
         const users = [];
@@ -303,7 +327,7 @@ export default function TesWawancaraPage() {
         }
         setPageIndex(targetIndex);
 
-        // union levels dari halaman aktif (jaga dropdown tetap terisi)
+        // union levels dari halaman aktif
         if (rows.length) {
           const union = new Set(levels);
           rows.forEach((r) => r.level && union.add(r.level));
@@ -336,26 +360,55 @@ export default function TesWawancaraPage() {
     fetchPage(pageIndex + 1);
   }
 
+  /* ======= Loader pertanyaan per paket ======= */
+  async function loadQuestions(paketKey = "p1") {
+    const coll = COLL_BY_PAKET[paketKey] || QCOLL_P1;
+    try {
+      const s = await getDoc(doc(db, coll, "student"));
+      const p = await getDoc(doc(db, coll, "parent"));
+      setQsStudent(Array.isArray(s.data()?.questions) ? s.data().questions : []);
+      setQsParent(Array.isArray(p.data()?.questions) ? p.data().questions : []);
+    } catch (e) {
+      console.warn("Gagal memuat pertanyaan:", e?.message);
+      setQsStudent([]);
+      setQsParent([]);
+    }
+  }
+
   /* ======= Mulai tes (open modal) ======= */
   function startTestFromRow(row) {
     if (row.done) return;
     setCurrentStudent(row.user);
     setAnswers({ student: {}, parent: {} });
+    // default Paket 1 setiap mulai (agar konsisten), tapi hormati preferensi terakhir user
+    const defaultP = (typeof window !== "undefined" && localStorage.getItem("interview_active_paket")) || "p1";
+    const valid = defaultP === "p2" ? "p2" : "p1";
+    setActivePaket(valid);
+    loadQuestions(valid);
     setOpen(true);
+  }
+
+  /* ======= Ganti Paket di modal ======= */
+  async function onChangePaket(p) {
+    if (p !== "p1" && p !== "p2") return;
+    setActivePaket(p);
+    if (typeof window !== "undefined") localStorage.setItem("interview_active_paket", p);
+    // reset jawaban ketika ganti paket agar tidak tercampur
+    setAnswers({ student: {}, parent: {} });
+    await loadQuestions(p);
   }
 
   /* ======= Hitung & Simpan ======= */
   async function submitTest() {
     if (!currentStudent) return;
     if (!examinerName.trim()) {
-      alert("Isi nama penguji terlebih dahulu.");
+      alert("Isi nama penanya terlebih dahulu.");
       return;
     }
     setSaving(true);
     try {
       // hitung student
-      let sumS = 0,
-        maxS = 0;
+      let sumS = 0, maxS = 0;
       qsStudent.forEach((q) => {
         const chosen = q.options?.find((o) => o.key === answers.student[q.id]);
         const pts = Number(chosen?.points || 0);
@@ -364,8 +417,7 @@ export default function TesWawancaraPage() {
         maxS += qMax;
       });
       // hitung parent
-      let sumP = 0,
-        maxP = 0;
+      let sumP = 0, maxP = 0;
       qsParent.forEach((q) => {
         const chosen = q.options?.find((o) => o.key === answers.parent[q.id]);
         const pts = Number(chosen?.points || 0);
@@ -383,6 +435,7 @@ export default function TesWawancaraPage() {
         nisn,
         name: getName(currentStudent),
         level: currentStudent.registrationLevel || "-",
+        paket: activePaket, // metadata paket
         answers: { student: answers.student, parent: answers.parent },
         sumStudent: sumS,
         maxStudent: maxS,
@@ -392,6 +445,7 @@ export default function TesWawancaraPage() {
         scoreParent50,
         total100,
         examinerName: examinerName.trim(),
+        gradedBy: graderId || null, // ⬅️ simpan uid akun login
         updatedAt: serverTimestamp(),
       };
       await setDoc(doc(db, SCORE_COLL, String(nisn)), payload, { merge: true });
@@ -412,7 +466,7 @@ export default function TesWawancaraPage() {
     }
   }
 
-  /* ======= Export XLS (tampilan saat ini) ======= */
+  /* ======= Export XLS (tampilan saat ini) — tetap ada ======= */
   function exportXLS() {
     const esc = (s) =>
       String(s ?? "")
@@ -423,7 +477,8 @@ export default function TesWawancaraPage() {
     const headerRow = `<tr>${cols
       .map((c) => `<th style="background:#f1f5f9;text-align:left">${esc(c)}</th>`)
       .join("")}</tr>`;
-    const rows = viewItems.map((r) => {
+    const rows = viewItems
+      .map((r) => {
         const tds = [
           `<td>${esc(r.no)}</td>`,
           `<td style="mso-number-format:'\\@'">${esc(r.nisn)}</td>`,
@@ -455,42 +510,172 @@ export default function TesWawancaraPage() {
     const a = document.createElement("a");
     const stamp = new Date().toISOString().slice(0, 19).replace(/[:T]/g, "-");
     a.href = url;
-    a.download = `tes-wawancara-${stamp}.xls`;
+    a.download = `tes-wawancara-TAMPILAN-${stamp}.xls`;
     document.body.appendChild(a);
     a.click();
     a.remove();
     URL.revokeObjectURL(url);
   }
 
+  /* ======= Export XLS (SEMUA sesuai jenjang) ======= */
+  async function exportAllByJenjang() {
+    // Barometer hanya jenjang: abaikan pencarian/status/sort/paging.
+    // Ambil semua siswa "verified" dari users_app (role=siswa),
+    // filter berdasarkan levelFilter (ALL = semua).
+    setExporting(true);
+    try {
+      const esc = (s) =>
+        String(s ?? "")
+          .replace(/&/g, "&amp;")
+          .replace(/</g, "&lt;")
+          .replace(/>/g, "&gt;");
+      const cols = ["No", "NISN", "Nama", "Jenjang", "Penguji", "Nilai", "Status"];
+      const headerRow = `<tr>${cols
+        .map((c) => `<th style="background:#f1f5f9;text-align:left">${esc(c)}</th>`)
+        .join("")}</tr>`;
+
+      // Kumpulkan semua user sesuai jenjang
+      const allRows = [];
+      const colRef = collection(db, USERS_COLLECTION);
+      const clauses = [where("role", "==", "siswa"), where("registrationPaymentStatus", "==", "verified")];
+      if (levelFilter !== "ALL") clauses.push(where("registrationLevel", "==", levelFilter));
+
+      let qRef = query(colRef, ...clauses, orderBy("username", "asc"), limit(EXPORT_BATCH));
+      let page = 0;
+      let total = 0;
+
+      // Loop pagination sampai habis
+      while (true) {
+        const snap = await getDocs(qRef);
+        if (snap.empty) break;
+
+        // Buat rows dengan join skor per NISN (getDoc per item — sederhana & aman)
+        const batchUsers = snap.docs.map((d) => ({ id: d.id, ...(d.data() || {}) }));
+        for (let i = 0; i < batchUsers.length; i++) {
+          const u = batchUsers[i];
+          const nisn = getNisn(u);
+          const scDoc = await getDoc(doc(db, SCORE_COLL, String(nisn)));
+          const sc = scDoc.exists() ? scDoc.data() : null;
+
+          total += 1;
+          allRows.push({
+            no: total,
+            nisn,
+            name: getName(u),
+            level: u.registrationLevel || "-",
+            examiner: sc?.examinerName || "-",
+            score: sc ? sc.total100 : null,
+            done: !!sc,
+          });
+        }
+
+        if (snap.size < EXPORT_BATCH) break; // sudah habis
+        const last = snap.docs[snap.docs.length - 1];
+        qRef = query(colRef, ...clauses, orderBy("username", "asc"), startAfter(last), limit(EXPORT_BATCH));
+        page += 1;
+      }
+
+      // Render ke HTML tabel
+      const bodyRows = allRows
+        .map((r) => {
+          const tds = [
+            `<td>${esc(r.no)}</td>`,
+            `<td style="mso-number-format:'\\@'">${esc(r.nisn)}</td>`,
+            `<td>${esc(r.name)}</td>`,
+            `<td>${esc(r.level)}</td>`,
+            `<td>${esc(r.examiner ?? "-")}</td>`,
+            `<td>${r.score != null ? esc(r.score) : "-"}</td>`,
+            `<td>${r.done ? "Selesai" : "Belum"}</td>`,
+          ];
+          return `<tr>${tds.join("")}</tr>`;
+        })
+        .join("");
+
+      const note = `<caption style="caption-side:top;margin-bottom:8px;font-weight:bold">
+        Export Tes Wawancara — Jenjang: ${esc(levelFilter)} — Total Baris: ${allRows.length}
+      </caption>`;
+
+      const html = `
+<!DOCTYPE html>
+<html xmlns:o="urn:schemas-microsoft-com:office:office"
+      xmlns:x="urn:schemas-microsoft-com:office:excel"
+      xmlns="http://www.w3.org/TR/REC-html40">
+<head><meta charset="utf-8" /></head>
+<body>
+  <table border="1" cellspacing="0" cellpadding="4" style="border-collapse:collapse;font-family:Calibri,Arial,sans-serif;font-size:11pt">
+    ${note}
+    ${headerRow}
+    ${bodyRows}
+  </table>
+</body>
+</html>`.trim();
+
+      const blob = new Blob([html], { type: "application/vnd.ms-excel;charset=utf-8" });
+      const url = URL.createObjectURL(blob);
+      const a = document.createElement("a");
+      const stamp = new Date().toISOString().slice(0, 19).replace(/[:T]/g, "-");
+      const jenjangSlug = levelFilter === "ALL" ? "SEMUA" : String(levelFilter).replace(/\s+/g, "_").toUpperCase();
+      a.href = url;
+      a.download = `tes-wawancara-${jenjangSlug}-${stamp}.xls`;
+      document.body.appendChild(a);
+      a.click();
+      a.remove();
+      URL.revokeObjectURL(url);
+    } catch (e) {
+      console.error(e);
+      alert("Gagal export data. Periksa koneksi & izin baca koleksi.");
+    } finally {
+      setExporting(false);
+    }
+  }
+
   /* ======= Render ======= */
   return (
     <div className="min-h-screen flex flex-col bg-white">
-      <main className="flex-1 min-h-0 w-full max-w-none px-0 sm:px-6 lg:px-8 py-6 sm:py-8">
-        <div className="flex flex-col gap-1 sm:flex-row sm:items-end sm:justify-between">
-          <h1 className="text-xl font-semibold text-slate-900">Tes Wawancara</h1>
-          <div className="text-xs text-slate-600">
-            Halaman <b>{pageIndex + 1}</b> • Baris: <b>{viewItems.length}</b> / {PAGE_SIZE}
+      <main className="flex-1 w-full px-4 md:px-6 lg:px-8 py-8">
+        {/* Header + meta (match Tahfidz) */}
+        <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between mb-6">
+          <div>
+            <h1 className="text-2xl sm:text-3xl font-bold text-slate-900">Tes Wawancara</h1>
+            <p className="text-sm text-slate-600 mt-1">
+              Filter berdasarkan jenjang & status. Urutkan nilai tertinggi untuk melihat ranking.
+            </p>
+          </div>
+          <div className="inline-flex items-center gap-3 px-4 py-2 rounded-xl bg-white shadow-sm border border-slate-200">
+            <div className="text-xs text-slate-600">
+              Halaman <span className="font-bold text-slate-800">{pageIndex + 1}</span>
+            </div>
+            <div className="w-px h-4 bg-slate-200"></div>
+            <div className="text-xs text-slate-600">
+              Baris <span className="font-bold text-slate-800">{viewItems.length}</span> / {PAGE_SIZE}
+            </div>
           </div>
         </div>
-        <p className="text-sm text-slate-700">
-          Filter berdasarkan jenjang & status. Urutkan nilai tertinggi untuk melihat ranking. Data per halaman maksimal {PAGE_SIZE}.
-        </p>
 
         {errMsg && (
-          <div className="mt-3 rounded-lg border border-rose-200 bg-rose-50 px-3 py-2 text-sm text-rose-700">
+          <div className="mb-6 rounded-xl border border-rose-200 bg-rose-50 px-4 py-3 text-sm text-rose-700 shadow-sm">
             {errMsg}
           </div>
         )}
 
-        {/* Toolbar (stack di mobile) */}
-        <div className="mt-4 -mx-4 sm:mx-0">
-  <div className="rounded-none sm:rounded-xl border-y sm:border border-slate-200 bg-white p-3 sm:p-4">
-    <div className="grid gap-2 sm:flex sm:flex-wrap sm:items-center sm:gap-2">
-              {/* Jenjang */}
+        {/* Toolbar (match Tahfidz card) */}
+        <div className="grid gap-4 md:grid-cols-3 mb-6">
+          {/* Filter & Pencarian */}
+          <div className="rounded-2xl border border-slate-200 bg-white p-5 shadow-lg shadow-slate-100/70">
+            <div className="flex items-center gap-2 mb-4">
+              <div className="w-8 h-8 rounded-lg bg-slate-700 flex items-center justify-center">
+                <svg className="w-4 h-4 text-white" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M3 4a1 1 0 011-1h16a1 1 0 011 1v2.586a1 1 0 01-.293.707l-6.414 6.414a1 1 0 00-.293.707V17l-4 4v-6.586a1 1 0 00-.293-.707L3.293 7.293A1 1 0 013 6.586V4z" />
+                </svg>
+              </div>
+              <h3 className="font-semibold text-slate-900">Filter & Pencarian</h3>
+            </div>
+
+            <div className="flex flex-wrap items-center gap-2 mb-3">
               <select
                 value={levelFilter}
                 onChange={(e) => setLevelFilter(e.target.value)}
-                className="w-full sm:w-auto rounded-lg border border-slate-300 px-3 py-2 text-sm text-slate-800"
+                className="flex-1 min-w-[120px] rounded-xl border border-slate-300 px-3 py-2.5 text-sm text-slate-800 focus:border-slate-400 focus:outline-none focus:ring-2 focus:ring-slate-100 transition-all"
                 title="Filter jenjang"
               >
                 {levels.map((lv) => (
@@ -500,91 +685,150 @@ export default function TesWawancaraPage() {
                 ))}
               </select>
 
-              {/* Status */}
               <select
                 value={statusFilter}
                 onChange={(e) => setStatusFilter(e.target.value)}
-                className="w-full sm:w-auto rounded-lg border border-slate-300 px-3 py-2 text-sm text-slate-800"
-                title="Filter status selesai"
+                className="flex-1 min-w-[120px] rounded-xl border border-slate-300 px-3 py-2.5 text-sm text-slate-800 focus:border-slate-400 focus:outline-none focus:ring-2 focus:ring-slate-100 transition-all"
+                title="Filter status"
               >
                 <option value="ALL">Semua Status</option>
                 <option value="SELESAI">Selesai saja</option>
               </select>
 
-              {/* Urut */}
               <select
                 value={sortMode}
                 onChange={(e) => setSortMode(e.target.value)}
-                className="w-full sm:w-auto rounded-lg border border-slate-300 px-3 py-2 text-sm text-slate-800"
+                className="flex-1 min-w-[120px] rounded-xl border border-slate-300 px-3 py-2.5 text-sm text-slate-800 focus:border-slate-400 focus:outline-none focus:ring-2 focus:ring-slate-100 transition-all"
                 title="Urutkan"
               >
                 <option value="DEFAULT">Urut NISN</option>
                 <option value="NILAI_TERTINGGI">Nilai tertinggi</option>
               </select>
 
-              <input
-  value={tableQuery}
-  onChange={(e) => setTableQuery(e.target.value)}
-  placeholder="Cari nama / NISN…"
-  className="w-full sm:w-64 rounded-lg border border-slate-300 px-3 py-2 text-sm text-slate-800"
-  title="Ketik untuk memfilter daftar"
-/>
-
-              {/* Actions */}
               <button
                 onClick={() => fetchPage(0)}
-                className="w-full sm:w-auto rounded-lg border border-slate-300 px-3 py-2 text-sm text-slate-800"
+                className="rounded-xl border border-slate-300 px-4 py-2.5 text-sm font-medium text-slate-700 hover:bg-slate-50 active:scale-95 transition-all"
+                title="Muat ulang halaman pertama"
               >
-                Refresh
+                🔄 Refresh
               </button>
+            </div>
 
+            <div className="relative">
+              <svg className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-slate-400" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M21 21l-6-6m2-5a7 7 0 11-14 0 7 7 0 0114 0z" />
+              </svg>
+              <input
+                value={tableQuery}
+                onChange={(e) => setTableQuery(e.target.value)}
+                placeholder="Cari NISN / Nama…"
+                className="w-full rounded-xl border border-slate-300 pl-10 pr-4 py-2.5 text-sm text-slate-800 placeholder:text-slate-400 focus:border-slate-400 focus:outline-none focus:ring-2 focus:ring-slate-100 transition-all"
+              />
+            </div>
+          </div>
+
+          {/* Export */}
+          <div className="rounded-2xl border border-slate-200 bg-white p-5 shadow-lg shadow-slate-100/70">
+            <div className="flex items-center gap-2 mb-4">
+              <div className="w-8 h-8 rounded-lg bg-slate-700 flex items-center justify-center">
+                <svg className="w-4 h-4 text-white" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 6v6h6M4 12a8 8 0 108 8" />
+                </svg>
+              </div>
+              <h3 className="font-semibold text-slate-900">Export</h3>
+            </div>
+            <div className="grid gap-2">
               <button
                 onClick={exportXLS}
-                className="w-full sm:w-auto rounded bg-emerald-600 px-4 py-2 text-sm font-medium text-white"
+                className="w-full rounded-xl bg-green-600 px-4 py-2.5 text-sm font-semibold text-white hover:bg-green-700 active:scale-95 shadow-lg shadow-green-200 transition-all"
+                title="Export baris tampilan saat ini (terfilter/paging)"
               >
-                Export Excel
+                ⬇️ Download TAMPILAN
+              </button>
+              <button
+                onClick={exportAllByJenjang}
+                disabled={exporting}
+                className="w-full rounded-xl border border-green-600 text-black px-4 py-2.5 text-sm font-semibold hover:bg-green-50 active:scale-95 transition-all disabled:opacity-50"
+                title="Export SEMUA data berdasarkan jenjang (abaikan paging & pencarian)"
+              >
+                {exporting ? "⏳ Menyiapkan semua data…" : "⬇️ Download Semua"}
               </button>
             </div>
           </div>
+
+          {/* Identitas Penanya */}
+          <div className="rounded-2xl border border-slate-200 bg-white p-5 shadow-lg shadow-slate-100/70">
+            <div className="flex items-center gap-2 mb-4">
+              <div className="w-8 h-8 rounded-lg bg-slate-700 flex items-center justify-center">
+                <svg className="w-4 h-4 text-white" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M16 7a4 4 0 11-8 0 4 0 018 0zM12 14a7 7 0 00-7 7h14a7 7 0 00-7-7z" />
+                </svg>
+              </div>
+              <h3 className="font-semibold text-slate-900">Nama Penanya</h3>
+            </div>
+            <input
+              value={examinerName}
+              onChange={(e) => setExaminerName(e.target.value)}
+              placeholder="cth: Ust. Ahmad / Ustd. Fatimah"
+              className={`w-full rounded-xl border border-slate-300 px-4 py-2.5 text-sm text-slate-800 placeholder:text-slate-400 focus:border-slate-400 focus:outline-none focus:ring-2 focus:ring-slate-100 transition-all ${isLoggedIn ? "bg-slate-50" : ""}`}
+              readOnly={isLoggedIn}
+              title={isLoggedIn ? "Terisi otomatis dari akun login" : "Bisa diisi jika belum login"}
+            />
+          </div>
         </div>
 
-        {/* MOBILE: Cards (<md) */}
-        <div className="mt-4 -mx-4 sm:mx-0 space-y-3 md:hidden">
+        {/* ======= View: Mobile Cards (<md) ======= */}
+        <div className="space-y-4 md:hidden">
           {loading && (
-            <div className="h-16 w-full animate-pulse rounded-xl border border-slate-200 bg-slate-100" />
-          )}
-          {!loading && viewItems.length === 0 && (
-            <div className="rounded-none sm:rounded-xl border-y sm:border border-slate-200 bg-white p-4">
-              Tidak ada data.
+            <div className="rounded-2xl border border-slate-200 bg-white p-5 shadow-lg">
+              <div className="h-6 w-1/3 animate-pulse rounded-lg bg-slate-200" />
+              <div className="mt-4 h-24 w-full animate-pulse rounded-lg bg-slate-100" />
             </div>
           )}
-          {!loading && viewItems.map((r) => (
-              <div key={`${r.nisn}-${r.no}`} className="rounded-xl border border-slate-200 bg-white p-4">
-                <div className="flex items-start justify-between gap-2">
-                  <div>
-                    <div className="text-xs text-slate-500">No {r.no}</div>
-                    <div className="mt-0.5 font-semibold text-slate-900">{r.name}</div>
-                    <div className="font-mono text-sm text-slate-700">{r.nisn}</div>
-                  </div>
-                  <div className="text-right">
-                    <div className="text-xs text-slate-500">{r.level}</div>
-                    <div className="mt-1 text-sm">
-                      {r.done ? (
-                        <span className="inline-flex items-center rounded bg-slate-200 px-2.5 py-1 text-xs text-slate-700">
-                          Selesai
-                        </span>
-                      ) : (
-                        <button
-                          onClick={() => startTestFromRow(r)}
-                          className="rounded bg-violet-600 px-3 py-1.5 text-xs font-medium text-white"
-                        >
-                          Mulai Tes
-                        </button>
-                      )}
+          {!loading && viewItems.length === 0 && (
+            <div className="rounded-2xl border border-slate-200 bg-white p-8 text-center shadow-lg">
+              <div className="w-16 h-16 mx-auto mb-3 rounded-full bg-slate-100 flex items-center justify-center">
+                <svg className="w-8 h-8 text-slate-400" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M20 13V6a2 2 0 00-2-2H6a2 2 0 00-2 2v7m16 0v5a2 2 0 01-2 2H6a2 2 0 01-2-2v-5m16 0h-2" />
+                </svg>
+              </div>
+              <p className="text-slate-600 font-medium">Tidak ada data.</p>
+            </div>
+          )}
+          {!loading &&
+            viewItems.map((r) => (
+              <div
+                key={`${r.nisn}-${r.no}`}
+                className="rounded-2xl border border-slate-200 bg-white p-5 shadow-lg shadow-slate-100/70 hover:shadow-xl hover:shadow-slate-200/70 transition-all"
+              >
+                <div className="flex items-start justify-between gap-3 mb-3">
+                  <div className="flex-1">
+                    <div className="inline-flex items-center justify-center w-8 h-8 rounded-lg bg-slate-800 text-white text-sm font-bold mb-2">
+                      {r.no}
+                    </div>
+                    <div className="font-bold text-lg text-slate-900">{r.name}</div>
+                    <div className="font-mono text-sm text-slate-700 font-medium">{r.nisn}</div>
+                    <div className="inline-block mt-1 px-2 py-1 rounded-lg bg-slate-100 text-xs text-slate-700 font-medium">
+                      {r.level || "-"}
                     </div>
                   </div>
+                  <div className="shrink-0">
+                    {r.done ? (
+                      <span className="inline-flex items-center rounded-xl bg-slate-200 px-3 py-1.5 text-xs font-medium text-slate-700">
+                        Tes selesai
+                      </span>
+                    ) : (
+                      <button
+                        onClick={() => startTestFromRow(r)}
+                        className="rounded-xl bg-blue-600 px-4 py-2 text-sm font-semibold text-white hover:bg-blue-700 active:scale-95 shadow-lg shadow-blue-200 transition-all"
+                      >
+                        Mulai Tes
+                      </button>
+                    )}
+                  </div>
                 </div>
-                <div className="mt-3 grid grid-cols-2 gap-2 text-sm">
+
+                <div className="grid grid-cols-2 gap-2 text-sm">
                   <div className="text-slate-500">Penguji</div>
                   <div className="text-right">{r.examiner ?? "-"}</div>
                   <div className="text-slate-500">Nilai</div>
@@ -594,83 +838,101 @@ export default function TesWawancaraPage() {
             ))}
         </div>
 
-        {/* DESKTOP: Table (≥md) */}
-        <div className="mt-4 overflow-x-auto rounded-xl border border-slate-200 bg-white text-black hidden md:block">
-          <table className="min-w-[960px] w-full text-sm">
-            <thead className="sticky top-0">
-              <tr className="bg-slate-50 text-slate-600">
-                <th className="px-3 py-2 text-left w-12">No</th>
-                <th className="px-3 py-2 text-left">NISN</th>
-                <th className="px-3 py-2 text-left">Nama</th>
-                <th className="px-3 py-2 text-left">Jenjang</th>
-                <th className="px-3 py-2 text-left">Penguji</th>
-                <th className="px-3 py-2 text-left">Mulai Tes</th>
-                <th className="px-3 py-2 text-left">Nilai</th>
-              </tr>
-            </thead>
-            <tbody>
-  {loading && (
-    <tr>
-      <td colSpan={7} className="px-3 py-6">
-        <div className="h-8 w-full animate-pulse rounded bg-slate-100" />
-      </td>
-    </tr>
-  )}
+        {/* ======= View: Desktop Table (md+) ======= */}
+        <div className="hidden md:block">
+          <div className="overflow-hidden rounded-2xl border border-slate-200 bg-white shadow-xl shadow-slate-100/70">
+            <div className="overflow-x-auto">
+              <table className="min-w-[960px] w-full text-sm text-black">
+                <thead>
+                  <tr className="bg-slate-50 text-slate-700 border-b border-slate-200">
+                    <th className="px-4 py-4 text-left font-bold w-16">No</th>
+                    <th className="px-4 py-4 text-left font-bold">NISN</th>
+                    <th className="px-4 py-4 text-left font-bold">Nama</th>
+                    <th className="px-4 py-4 text-left font-bold">Jenjang</th>
+                    <th className="px-4 py-4 text-left font-bold">Penguji</th>
+                    <th className="px-4 py-4 text-left font-bold w-40">Mulai Tes</th>
+                    <th className="px-4 py-4 text-left font-bold">Nilai</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  {loading && (
+                    <tr>
+                      <td colSpan={7} className="px-4 py-8">
+                        <div className="h-10 w-full animate-pulse rounded-xl bg-slate-100" />
+                      </td>
+                    </tr>
+                  )}
 
-  {!loading &&
-    viewItems.map((r) => (
-      <tr key={`${r.nisn}-${r.no}`} className="border-t">
-        <td className="px-3 py-2">{r.no}</td>
-        <td className="px-3 py-2 font-mono">{r.nisn}</td>
-        <td className="px-3 py-2">{r.name}</td>
-        <td className="px-3 py-2">{r.level}</td>
-        <td className="px-3 py-2">{r.examiner ?? "-"}</td>
-        <td className="px-3 py-2">
-          {r.done ? (
-            <span className="inline-flex items-center rounded bg-slate-200 px-3 py-1.5 text-xs text-slate-700">
-              Tes selesai
-            </span>
-          ) : (
-            <button
-              onClick={() => startTestFromRow(r)}
-              className="rounded bg-violet-600 px-3 py-1.5 text-xs font-medium text-white"
-            >
-              Mulai Tes
-            </button>
-          )}
-        </td>
-        <td className="px-3 py-2 font-semibold">{r.score != null ? r.score : "-"}</td>
-      </tr>
-    ))}
+                  {!loading &&
+                    viewItems.map((r) => (
+                      <tr key={`${r.nisn}-${r.no}`} className="border-b border-slate-100 hover:bg-slate-50/50 transition-colors">
+                        <td className="px-4 py-4">
+                          <div className="w-8 h-8 rounded-lg bg-slate-800 text-white text-sm font-bold flex items-center justify-center">
+                            {r.no}
+                          </div>
+                        </td>
+                        <td className="px-4 py-4 font-mono text-slate-700 font-semibold">{r.nisn}</td>
+                        <td className="px-4 py-4 text-slate-900 font-medium">{r.name}</td>
+                        <td className="px-4 py-4">
+                          <span className="inline-block px-3 py-1 rounded-lg bg-slate-100 text-slate-700 font-medium text-xs">
+                            {r.level || "-"}
+                          </span>
+                        </td>
+                        <td className="px-4 py-4">{r.examiner ?? "-"}</td>
+                        <td className="px-4 py-4">
+                          {r.done ? (
+                            <span className="inline-flex items-center rounded-xl bg-slate-200 px-3 py-1.5 text-xs text-slate-700">
+                              Tes selesai
+                            </span>
+                          ) : (
+                            <button
+                              onClick={() => startTestFromRow(r)}
+                              className="rounded-xl bg-green-600 px-4 py-2 text-sm font-semibold text-white hover:bg-green-700 active:scale-95 shadow-lg shadow-blue-200 transition-all"
+                            >
+                              Mulai Tes
+                            </button>
+                          )}
+                        </td>
+                        <td className="px-4 py-4 font-semibold">{r.score != null ? r.score : "-"}</td>
+                      </tr>
+                    ))}
 
-  {!loading && viewItems.length === 0 && (
-    <tr>
-      <td colSpan={7} className="px-3 py-8 text-center text-slate-600">
-        Tidak ada data.
-      </td>
-    </tr>
-  )}
-</tbody>
-          </table>
+                  {!loading && viewItems.length === 0 && (
+                    <tr>
+                      <td className="px-4 py-12 text-center" colSpan={7}>
+                        <div className="w-16 h-16 mx-auto mb-3 rounded-full bg-slate-100 flex items-center justify-center">
+                          <svg className="w-8 h-8 text-slate-400" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M20 13V6a2 2 0 00-2-2H6a2 2 0 00-2 2v7m16 0v5a2 2 0 01-2 2H6a2 2 0 01-2-2v-5m16 0h-2" />
+                          </svg>
+                        </div>
+                        <p className="text-slate-600 font-medium">Tidak ada data.</p>
+                      </td>
+                    </tr>
+                  )}
+                </tbody>
+              </table>
+            </div>
+          </div>
         </div>
 
         {/* Pager */}
-        <div className="mt-4 flex flex-col gap-2 sm:flex-row sm:items-center sm:justify-between">
-          <div className="text-xs text-slate-600">
-            Halaman <b>{pageIndex + 1}</b>
+        <div className="mt-6 flex flex-col-reverse gap-4 sm:flex-row sm:items-center sm:justify-between">
+          <div className="inline-flex items-center gap-2 px-4 py-2 rounded-xl bg-white border border-slate-200 shadow-sm">
+            <span className="text-sm text-slate-600">Halaman</span>
+            <span className="font-bold text-slate-800">{pageIndex + 1}</span>
           </div>
-          <div className="flex flex-col sm:flex-row gap-2">
+          <div className="flex gap-3">
             <button
               onClick={onPrev}
               disabled={pageIndex === 0 || loading}
-              className="w-full sm:w-auto rounded border border-slate-300 px-3 py-2 text-sm text-slate-800 disabled:opacity-50"
+              className="flex items-center gap-2 rounded-xl border border-slate-300 bg-white px-5 py-2.5 text-sm font-semibold text-slate-700 hover:bg-slate-50 disabled:opacity-40 disabled:cursor-not-allowed active:scale-95 transition-all shadow-sm"
             >
               ⟵ Sebelumnya
             </button>
             <button
               onClick={onNext}
               disabled={!hasNext || loading}
-              className="w-full sm:w-auto rounded border border-slate-300 px-3 py-2 text-sm text-slate-800 disabled:opacity-50"
+              className="flex items-center gap-2 rounded-xl bg-blue-600 px-5 py-2.5 text-sm font-semibold text-white hover:bg-blue-700 disabled:opacity-40 disabled:cursor-not-allowed active:scale-95 transition-all shadow-lg shadow-blue-200"
             >
               Berikutnya ⟶
             </button>
@@ -678,25 +940,55 @@ export default function TesWawancaraPage() {
         </div>
       </main>
 
-      {/* ===== Modal Tes ===== */}
+      {/* ===== Modal Tes (match Tahfidz style) ===== */}
       {open && (
         <div className="fixed inset-0 z-50">
           <div className="absolute inset-0 bg-black/40" onClick={() => setOpen(false)} />
           <div className="absolute inset-0 flex items-start justify-center overflow-y-auto p-2 sm:p-4">
             <div className="mt-0 sm:mt-10 w-full max-w-none sm:max-w-4xl rounded-none sm:rounded-2xl bg-white shadow-xl ring-1 ring-black/5 h-[100dvh] sm:h-auto">
-              <div className="flex items-center justify-between border-b px-5 py-4">
+              <div className="flex flex-wrap items-center justify-between gap-2 border-b px-5 py-4">
                 <h3 className="text-base font-semibold text-slate-900">
                   Tes Wawancara — {currentStudent ? getName(currentStudent) : ""}
                 </h3>
-                <button
-                  onClick={() => setOpen(false)}
-                  className="rounded border border-slate-300 px-3 py-1.5 text-xs text-slate-700"
-                >
-                  Tutup
-                </button>
+
+                {/* Paket Switcher: biru, netral */}
+                <div className="flex items-center gap-1">
+                  <button
+                    onClick={() => onChangePaket("p1")}
+                    className={`rounded-lg px-3 py-1.5 text-xs font-medium ${
+                      activePaket === "p1"
+                        ? "bg-violet-600 text-white"
+                        : "bg-slate-100 text-slate-800"
+                    }`}
+                    title="Gunakan Paket 1"
+                  >
+                    Paket 1
+                  </button>
+                  <button
+                    onClick={() => onChangePaket("p2")}
+                    className={`rounded-lg px-3 py-1.5 text-xs font-medium ${
+                      activePaket === "p2"
+                        ? "bg-violet-600 text-white"
+                        : "bg-slate-100 text-slate-800"
+                    }`}
+                    title="Gunakan Paket 2"
+                  >
+                    Paket 2
+                  </button>
+
+                  <button
+                    onClick={() => setOpen(false)}
+                    className="ml-2 rounded border border-slate-300 px-3 py-1.5 text-xs text-slate-700"
+                  >
+                    Tutup
+                  </button>
+                </div>
               </div>
 
               <div className="px-5 py-4 max-h-[calc(100dvh-8rem)] sm:max-h-none overflow-y-auto">
+                <div className="mb-3 text-xs text-slate-600">
+                  Paket aktif: <span className="font-semibold">{activePaket === "p1" ? "Paket 1" : "Paket 2"}</span>
+                </div>
                 <div className="grid gap-4 md:grid-cols-2">
                   {/* Murid */}
                   <section className="rounded-xl border border-slate-200">
@@ -779,7 +1071,7 @@ export default function TesWawancaraPage() {
                   </section>
                 </div>
 
-                {/* Penguji */}
+                {/* Penanya (auto dari login) */}
                 <div className="mt-4 rounded-xl border border-slate-200 p-4 text-black">
                   <label className="text-sm">
                     <span className="text-slate-700">Nama Penanya</span>
@@ -787,7 +1079,9 @@ export default function TesWawancaraPage() {
                       value={examinerName}
                       onChange={(e) => setExaminerName(e.target.value)}
                       placeholder="cth: Ust. Ahmad / Ustd. Fatimah"
-                      className="mt-1 w-full rounded border border-slate-300 px-3 py-2 text-sm"
+                      className={`mt-1 w-full rounded-xl border border-slate-300 px-3 py-2 text-sm ${isLoggedIn ? "bg-slate-50" : ""}`}
+                      readOnly={isLoggedIn}
+                      title={isLoggedIn ? "Terisi otomatis dari akun login" : "Bisa diisi jika belum login"}
                     />
                   </label>
                 </div>
@@ -796,7 +1090,7 @@ export default function TesWawancaraPage() {
               <div className="flex items-center justify-end gap-2 border-t px-5 py-4">
                 <button
                   onClick={() => setOpen(false)}
-                  className="rounded border border-slate-300 px-3 py-1.5 text-sm text-slate-800"
+                  className="rounded-xl border border-slate-300 px-3 py-1.5 text-sm text-slate-800"
                   disabled={saving}
                 >
                   Batal
@@ -804,7 +1098,7 @@ export default function TesWawancaraPage() {
                 <button
                   onClick={submitTest}
                   disabled={saving}
-                  className="rounded bg-emerald-600 px-4 py-2 text-sm font-medium text-white disabled:opacity-50"
+                  className="rounded-xl bg-emerald-600 px-4 py-2 text-sm font-medium text-white disabled:opacity-50 hover:bg-emerald-700 shadow-lg shadow-emerald-200 active:scale-95 transition-all"
                 >
                   {saving ? "Menyimpan…" : "Selesai & Simpan"}
                 </button>

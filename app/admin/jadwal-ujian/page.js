@@ -21,8 +21,6 @@ const TZ = "Asia/Makassar"; // Lombok = WITA (UTC+8)
 const TZ_LABEL = "WITA (Asia/Makassar, UTC+8)";
 
 /* ========= Utils ========= */
-// Catatan: input <date>/<time> mengikuti zona lokal browser admin.
-// Bila device admin juga WITA, maka konversi UTC akan tepat.
 const toTimestamp = (dateStr, timeStr) => {
   if (!dateStr || !timeStr) return null;
   const ms = new Date(`${dateStr}T${timeStr}:00`).getTime();
@@ -59,24 +57,36 @@ function buildPreset(key, base = new Date()) {
     return { start: Timestamp.fromMillis(s.getTime()), end: Timestamp.fromMillis(e.getTime()) };
   };
   switch (key) {
-    case "todayAM": return mk(0, 8, 0, 10, 0);
-    case "todayPM": return mk(0, 13, 30, 15, 30);
-    case "tomorrowAM": return mk(1, 8, 0, 10, 0);
+    case "todayAM":
+      return mk(0, 8, 0, 10, 0);
+    case "todayPM":
+      return mk(0, 13, 30, 15, 30);
+    case "tomorrowAM":
+      return mk(1, 8, 0, 10, 0);
     case "weekend": {
       const day = d.getDay();
       const toSat = ((6 - day + 7) % 7) || 7;
-      const s = new Date(d); s.setDate(d.getDate() + toSat); s.setHours(8, 0, 0, 0);
-      const e = new Date(d); e.setDate(d.getDate() + toSat); e.setHours(12, 0, 0, 0);
+      const s = new Date(d);
+      s.setDate(d.getDate() + toSat);
+      s.setHours(8, 0, 0, 0);
+      const e = new Date(d);
+      e.setDate(d.getDate() + toSat);
+      e.setHours(12, 0, 0, 0);
       return { start: Timestamp.fromMillis(s.getTime()), end: Timestamp.fromMillis(e.getTime()) };
     }
     case "nextWeekMonAM": {
       const day = d.getDay();
       const toMon = ((1 - day + 7) % 7) || 7;
-      const s = new Date(d); s.setDate(d.getDate() + toMon); s.setHours(8, 0, 0, 0);
-      const e = new Date(d); e.setDate(d.getDate() + toMon); e.setHours(12, 0, 0, 0);
+      const s = new Date(d);
+      s.setDate(d.getDate() + toMon);
+      s.setHours(8, 0, 0, 0);
+      const e = new Date(d);
+      e.setDate(d.getDate() + toMon);
+      e.setHours(12, 0, 0, 0);
       return { start: Timestamp.fromMillis(s.getTime()), end: Timestamp.fromMillis(e.getTime()) };
     }
-    default: return { start: null, end: null };
+    default:
+      return { start: null, end: null };
   }
 }
 
@@ -85,6 +95,8 @@ export default function JadwalUjianPage() {
   // form
   const [title, setTitle] = useState("");
   const [level, setLevel] = useState(""); // dropdown
+  const [mapel, setMapel] = useState("");
+  const [paketId, setPaketId] = useState("");
   const [dateStart, setDateStart] = useState("");
   const [timeStart, setTimeStart] = useState("");
   const [dateEnd, setDateEnd] = useState("");
@@ -101,12 +113,25 @@ export default function JadwalUjianPage() {
   const [levels, setLevels] = useState([]);
   const [levelsLoading, setLevelsLoading] = useState(true);
 
-  // ⬇️ NEW: filter jenjang untuk LIST jadwal yang sudah dibuat
+  // opsi mapel & paket dari koleksi soal
+  const [mapelOpts, setMapelOpts] = useState([]);
+  const [paketOpts, setPaketOpts] = useState([]);
+  const [soalLoading, setSoalLoading] = useState(false);
+
+  // filter jenjang untuk LIST jadwal yang sudah dibuat
   const [listLevelFilter, setListLevelFilter] = useState("ALL");
 
   const canSubmit = useMemo(
-    () => title.trim() && level.trim() && dateStart && timeStart && dateEnd && timeEnd,
-    [title, level, dateStart, timeStart, dateEnd, timeEnd]
+    () =>
+      title.trim() &&
+      level.trim() &&
+      mapel.trim() &&
+      paketId.trim() &&
+      dateStart &&
+      timeStart &&
+      dateEnd &&
+      timeEnd,
+    [title, level, mapel, paketId, dateStart, timeStart, dateEnd, timeEnd]
   );
 
   /* ===== Ambil jenjang dari users_app (registrationLevel) ===== */
@@ -118,7 +143,6 @@ export default function JadwalUjianPage() {
           query(
             collection(db, "users_app"),
             where("role", "==", "siswa"),
-            // tidak pakai orderBy agar tak butuh index; sort di client
             limit(2000)
           )
         );
@@ -126,7 +150,7 @@ export default function JadwalUjianPage() {
         snap.docs.forEach((d) => {
           const lvRaw = d.data()?.registrationLevel;
           const lv = String(lvRaw || "").trim();
-          if (lv) distinct.add(lv.toUpperCase()); // seragamkan tampilan
+          if (lv) distinct.add(lv.toUpperCase());
         });
         const options = Array.from(distinct).sort();
         setLevels(options);
@@ -140,6 +164,74 @@ export default function JadwalUjianPage() {
     })();
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
+
+  /* ===== Ambil Mapel & Paket dari koleksi soal, berdasar Jenjang ===== */
+  useEffect(() => {
+    (async () => {
+      if (!level) {
+        setMapelOpts([]);
+        setPaketOpts([]);
+        setMapel("");
+        setPaketId("");
+        return;
+      }
+      try {
+        setSoalLoading(true);
+        const tingkatKey = String(level).trim().toUpperCase().replace(/\s+/g, "_");
+
+        // Coba match field 'tingkat' (SMA_PUTRA ...)
+        let qs = query(
+          collection(db, "soal"),
+          where("aktif", "==", true),
+          where("tingkat", "==", tingkatKey),
+          limit(2000)
+        );
+        let snap = await getDocs(qs);
+
+        // Fallback: kalau kosong, coba 'tingkatRaw' (SMA Putra ...)
+        if (snap.empty) {
+          const qs2 = query(
+            collection(db, "soal"),
+            where("aktif", "==", true),
+            where("tingkatRaw", "==", level),
+            limit(2000)
+          );
+          snap = await getDocs(qs2);
+        }
+
+        const mapelSet = new Set();
+        const paketSet = new Set();
+        snap.docs.forEach((d) => {
+          const data = d.data();
+          const m = String(data?.mapel || "").trim();
+          const p = String(data?.paketId || "").trim();
+          if (m) mapelSet.add(m);
+          if (p) paketSet.add(p);
+        });
+
+        const mOpts = Array.from(mapelSet).sort();
+        const pOpts = Array.from(paketSet).sort();
+
+        setMapelOpts(mOpts);
+        setPaketOpts(pOpts);
+
+        // Auto-pick jika hanya 1 opsi
+        if (mOpts.length === 1) setMapel(mOpts[0]);
+        else if (!mOpts.includes(mapel)) setMapel("");
+
+        if (pOpts.length === 1) setPaketId(pOpts[0]);
+        else if (!pOpts.includes(paketId)) setPaketId("");
+      } catch (e) {
+        console.error("Load soal error", e);
+        setMapelOpts([]);
+        setPaketOpts([]);
+        setMapel("");
+        setPaketId("");
+      } finally {
+        setSoalLoading(false);
+      }
+    })();
+  }, [level]); // ketika jenjang berubah, refresh opsi mapel & paket
 
   /* ===== Load schedules ===== */
   const load = async () => {
@@ -156,7 +248,9 @@ export default function JadwalUjianPage() {
       setLoading(false);
     }
   };
-  useEffect(() => { void load(); }, []);
+  useEffect(() => {
+    void load();
+  }, []);
 
   /* ===== Submit ===== */
   const submit = async (e) => {
@@ -174,6 +268,8 @@ export default function JadwalUjianPage() {
       await addDoc(collection(db, "exam_schedules"), {
         title: title.trim(),
         level: level.trim(),
+        mapel: mapel.trim(),
+        paketId: paketId.trim(),
         windowStartAt: ws,
         windowEndAt: we,
         maxCandidates: maxCandidates ? Number(maxCandidates) : null,
@@ -183,6 +279,8 @@ export default function JadwalUjianPage() {
       });
       // reset sebagian
       setTitle("");
+      setMapel(mapelOpts.length === 1 ? mapelOpts[0] : "");
+      setPaketId(paketOpts.length === 1 ? paketOpts[0] : "");
       setDateStart("");
       setTimeStart("");
       setDateEnd("");
@@ -244,8 +342,7 @@ export default function JadwalUjianPage() {
       <div className="w-full max-w-none px-4 md:px-6 lg:px-8 py-8 min-h-[calc(100vh-5rem-4rem)]">
         <h1 className="text-2xl md:text-3xl font-extrabold">Buat Jadwal Ujian</h1>
         <p className="mt-1 text-base text-slate-700">
-          Tentukan judul, jenjang, serta jendela waktu ujian. Waktu tampil dalam zona:{" "}
-          <b>WITA</b>.
+          Tentukan judul, jenjang, serta jendela waktu ujian. Waktu tampil dalam zona: <b>WITA</b>.
         </p>
 
         {/* Presets */}
@@ -304,6 +401,54 @@ export default function JadwalUjianPage() {
             {levels.length === 0 && !levelsLoading && (
               <p className="mt-1 text-sm text-amber-700">
                 Belum ada data jenjang di <code>users_app</code>. Tambahkan pendaftar terlebih dulu.
+              </p>
+            )}
+          </label>
+
+          {/* Mapel dari koleksi soal */}
+          <label className="block">
+            <span className="text-sm md:text-base font-semibold text-slate-800">Mapel</span>
+            <select
+              value={mapel}
+              onChange={(e) => setMapel(e.target.value)}
+              className="mt-1 w-full rounded-lg border border-slate-300 bg-white px-3 py-2 text-base text-slate-900 focus:outline-none focus:ring-2 focus:ring-violet-500"
+              disabled={!level || soalLoading || mapelOpts.length === 0}
+              required
+            >
+              <option value="">{soalLoading ? "Memuat…" : "Pilih mapel"}</option>
+              {mapelOpts.map((m) => (
+                <option key={m} value={m}>
+                  {m}
+                </option>
+              ))}
+            </select>
+            {!soalLoading && level && mapelOpts.length === 0 && (
+              <p className="mt-1 text-sm text-amber-700">
+                Tidak ada mapel aktif untuk jenjang ini di <code>soal</code>.
+              </p>
+            )}
+          </label>
+
+          {/* Paket Soal dari koleksi soal */}
+          <label className="block">
+            <span className="text-sm md:text-base font-semibold text-slate-800">Paket Soal</span>
+            <select
+              value={paketId}
+              onChange={(e) => setPaketId(e.target.value)}
+              className="mt-1 w-full rounded-lg border border-slate-300 bg-white px-3 py-2 text-base text-slate-900 focus:outline-none focus:ring-2 focus:ring-violet-500"
+              disabled={!level || soalLoading || paketOpts.length === 0}
+              required
+            >
+              <option value="">{soalLoading ? "Memuat…" : "Pilih paket"}</option>
+              {paketOpts.map((p) => (
+                <option key={p} value={p}>
+                  {p}
+                </option>
+              ))}
+            </select>
+            {!soalLoading && level && paketOpts.length === 0 && (
+              <p className="mt-1 text-sm text-amber-700">
+                Tidak ada paket aktif untuk jenjang ini di <code>soal</code>.
               </p>
             )}
           </label>
@@ -373,7 +518,9 @@ export default function JadwalUjianPage() {
                 checked={active}
                 onChange={(e) => setActive(e.target.checked)}
               />
-              <label htmlFor="active" className="text-base text-slate-900">Aktif</label>
+              <label htmlFor="active" className="text-base text-slate-900">
+                Aktif
+              </label>
             </div>
           </label>
 
@@ -398,7 +545,7 @@ export default function JadwalUjianPage() {
               </p>
             </div>
 
-            {/* ⬇️ Filter jenjang untuk list jadwal */}
+            {/* Filter jenjang untuk list jadwal */}
             <div className="flex items-center gap-2">
               <label className="text-sm font-semibold text-slate-800">Filter Jenjang</label>
               <select
@@ -409,7 +556,9 @@ export default function JadwalUjianPage() {
               >
                 <option value="ALL">Semua Jenjang</option>
                 {levels.map((lv) => (
-                  <option key={lv} value={lv}>{lv}</option>
+                  <option key={lv} value={lv}>
+                    {lv}
+                  </option>
                 ))}
               </select>
             </div>
@@ -421,6 +570,8 @@ export default function JadwalUjianPage() {
                 <tr>
                   <th className="px-3 py-3 text-left">Judul</th>
                   <th className="px-3 py-3 text-left">Jenjang</th>
+                  <th className="px-3 py-3 text-left">Mapel</th>
+                  <th className="px-3 py-3 text-left">Paket Soal</th>
                   <th className="px-3 py-3 text-left">Rentang Waktu</th>
                   <th className="px-3 py-3 text-left">Kuota</th>
                   <th className="px-3 py-3 text-left">Status</th>
@@ -430,11 +581,15 @@ export default function JadwalUjianPage() {
               <tbody className="divide-y divide-slate-100">
                 {loading ? (
                   <tr>
-                    <td colSpan={6} className="px-3 py-6 text-center text-slate-600">Memuat jadwal…</td>
+                    <td colSpan={8} className="px-3 py-6 text-center text-slate-600">
+                      Memuat jadwal…
+                    </td>
                   </tr>
                 ) : rowsView.length === 0 ? (
                   <tr>
-                    <td colSpan={6} className="px-3 py-6 text-center text-slate-600">Belum ada jadwal.</td>
+                    <td colSpan={8} className="px-3 py-6 text-center text-slate-600">
+                      Belum ada jadwal.
+                    </td>
                   </tr>
                 ) : (
                   rowsView.map((r) => {
@@ -444,14 +599,21 @@ export default function JadwalUjianPage() {
                       <tr key={r.id} className="hover:bg-slate-50/70">
                         <td className="px-3 py-2 font-semibold">{r.title || r.id}</td>
                         <td className="px-3 py-2">{r.level || "—"}</td>
-                        <td className="px-3 py-2 text-slate-700">{ws} — {we}</td>
+                        <td className="px-3 py-2">{r.mapel || "—"}</td>
+                        <td className="px-3 py-2">{r.paketId || "—"}</td>
+                        <td className="px-3 py-2 text-slate-700">
+                          {ws} — {we}
+                        </td>
                         <td className="px-3 py-2">{r.maxCandidates || "—"}</td>
                         <td className="px-3 py-2">
-                          <span className={[
-                            "inline-flex items-center rounded-full px-2 py-0.5 text-xs md:text-sm font-semibold",
-                            r.active ? "bg-emerald-50 text-emerald-700 ring-1 ring-emerald-200"
-                                     : "bg-slate-100 text-slate-600 ring-1 ring-slate-200",
-                          ].join(" ")}>
+                          <span
+                            className={[
+                              "inline-flex items-center rounded-full px-2 py-0.5 text-xs md:text-sm font-semibold",
+                              r.active
+                                ? "bg-emerald-50 text-emerald-700 ring-1 ring-emerald-200"
+                                : "bg-slate-100 text-slate-600 ring-1 ring-slate-200",
+                            ].join(" ")}
+                          >
                             {r.active ? "Aktif" : "Nonaktif"}
                           </span>
                         </td>
@@ -479,7 +641,8 @@ export default function JadwalUjianPage() {
             </table>
           </div>
           <p className="mt-3 text-sm text-slate-600">
-            Tip: Setelah membuat jadwal, buka halaman <b>Verifikasi Tes Akademik</b> untuk <i>assign</i> jadwal ke siswa terpilih.
+            Tip: Setelah membuat jadwal, buka halaman <b>Verifikasi Tes Akademik</b> untuk{" "}
+            <i>assign</i> jadwal ke siswa terpilih.
           </p>
         </div>
       </div>

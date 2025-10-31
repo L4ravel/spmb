@@ -18,7 +18,9 @@ import {
   setDoc,
   serverTimestamp,
   getDocs,
+  getDoc,
   limit,
+  deleteDoc,
 } from "firebase/firestore";
 
 function getFirebaseApp() {
@@ -35,29 +37,59 @@ const app = getFirebaseApp();
 const storage = getStorage(app);
 const db = getFirestore(app);
 
-// helper normalisasi untuk path/query aman
+// normalisasi label → aman untuk path / query
 const toSafeUpperSnake = (s) =>
   (s || "LAINNYA").toString().trim().toUpperCase().replace(/[^\w-]/g, "_");
+
+// normalisasi longgar untuk pencocokan label fees vs registrationLevel
+const normLoose = (s) =>
+  (s || "")
+    .toString()
+    .toLowerCase()
+    .replace(/[().]/g, "")
+    .replace(/\s+/g, " ")
+    .trim();
+
+/** Cari label fees paling cocok */
+function chooseMatchingLabel(userLevel, feeLabels) {
+  if (!feeLabels?.length) return "";
+  if (!userLevel) return feeLabels[0];
+
+  const exact = feeLabels.find((l) => l === userLevel);
+  if (exact) return exact;
+
+  const nUser = normLoose(userLevel);
+  const byLoose = feeLabels.find((l) => normLoose(l) === nUser);
+  if (byLoose) return byLoose;
+
+  const sUser = toSafeUpperSnake(userLevel);
+  const bySnake = feeLabels.find((l) => toSafeUpperSnake(l) === sUser);
+  if (bySnake) return bySnake;
+
+  return feeLabels[0];
+}
 
 export default function SoalModal({
   open,
   onClose,
   onSaved,
   defaultPaketId = "paket-1",
-  initialData = null, // jika edit, berisi { id, ... }
+  initialData = null,   // jika edit, { id, ... }
+  nisnTarget = null,    // opsional: NISN user untuk auto pilih tingkat
 }) {
   const [paketId, setPaketId] = useState(defaultPaketId);
   const [mapel, setMapel] = useState("Umum");
 
-  // tingkat: pakai nilai "raw" (apa adanya dari users_app.registrationLevel)
-  const [tingkat, setTingkat] = useState(""); // ex: "PGMI Putra (S1)"
+  // tingkat
+  const [tingkat, setTingkat] = useState("");
   const [tingkatOptions, setTingkatOptions] = useState([]);
   const [tingkatLoading, setTingkatLoading] = useState(false);
   const [tingkatErr, setTingkatErr] = useState("");
+  const [userRegLevel, setUserRegLevel] = useState("");
 
   const [pertanyaan, setPertanyaan] = useState("");
   const [opsi, setOpsi] = useState(["", "", "", ""]);
-  const [opsiImages, setOpsiImages] = useState([]); // URL gambar per opsi (index sejajar)
+  const [opsiImages, setOpsiImages] = useState([]); // URL per opsi
   const [jawabanIndex, setJawabanIndex] = useState(0);
 
   // gambar soal
@@ -82,10 +114,10 @@ export default function SoalModal({
 
     let _paketId    = defaultPaketId;
     let _mapel      = "Umum";
-    let _tingkat    = ""; // akan diisi dari options saat sudah ter-load
+    let _tingkat    = "";
     let _pertanyaan = "";
     let _opsi       = ["", "", "", ""];
-    let _opsiImages = []; // default kosong
+    let _opsiImages = [];
     let _jawab      = 0;
     let _imgUrl     = "";
 
@@ -98,12 +130,8 @@ export default function SoalModal({
       _opsiImages = Array.isArray(initialData.opsiImages) ? initialData.opsiImages : [];
       _jawab      = typeof initialData.jawabanIndex === "number" ? initialData.jawabanIndex : 0;
       _imgUrl     = (
-        initialData.imageUrl ??
-        initialData.image ??
-        initialData.imgUrl ??
-        initialData.gambarUrl ??
-        initialData.gambar ??
-        ""
+        initialData.imageUrl ?? initialData.image ?? initialData.imgUrl ??
+        initialData.gambarUrl ?? initialData.gambar ?? ""
       );
     }
 
@@ -131,45 +159,72 @@ export default function SoalModal({
     return () => window.removeEventListener("keydown", onKey);
   }, [open, onClose]);
 
-  /* ===== Ambil daftar tingkat dari users_app.registrationLevel (unik) ===== */
+  /* ===== Ambil daftar TINGKAT dari fees ===== */
   useEffect(() => {
     if (!open) return;
-
     let cancelled = false;
-    async function fetchLevels() {
+
+    (async () => {
       try {
         setTingkatLoading(true);
         setTingkatErr("");
 
-        const snap = await getDocs(
-          // ambil sample besar (max 2000) — cukup untuk test
-          // @ts-ignore
-          collection(db, "users_app"),
-          // @ts-ignore
-          limit(2000)
-        );
-
-        const set = new Set();
+        const snap = await getDocs(collection(db, "fees"));
+        const labels = [];
         snap.forEach((d) => {
-          const v = (d.data()?.registrationLevel || "").toString().trim();
-          if (v) set.add(v);
+          const data = d.data() || {};
+          const label = (data.label || "").toString().trim();
+          if (label) labels.push(label);
         });
 
-        const arr = Array.from(set).sort((a, b) => a.localeCompare(b, "id"));
+        labels.sort((a, b) => a.localeCompare(b, "id", { sensitivity: "base" }));
+
         if (!cancelled) {
-          setTingkatOptions(arr);
-          setTingkat((prev) => prev || arr[0] || "");
+          setTingkatOptions(labels);
+          setTingkat((prev) => prev || labels[0] || "");
         }
       } catch (e) {
         if (!cancelled) setTingkatErr(String(e.message || e));
       } finally {
         if (!cancelled) setTingkatLoading(false);
       }
-    }
+    })();
 
-    fetchLevels();
     return () => { cancelled = true; };
   }, [open]);
+
+  /* ===== Jika nisnTarget diberikan: baca users_app/{nisn}/registrationLevel ===== */
+  useEffect(() => {
+    if (!open || !nisnTarget) return;
+    let cancelled = false;
+
+    (async () => {
+      try {
+        const ref = doc(db, "users_app", String(nisnTarget));
+        const snap = await getDoc(ref);
+        const lv = snap.exists() ? (snap.data()?.registrationLevel || "") : "";
+        if (!cancelled) setUserRegLevel(lv);
+      } catch {
+        if (!cancelled) setUserRegLevel("");
+      }
+    })();
+
+    return () => { cancelled = true; };
+  }, [open, nisnTarget]);
+
+  /* ===== Tentukan default tingkat berdasar opsi & userRegLevel ===== */
+  useEffect(() => {
+    if (!open) return;
+    if (!tingkatOptions.length) return;
+    if (tingkat && tingkatOptions.includes(tingkat)) return;
+
+    if (userRegLevel) {
+      const match = chooseMatchingLabel(userRegLevel, tingkatOptions);
+      setTingkat(match);
+      return;
+    }
+    setTingkat((prev) => prev || tingkatOptions[0] || "");
+  }, [open, tingkatOptions, userRegLevel, tingkat]);
 
   /* ========== Helpers opsi ========== */
   function setOpsiAt(i, v) {
@@ -190,7 +245,7 @@ export default function SoalModal({
     if (jawabanIndex >= next.length) setJawabanIndex(0);
   }
 
-  /* ========== Upload gambar SOAL (client → Storage) ========== */
+  /* ========== Upload gambar SOAL ========== */
   function onPickImage() { fileInputRef.current?.click(); }
   function onFileChange(e) {
     const f = e.target.files?.[0];
@@ -204,7 +259,7 @@ export default function SoalModal({
   }
   function removeImage() { setImageFile(null); setImagePreview(""); }
 
-  /* ========== Upload gambar untuk OPSI (via ikon) ========== */
+  /* ========== Upload gambar untuk OPSI ========== */
   function onPickOpsiImage(i) {
     setOptUploadIndex(i);
     optFileInputRef.current?.click();
@@ -213,7 +268,7 @@ export default function SoalModal({
     const f = e.target.files?.[0];
     if (!f || optUploadIndex == null) return;
     if (!f.type.startsWith("image/")) { setErr("File harus gambar (JPG/PNG/WebP/SVG)."); return; }
-    if (f.size > 1024 * 1024) { setErr("Gambar opsi maks 1MB."); return; } // opsi: lebih ringan
+    if (f.size > 1024 * 1024) { setErr("Gambar opsi maks 1MB."); return; }
     setErr("");
 
     try {
@@ -236,7 +291,6 @@ export default function SoalModal({
     } catch (err) {
       setErr(String(err?.message || err));
     } finally {
-      // reset input agar bisa upload file yang sama lagi bila perlu
       e.target.value = "";
       setOptUploadIndex(null);
     }
@@ -261,16 +315,15 @@ export default function SoalModal({
     );
   }, [pertanyaan, opsi, jawabanIndex, tingkat]);
 
-  /* ========== Simpan langsung ke Firestore (tanpa API) ========== */
+  /* ========== Simpan ke Firestore ========== */
   async function save() {
     if (disabledSave) return;
     setLoading(true); setErr("");
     try {
-      // 1) Normalisasi jenjang → aman untuk path
       const tingkatRaw = (tingkat || "").toString().trim();
       const safeTingkat = toSafeUpperSnake(tingkatRaw);
 
-      // 2) Upload gambar SOAL bila dipilih; kalau tidak, pakai imageUrl yang sudah ada/diinput
+      // Upload gambar SOAL jika ada file baru; jika tidak, pakai imageUrl
       let finalImageUrl = (imageUrl || "").trim();
       if (imageFile) {
         const ext = (() => {
@@ -284,18 +337,17 @@ export default function SoalModal({
         finalImageUrl = await getDownloadURL(sref);
       }
 
-      // 3) Payload Firestore
       const payload = {
         paketId: (paketId || "").trim(),
         mapel: (mapel || "").trim(),
-        tingkat: safeTingkat,        // UPPER_SNAKE_CASE untuk query
-        tingkatRaw,                  // string apa adanya dari users_app
+        tingkat: safeTingkat,        // untuk filter cepat
+        tingkatRaw,                  // label fees
         pertanyaan,
         opsi: opsi.map((s) => s.trim()).filter(Boolean),
-        opsiImages: (opsiImages || []).map((u) => (u || "")).slice(0, opsi.length), // sejajarkan
+        opsiImages: (opsiImages || []).map((u) => (u || "")).slice(0, opsi.length),
         jawabanIndex,
         aktif: true,
-        imageUrl: finalImageUrl,     // gambar soal
+        imageUrl: finalImageUrl,
         updatedAt: serverTimestamp(),
       };
 
@@ -321,16 +373,31 @@ export default function SoalModal({
     }
   }
 
+  /* ========== Hapus Soal (edit mode) ========== */
+  async function handleDelete() {
+    if (!isEdit || !initialData?.id) return;
+    if (!confirm("Hapus soal ini secara permanen?")) return;
+
+    setLoading(true);
+    setErr("");
+    try {
+      await deleteDoc(doc(db, "soal", String(initialData.id)));
+      onSaved?.({ id: String(initialData.id), deleted: true });
+      onClose?.();
+    } catch (e) {
+      setErr(String(e.message || e));
+    } finally {
+      setLoading(false);
+    }
+  }
+
   if (!open) return null;
 
   return (
     <div className="fixed inset-0 z-50">
       {/* backdrop */}
       <div
-        className={[
-          "absolute inset-0 bg-black/50 transition-opacity duration-200",
-          appeared ? "opacity-100" : "opacity-0",
-        ].join(" ")}
+        className={["absolute inset-0 bg-black/50 transition-opacity duration-200", appeared ? "opacity-100" : "opacity-0"].join(" ")}
         onClick={onClose}
       />
       {/* modal card */}
@@ -351,7 +418,21 @@ export default function SoalModal({
               <span className="text-slate-400">•</span>
               <span className="text-slate-600">Pilihan ganda</span>
             </div>
-            <button onClick={onClose} className="rounded-full p-2 hover:bg-slate-100" title="Tutup" aria-label="Tutup">✕</button>
+
+            <div className="flex items-center gap-2">
+              {isEdit && (
+                <button
+                  type="button"
+                  onClick={handleDelete}
+                  disabled={loading}
+                  className="rounded-lg px-3 py-1.5 text-sm font-semibold bg-rose-50 text-rose-700 ring-1 ring-rose-200 hover:bg-rose-100 disabled:opacity-60"
+                  title="Hapus soal"
+                >
+                  Hapus Soal
+                </button>
+              )}
+              <button onClick={onClose} className="rounded-full p-2 hover:bg-slate-100" title="Tutup" aria-label="Tutup">✕</button>
+            </div>
           </div>
 
           {/* body */}
@@ -372,7 +453,7 @@ export default function SoalModal({
                   value={tingkat}
                   onChange={(e) => setTingkat(e.target.value)}
                   className="mt-1 w-full rounded-lg border px-3 py-2 outline-none bg-white"
-                  title="Pilih tingkat/jenjang sesuai registrasi siswa"
+                  title="Label jenjang diambil dari koleksi fees"
                   disabled={tingkatLoading || tingkatOptions.length === 0}
                 >
                   {tingkatLoading && <option>Memuat…</option>}
@@ -381,6 +462,11 @@ export default function SoalModal({
                     <option key={j} value={j}>{j}</option>
                   ))}
                 </select>
+                {userRegLevel ? (
+                  <div className="mt-1 text-[11px] text-slate-500">
+                    Registrasi akun: <b>{userRegLevel}</b>
+                  </div>
+                ) : null}
                 {tingkatErr && <div className="text-xs text-amber-600 mt-1">{tingkatErr}</div>}
               </div>
             </div>
@@ -413,7 +499,6 @@ export default function SoalModal({
                   </div>
                 ) : (
                   <>
-                    {/* thumbnail dari URL lama saat edit */}
                     {!imagePreview && imageUrl ? (
                       <img src={imageUrl} alt="Gambar Soal" className="mt-2 w-full h-24 object-contain rounded-md border" />
                     ) : null}
@@ -443,7 +528,7 @@ export default function SoalModal({
               </div>
             </div>
 
-            {/* opsi jawaban (+ ikon gambar minimalis) */}
+            {/* opsi jawaban (+ ikon gambar) */}
             <div className="space-y-2">
               {opsi.map((v, i) => {
                 const img = opsiImages?.[i];
@@ -517,13 +602,9 @@ export default function SoalModal({
                       )}
                     </div>
 
-                    {/* thumb kecil agar tetap minimalis */}
+                    {/* thumb kecil */}
                     {img && (
-                      <img
-                        src={img}
-                        alt=""
-                        className="ml-1 h-8 w-8 object-cover rounded border"
-                      />
+                      <img src={img} alt="" className="ml-1 h-8 w-8 object-cover rounded border" />
                     )}
 
                     {/* hapus opsi */}
@@ -557,13 +638,27 @@ export default function SoalModal({
           {/* footer */}
           <div className="flex items-center justify-between px-5 py-4 border-t">
             <button onClick={onClose} className="text-slate-500 hover:text-slate-700">Batal</button>
-            <button
-              onClick={save}
-              disabled={loading || disabledSave}
-              className="rounded-lg bg-violet-600 text-white px-4 py-2 font-semibold disabled:opacity-50"
-            >
-              {loading ? "Menyimpan…" : (isEdit ? "Simpan Perubahan" : "Simpan")}
-            </button>
+
+            <div className="flex items-center gap-2">
+              {isEdit && (
+                <button
+                  type="button"
+                  onClick={handleDelete}
+                  disabled={loading}
+                  className="rounded-lg bg-rose-50 text-rose-700 px-4 py-2 font-semibold ring-1 ring-rose-200 hover:bg-rose-100 disabled:opacity-50"
+                  title="Hapus soal"
+                >
+                  {loading ? "Memproses…" : "Hapus Soal"}
+                </button>
+              )}
+              <button
+                onClick={save}
+                disabled={loading || disabledSave}
+                className="rounded-lg bg-violet-600 text-white px-4 py-2 font-semibold disabled:opacity-50"
+              >
+                {loading ? "Menyimpan…" : (isEdit ? "Simpan Perubahan" : "Simpan")}
+              </button>
+            </div>
           </div>
 
           {/* hidden input untuk ikon gambar opsi */}

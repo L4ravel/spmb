@@ -3,24 +3,22 @@ export const dynamic = "force-dynamic";
 
 import { NextResponse } from "next/server";
 import admin, { adminDb, FieldValue, adminBucket } from "@/lib/firebaseAdmin";
+import { randomBytes } from "crypto";
 
 /* ===== Helpers & Bucket ===== */
 const digits = (s) => String(s || "").replace(/\D+/g, "");
 const isNISN = (s) => /^\d{8,12}$/.test(digits(s));
 const isNIK = (s) => /^\d{16}$/.test(digits(s));
 
-// Early hanya: TK, SD, PPS Ula (bukan karena mengandung kata putra/putri)
+/** Early hanya: TK & SD (Putra/Putri) — selaras dengan page.js */
 const isEarlyEducation = (jenjang) => {
   const norm = String(jenjang || "")
     .toLowerCase()
     .replace(/[().]/g, "")
     .replace(/\s+/g, " ")
     .trim();
-
   if (norm === "tk" || norm === "taman kanak kanak") return true;
   if (norm === "sd" || norm.startsWith("sd ")) return true;
-  if (norm.includes("pps ula")) return true;
-
   return false;
 };
 
@@ -55,8 +53,9 @@ async function uploadFieldFile(fd, key, identifier) {
   const gcsFile = bucket.file(storagePath);
 
   await gcsFile.save(buffer, {
-    resumable: false,
+    resumable: true,
     contentType: f.type || "application/octet-stream",
+    validation: "crc32c",
     metadata: { cacheControl: "public,max-age=31536000" },
   });
 
@@ -78,14 +77,44 @@ async function uploadFieldFile(fd, key, identifier) {
 async function reserveUniqueNISN(nisn) {
   if (!nisn) return null; // skip jika kosong
   const ref = adminDb.collection("unique_nisn").doc(nisn);
-  // create() akan gagal jika sudah ada → guard unik
-  await ref.create({
-    createdAt: FieldValue.serverTimestamp(),
-  });
+  await ref.create({ createdAt: FieldValue.serverTimestamp() }); // fail if exists
   return ref;
 }
-
 async function releaseUniqueNISN(ref) {
+  if (!ref) return;
+  try {
+    await ref.delete();
+  } catch {}
+}
+
+/* ===== Registration ID: 2026 + 4 alfanumerik (unik) ===== */
+const ALPHANUM = "0123456789abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ";
+function randomToken4() {
+  const buf = randomBytes(4);
+  let out = "";
+  for (let i = 0; i < 4; i++) out += ALPHANUM[buf[i] % ALPHANUM.length];
+  return out;
+}
+async function reserveRegistrationId2026(maxAttempts = 5) {
+  for (let attempt = 1; attempt <= maxAttempts; attempt++) {
+    const candidate = `2026${randomToken4()}`;
+    const ref = adminDb.collection("unique_registration").doc(candidate);
+    try {
+      await ref.create({
+        createdAt: FieldValue.serverTimestamp(),
+        note: "registration id reservation",
+        version: 1,
+      });
+      return { id: candidate, ref };
+    } catch (err) {
+      const msg = String(err?.message || "");
+      if (err?.code === 6 || /ALREADY_EXISTS/i.test(msg)) continue;
+      throw err;
+    }
+  }
+  throw new Error("FAILED_GENERATE_UNIQUE_REGISTRATION_ID");
+}
+async function releaseRegistrationId(ref) {
   if (!ref) return;
   try {
     await ref.delete();
@@ -94,8 +123,8 @@ async function releaseUniqueNISN(ref) {
 
 /* ===== Handler ===== */
 export async function POST(req) {
-  // untuk rollback jika error tak terduga
   let uniqueNisnRef = null;
+  let uniqueRegRef = null;
 
   try {
     const fd = await req.formData();
@@ -109,54 +138,52 @@ export async function POST(req) {
     const jenjang = form.jenjang || "";
     const isEarly = isEarlyEducation(jenjang);
 
-    // === VALIDASI IDENTIFIER ===
+    // === GENERATE & RESERVE registrationId unik: 2026xxxx ===
+    const { id: registrationId, ref: regRef } = await reserveRegistrationId2026();
+    uniqueRegRef = regRef;
+
+    // === VALIDASI IDENTIFIER (docId) ===
     let identifier = "";
     let docId = "";
 
     if (isEarly) {
-      // TK/SD/PPS Ula: gunakan 8 digit terakhir NIK sebagai docId
-      const nikRaw = form.nik || "";
-      const nik = digits(nikRaw);
-
+      // TK/SD: gunakan 8 digit terakhir NIK sebagai docId, tapi folder memakai NIK 16 digit (identifier)
+      const nik = digits(form.nik || "");
       if (!isNIK(nik)) {
+        await releaseRegistrationId(uniqueRegRef);
         return NextResponse.json(
           { success: false, error: "NIK tidak valid (harus 16 digit)." },
           { status: 400 }
         );
       }
-
-      identifier = nik;
-      docId = nik.slice(-8); // 8 digit terakhir sebagai doc ID
+      identifier = nik; // 16 digit → untuk folder & field identifier
+      docId = nik.slice(-8); // ID dokumen
     } else {
-      // SMP/SMA/Universitas: gunakan NISN sebagai docId
-      const nisnRaw = form.nisn || "";
-      const nisn = digits(nisnRaw);
-
+      // SMP/SMA/Ma'had Aly (Universitas): gunakan NISN sebagai docId & identifier
+      const nisn = digits(form.nisn || "");
       if (!isNISN(nisn)) {
+        await releaseRegistrationId(uniqueRegRef);
         return NextResponse.json(
           { success: false, error: "NISN tidak valid (harus 8-12 digit)." },
           { status: 400 }
         );
       }
-
       identifier = nisn;
       docId = nisn;
     }
 
-    // === Reservasi NISN global (unik untuk semua jenjang) ===
-    // Catatan: untuk early, NISN tetap wajib unik bila diisi & valid.
+    // === Reservasi NISN global (unik) — jika valid tersedia
     const nisnDigits = digits(form.nisn || "");
     try {
       if (isNISN(nisnDigits)) {
         uniqueNisnRef = await reserveUniqueNISN(nisnDigits);
       }
     } catch (e) {
-      // Sudah ada NISN yang sama
+      await releaseRegistrationId(uniqueRegRef);
       return NextResponse.json(
         {
           success: false,
-          error:
-            "NISN sudah terdaftar. Gunakan NISN lain atau hubungi admin.",
+          error: "NISN sudah terdaftar. Gunakan NISN lain atau hubungi admin.",
           code: "NISN_EXISTS",
         },
         { status: 409 }
@@ -169,7 +196,8 @@ export async function POST(req) {
     try {
       await docRef.create({
         ...form,
-        identifier: docId,
+        registrationId,
+        identifier, // <— konsisten
         nik: form.nik || "",
         nisn: form.nisn || "",
         jenjang,
@@ -178,8 +206,8 @@ export async function POST(req) {
         updatedAt: FieldValue.serverTimestamp(),
       });
     } catch (e) {
-      // rollback reservasi NISN karena docId gagal dibuat
       await releaseUniqueNISN(uniqueNisnRef);
+      await releaseRegistrationId(uniqueRegRef);
       const msg = isEarly
         ? "NIK sudah terdaftar. Gunakan NIK lain atau hubungi admin."
         : "NISN sudah terdaftar. Gunakan NISN lain.";
@@ -189,8 +217,23 @@ export async function POST(req) {
       );
     }
 
-    // === Upload berkas ke ppdb/{identifier}/... ===
-    const fileKeys = ["kk", "akta", "ijazah", "foto", "kip"];
+    // === Upload berkas → selaras dengan komponen upload_dokumen ===
+    const fileKeys = [
+      "kk",
+      "akta",
+      "ijazah",
+      // program keringanan:
+      "ktpWali",
+      "sktm",
+      "pkhDtks",
+      "suketMeninggalOrtu",
+      // khusus Ma'had Aly (universitas):
+      "ktpMahasiswa",
+      // (kompatibilitas lama – aman diabaikan bila tidak ada)
+      "foto",
+      "kip",
+    ];
+
     const files = {};
     const filesMeta = {};
     let uploadedCount = 0;
@@ -210,16 +253,13 @@ export async function POST(req) {
       }
     }
 
-    // Jika tak ada file, rollback dokumen & reservasi NISN biar bersih
     if (uploadedCount === 0) {
       await docRef.delete().catch(() => {});
-      await releaseUniqueNISN(uniqueNisnRef); // rollback reservasi NISN
+      await releaseUniqueNISN(uniqueNisnRef);
+      await releaseRegistrationId(uniqueRegRef);
       const bucketName = getBucket()?.name || "(unknown)";
       return NextResponse.json(
-        {
-          success: false,
-          error: `Tidak ada file yang terunggah. Cek name field (kk/akta/ijazah/foto/kip) & ukuran file. Bucket="${bucketName}".`,
-        },
+        { success: false, error: `Tidak ada file yang terunggah. Bucket="${bucketName}".` },
         { status: 400 }
       );
     }
@@ -228,7 +268,8 @@ export async function POST(req) {
     await docRef.set(
       {
         ...form,
-        identifier: docId,
+        registrationId,
+        identifier, // <— konsisten
         nik: form.nik || "",
         nisn: form.nisn || "",
         jenjang,
@@ -244,7 +285,8 @@ export async function POST(req) {
     return NextResponse.json({
       success: true,
       id: docId,
-      identifier: docId,
+      identifier, // <— perbaikan: bukan docId
+      registrationId,
       bucket: bucketName,
       folder: `ppdb/${identifier}/`,
       uploadedKeys: Object.keys(filesMeta),
@@ -252,13 +294,15 @@ export async function POST(req) {
       status: "submitted",
     });
   } catch (err) {
-    // upaya terakhir: bila ada reservasi NISN yang sempat dibuat, lepas
     try {
       await releaseUniqueNISN(uniqueNisnRef);
     } catch {}
+    try {
+      await releaseRegistrationId(uniqueRegRef);
+    } catch {}
     console.error("PPDB API error:", err);
     return NextResponse.json(
-      { success: false, error: err.message || String(err) },
+      { success: false, error: err?.message || String(err) },
       { status: 500 }
     );
   }

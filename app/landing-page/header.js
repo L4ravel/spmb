@@ -10,6 +10,7 @@ import {
   MapPin,
   LogIn
 } from "lucide-react";
+import Image from "next/image";
 
 export default function Header() {
   const [isScrolled, setIsScrolled] = useState(false);
@@ -117,12 +118,19 @@ const navLinks = [
               <div className="relative">
                 {/* Icon background with gradient */}
                 <div className="absolute inset-0 rounded-xl bg-gradient-to-br from-violet-500 to-indigo-600 opacity-10 blur-md transition-opacity group-hover:opacity-20" />
-                <div className="relative flex h-12 w-12 items-center justify-center rounded-xl bg-gradient-to-br from-violet-500 to-indigo-600 shadow-lg transition-transform duration-300 group-hover:scale-110 group-hover:rotate-6">
-                  <GraduationCap className="h-6 w-6 text-white" />
+                <div className="relative h-12 w-12 rounded-xl overflow-hidden bg-white shadow-lg ring-1 ring-green-700/30 transition-transform duration-300 group-hover:scale-110 group-hover:rotate-6">
+                  <Image
+                    src="/logo/pondok-assunnah.png"
+                    alt="Logo Pondok Assunnah"
+                    fill
+                    sizes="48px"
+                    className="object-contain p-1"
+                    priority={false}
+                  />
                 </div>
               </div>
               <div className="hidden md:block">
-                <p className="text-lg font-bold uppercase tracking-wider text-violet-600">
+                <p className="text-lg font-bold uppercase tracking-wider text-green-700">
                   Pondok Pesantren
                 </p>
                 <p className="text-sm font-black text-slate-900">ASSUNNAH</p>
@@ -180,11 +188,11 @@ const navLinks = [
           <div className="mx-auto flex max-w-7xl items-center justify-between px-4 md:px-6">
             <div className="flex items-center gap-6 text-sm">
               <a
-                href="tel:+6287857771623"
+                href="tel:+6287720242025"
                 className="flex items-center gap-2 text-slate-600 transition-colors hover:text-violet-600"
               >
                 <Phone className="h-4 w-4" />
-                <span className="font-medium">(+62) 878 5777 1623</span>
+                <span className="font-medium">(+62) 877 2024 2025</span>
               </a>
               <a
                 href="https://maps.google.com/?q=Pondok+Pesantren+Assunnah+lombok"
@@ -278,13 +286,13 @@ const navLinks = [
                   Hubungi Kami
                 </p>
                 <a
-                  href="tel:+6287857771623"
+                  href="tel:+6287720242025"
                   className="flex items-center gap-3 text-slate-700"
                 >
                   <div className="flex h-10 w-10 items-center justify-center rounded-lg bg-white shadow-sm">
                     <Phone className="h-5 w-5 text-violet-600" />
                   </div>
-                  <span className="font-medium">(+62) 878 5777 1623</span>
+                  <span className="font-medium">(+62) 877 2024 2025</span>
                 </a>
                 <a
                   href="https://maps.google.com/?q=Pondok+Pesantren+Assunnah+lombok"

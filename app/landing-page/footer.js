@@ -62,8 +62,8 @@ const contactInfo = [
   },
   { 
     Icon: Phone, 
-    text: "(+62) 878 5777 1623",
-    href: "https://wa.me/6287857771623"
+    text: "(+62) 877 2024 2025",
+    href: "https://wa.me/6287720242025"
   },
   // { 
   //   Icon: Mail, 

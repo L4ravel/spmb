@@ -122,7 +122,7 @@ export default function ConfirmUjianPage() {
         // users_app
         const userSnap = await getDoc(doc(db, "users_app", candidate));
         if (!userSnap.exists()) {
-          setReason("Akun tidak ditemukan. Silakan hubungi panitia PPDB.");
+          setReason("Akun tidak ditemukan. Silakan hubungi panitia SPMB.");
           setLoading(false);
           return;
         }
@@ -285,7 +285,7 @@ export default function ConfirmUjianPage() {
       <main className="mx-auto w-full max-w-3xl px-4 md:px-6 py-10 flex-1">
         <div className="rounded-2xl border border-violet-200 bg-white shadow-[0_15px_45px_rgba(24,0,75,.06)] p-6">
           <h1 className="text-xl md:text-2xl font-bold text-slate-900">
-            Konfirmasi Tes Akademik PPDB
+            Konfirmasi Tes Akademik SPMB
           </h1>
 
           <p className="mt-2 text-slate-600">
@@ -327,7 +327,7 @@ export default function ConfirmUjianPage() {
 
           {/* Tata tertib ringkas */}
           <ul className="mt-5 list-disc pl-5 text-slate-700 space-y-2">
-            <li>Tes Akademik merupakan bagian resmi dari proses seleksi PPDB.</li>
+            <li>Tes Akademik merupakan bagian resmi dari proses seleksi SPMB.</li>
             <li>Peserta wajib mengerjakan secara mandiri, jujur, dan tertib.</li>
             <li>Pastikan perangkat dan koneksi internet dalam kondisi baik.</li>
           </ul>
@@ -374,7 +374,7 @@ export default function ConfirmUjianPage() {
 
           {!statusBlock.ok && reason && (
             <p className="mt-4 text-sm text-slate-500">
-              Jika diperlukan, silakan menghubungi panitia PPDB untuk konfirmasi status.
+              Jika diperlukan, silakan menghubungi panitia SPMB untuk konfirmasi status.
             </p>
           )}
         </div>

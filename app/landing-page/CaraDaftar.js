@@ -9,9 +9,10 @@ import {
   Upload, 
   CheckCircle,
   Sparkles,
-  ArrowRight
+  ArrowRight,
 } from "lucide-react";
 import Link from "next/link";
+
 
 const STEPS_ONLINE = [
   {

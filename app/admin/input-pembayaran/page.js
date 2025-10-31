@@ -1,9 +1,6 @@
 "use client";
 
 import { useEffect, useMemo, useState } from "react";
-// ⚠️ SESUAIKAN PATH ini dengan lokasi aslimu.
-// Jika JenjangPicker.jsx ada di folder yang sama dengan halaman pendaftaran sebelumnya,
-// kemungkinan path-nya: "@/app/ppdb/JenjangPicker" atau relatif seperti "../ppdb/JenjangPicker".
 import JenjangPicker from "@/app/spmb/JenjangPicker";
 
 function toIDR(n) {
@@ -188,11 +185,7 @@ export default function InputPembayaranPage() {
                 )}
               </tbody>
             </table>
-          </div>
-
-          <p className="mt-3 text-xs text-slate-500">
-            Dokumen disimpan di koleksi <b>fees</b> dengan id <i>UPPER_SNAKE_CASE</i> dari label jenjang.
-          </p>
+          </div>          
         </div>
       </div>
     </div>
