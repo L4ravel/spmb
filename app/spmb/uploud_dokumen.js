@@ -108,15 +108,24 @@ async function compressIfNeeded(file, maxBytes = TARGET_BYTES) {
 async function postFormData(url, fd) {
   const res = await fetch(url, { method: "POST", body: fd });
   const ct = res.headers.get("content-type") || "";
+
+  // Proxy Vercel biasanya kirim HTML saat 413 → jangan lempar error; kirim sentinel
+  if (res.status === 413) {
+    // konsumsi body supaya koneksi rapi
+    try { await res.text(); } catch {}
+    return { _formTooLarge: true };
+  }
+
   if (!ct.includes("application/json")) {
     const text = await res.text();
-    if (res.status === 413) throw new Error("Berkas terlalu besar untuk jalur FormData. Sistem akan mencoba jalur upload besar otomatis.");
     throw new Error(`Server non-JSON (${res.status}). ${text.slice(0,160)}`);
   }
+
   const data = await res.json();
   if (!res.ok) throw new Error(data?.error || `Gagal (${res.status})`);
   return data;
 }
+
 
 /** Minta sesi resumable untuk file besar (op: "init") */
 async function initResumable(identifier, items) {
@@ -292,47 +301,48 @@ const UploudDokumen = forwardRef(function UploudDokumen(props, ref) {
 
       // === 2) Upload kecil via FormData (legacy) kalau masih ada
       let legacyResult = null;
-      if (smallKeys.length) {
-        const fd = new FormData();
-        Object.entries(formValues || {}).forEach(([k, v]) => {
-          if (v == null) return;
-          fd.append(k, typeof v === "string" ? v : String(v));
-        });
-        for (const k of smallKeys) {
-          const f = files[k];
-          if (f) fd.append(k, f, safeName(f.name || `${k}.bin`));
-        }
+if (smallKeys.length) {
+  const fd = new FormData();
+  Object.entries(formValues || {}).forEach(([k, v]) => {
+    if (v == null) return;
+    fd.append(k, typeof v === "string" ? v : String(v));
+  });
+  for (const k of smallKeys) {
+    const f = files[k];
+    if (f) fd.append(k, f, safeName(f.name || `${k}.bin`));
+  }
 
-        try {
-          legacyResult = await postFormData("/api/ppdb", fd);
-          if (legacyResult?.filesMeta) Object.assign(filesMeta, legacyResult.filesMeta);
-        } catch (e) {
-          // Jika FormData ditolak (proxy 413) → fallback auto ke resumable
-          if (String(e.message || "").includes("jalur upload besar otomatis")) {
-            const fallbackItems = smallKeys.map(k => {
-              const f = files[k];
-              return { key: k, file: f, filename: safeName(f.name || `${k}.bin`), contentType: f.type || "application/octet-stream" };
-            });
-            if (fallbackItems.length) {
-              const uploads2 = await initResumable(
-                identifier,
-                fallbackItems.map(it => ({ key: it.key, filename: it.filename, contentType: it.contentType }))
-              );
-              for (const it of fallbackItems) {
-                const { path, uploadURL } = uploads2[it.key] || {};
-                if (!path || !uploadURL) throw new Error(`Init upload gagal untuk ${it.key}.`);
-                await resumableUpload(uploadURL, it.file);
-                const url = await getDownloadURLByPath(path);
-                filesMeta[it.key] = { path, url, size: it.file.size, contentType: it.contentType, uploadedAt: Date.now() };
-              }
-            } else {
-              throw e;
-            }
-          } else {
-            throw e;
-          }
-        }
+  // ⬇️ JANGAN lempar error di sini; tangani sentinel & fallback
+  const resp = await postFormData("/api/ppdb", fd);
+
+  if (resp && resp._formTooLarge) {
+    // proxy menolak FormData → fallback semua small ke resumable
+    const fallbackItems = smallKeys.map(k => {
+      const f = files[k];
+      return { key: k, file: f, filename: safeName(f.name || `${k}.bin`), contentType: f.type || "application/octet-stream" };
+    });
+    if (fallbackItems.length) {
+      const uploads2 = await initResumable(
+        identifier,
+        fallbackItems.map(it => ({ key: it.key, filename: it.filename, contentType: it.contentType }))
+      );
+      for (const it of fallbackItems) {
+        const { path, uploadURL } = uploads2[it.key] || {};
+        if (!path || !uploadURL) throw new Error(`Init upload gagal untuk ${it.key}.`);
+        await resumableUpload(uploadURL, it.file);
+        const url = await getDownloadURLByPath(path);
+        filesMeta[it.key] = { path, url, size: it.file.size, contentType: it.contentType, uploadedAt: Date.now() };
       }
+      legacyResult = null; // lanjut finalize di bawah
+    } else {
+      throw new Error("FormData ditolak dan tidak ada item untuk fallback.");
+    }
+  } else {
+    // sukses via multipart kecil → gabungkan meta
+    legacyResult = resp;
+    if (legacyResult?.filesMeta) Object.assign(filesMeta, legacyResult.filesMeta);
+  }
+}
 
       // === 3) Finalize jika ada upload besar / fallback
       if (largeItems.length || (smallKeys.length && legacyResult == null)) {
