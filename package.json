@@ -9,11 +9,15 @@
     "lint": "eslint"
   },
   "dependencies": {
+    "@heroicons/react": "^2.2.0",
     "firebase": "^12.3.0",
     "firebase-admin": "^12.7.0",
     "framer-motion": "^12.23.22",
-    "lucide-react": "^0.544.0",
+    "jsbarcode": "^3.12.1",
+    "lucide-react": "^0.545.0",
     "next": "15.5.4",
+    "pdf-lib": "^1.17.1",
+    "qrcode": "^1.5.3",
     "react": "19.1.0",
     "react-dom": "19.1.0",
     "xlsx": "^0.18.5"
