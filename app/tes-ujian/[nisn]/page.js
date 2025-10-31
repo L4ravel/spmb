@@ -2,6 +2,7 @@
 
 import { useEffect, useMemo, useState } from "react";
 import { useParams, useRouter } from "next/navigation";
+import { Clock } from "lucide-react";
 
 import { getApp, getApps, initializeApp } from "firebase/app";
 import {
@@ -37,10 +38,10 @@ const db = getFirestore(app);
 
 /* ================= Utils ================= */
 const isNISN = (v) => /^\d{8,12}$/.test(String(v || "").trim());
-const DURATION_MS = 120 * 60 * 1000; // 120 menit
+const DURATION_MS = 90 * 60 * 1000; // 90 menit
 const LS_KEY = (nisn) => `examStart:${nisn}`;
 
-const ANS_KEY = (nisn) => `examAns:${nisn}`; // optional cache lokal
+const ANS_KEY = (nisn) => `examAns:${nisn}`;
 const IDX_KEY = (nisn) => `examIdx:${nisn}`;
 
 function mulberry32(seed) {
@@ -84,7 +85,7 @@ export default function UjianPage() {
   /* ==== Soal & jawaban ==== */
   const [soal, setSoal] = useState([]);
   const [loading, setLoading] = useState(true);
-  const [jawaban, setJawaban] = useState({}); // {soalId: index}
+  const [jawaban, setJawaban] = useState({});
   const [idx, setIdx] = useState(0);
   const [locked, setLocked] = useState(false);
 
@@ -97,6 +98,48 @@ export default function UjianPage() {
   /* ==== Timer ==== */
   const [deadline, setDeadline] = useState(null);
   const [remain, setRemain] = useState(DURATION_MS);
+
+  /* ========= Anti copy / security (UI) ========= */
+  useEffect(() => {
+    const el = document.documentElement;
+    el.classList.add("no-copy");
+    const onKeyDown = (e) => {
+      const k = e.key?.toLowerCase?.();
+      const mod = e.ctrlKey || e.metaKey;
+      const blockCombo =
+        (mod && ["c", "x", "v", "s", "p", "u", "a"].includes(k)) ||
+        e.key === "F12";
+      if (blockCombo) {
+        e.preventDefault();
+        e.stopPropagation();
+        return false;
+      }
+    };
+    document.addEventListener("keydown", onKeyDown, true);
+
+    const onDragStart = (e) => { e.preventDefault(); };
+    const onSelectStart = (e) => { e.preventDefault(); };
+    document.addEventListener("dragstart", onDragStart, true);
+    document.addEventListener("selectstart", onSelectStart, true);
+
+    return () => {
+      el.classList.remove("no-copy");
+      document.removeEventListener("keydown", onKeyDown, true);
+      document.removeEventListener("dragstart", onDragStart, true);
+      document.removeEventListener("selectstart", onSelectStart, true);
+    };
+  }, []);
+
+  const handleClipboardEvt = (e) => {
+    e.preventDefault();
+    e.stopPropagation();
+    return false;
+  };
+  const handleContextMenu = (e) => {
+    e.preventDefault();
+    e.stopPropagation();
+    return false;
+  };
 
   /* ========= Gate: ambil user & cek izin ========= */
   useEffect(() => {
@@ -117,7 +160,6 @@ export default function UjianPage() {
         if (!snap.exists()) { router.replace("/confirm-ujian"); return; }
         const d = snap.data() || {};
 
-        // SYARAT SEDERHANA: pembayaran verified & belum completed
         const paid =
           d.verifiedPayment === true ||
           d.registrationPaymentStatus === "verified" ||
@@ -144,7 +186,7 @@ export default function UjianPage() {
       }
     })();
     return () => { cancelled = true; };
-  }, [nisn, router, db]);
+  }, [nisn, router]);
 
   /* ========= Inisialisasi deadline ========= */
   useEffect(() => {
@@ -170,12 +212,11 @@ export default function UjianPage() {
       if (killed) return;
       const r = Math.max(deadline - Date.now(), 0);
       setRemain(r);
-      if (r === 0) handleFinish(true); // auto submit
+      if (r === 0) handleFinish(true);
     };
     tick();
     const id = setInterval(tick, 1000);
     return () => { killed = true; clearInterval(id); };
-    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [deadline]);
 
   /* ========= Load soal + RESTORE jawaban dari users_app ========= */
@@ -197,7 +238,6 @@ export default function UjianPage() {
         const shuffled = shuffleDeterministic(rows, String(nisn));
         setSoal(shuffled);
 
-        // === Restore dari users_app ===
         const uSnap = await getDoc(doc(db, "users_app", String(nisn)));
         if (uSnap.exists()) {
           const u = uSnap.data() || {};
@@ -213,7 +253,6 @@ export default function UjianPage() {
           setIdx(0);
         }
 
-        // (opsional) merge dari localStorage juga
         try {
           const rawAns = localStorage.getItem(ANS_KEY(nisn));
           if (rawAns) {
@@ -237,7 +276,7 @@ export default function UjianPage() {
       }
     })();
     return () => { disposed = true; };
-  }, [allowed, regLevelSafe, nisn, db]);
+  }, [allowed, regLevelSafe, nisn]);
 
   /* ========= Derivatif ========= */
   const totalSoal = soal.length;
@@ -300,7 +339,7 @@ export default function UjianPage() {
     if (locked) return;
     setJawaban((prev) => {
       const next = { ...prev, [id]: pilihanIdx };
-      saveAnswerCloud(id, pilihanIdx, idx); // autosave ke Firestore
+      saveAnswerCloud(id, pilihanIdx, idx);
       return next;
     });
   }
@@ -370,19 +409,45 @@ export default function UjianPage() {
     );
   }
   if (!allowed) {
-    return null; // router.replace sudah dijalankan
+    return null;
   }
   if (loading) {
     return (
-      <div className="min-h-screen flex items-center justify-center bg-white">
+      <div className="min-h-screen flex items-center justify-center bg-white"
+           onCopy={handleClipboardEvt}
+           onCut={handleClipboardEvt}
+           onPaste={handleClipboardEvt}
+           onContextMenu={handleContextMenu}>
         <div className="text-slate-600 animate-pulse">Memuat soal…</div>
+        <style jsx global>{`
+          .no-copy, .no-copy * {
+            -webkit-user-select: none !important;
+            -moz-user-select: none !important;
+            -ms-user-select: none !important;
+            user-select: none !important;
+          }
+          img, iframe { pointer-events: none; }
+        `}</style>
       </div>
     );
   }
   if (!totalSoal) {
     return (
-      <div className="min-h-screen flex items-center justify-center bg-white">
-        <div className="text-slate-600">Belum ada soal untuk tingkat {regLevelRaw || "-" }.</div>
+      <div className="min-h-screen flex items-center justify-center bg-white"
+           onCopy={handleClipboardEvt}
+           onCut={handleClipboardEvt}
+           onPaste={handleClipboardEvt}
+           onContextMenu={handleContextMenu}>
+        <div className="text-slate-600">Belum ada soal untuk tingkat {regLevelRaw || "-"}.</div>
+        <style jsx global>{`
+          .no-copy, .no-copy * {
+            -webkit-user-select: none !important;
+            -moz-user-select: none !important;
+            -ms-user-select: none !important;
+            user-select: none !important;
+          }
+          img, iframe { pointer-events: none; }
+        `}</style>
       </div>
     );
   }
@@ -391,41 +456,95 @@ export default function UjianPage() {
   const checked = current ? jawaban[current.id] : undefined;
 
   return (
-    <div className="min-h-screen bg-white">
-      {/* Header */}
-      <div className="border-b bg-violet-700 text-white">
-        <div className="max-w-4xl mx-auto px-6 py-4 flex items-center justify-between">
-          <h1 className="text-xl md:text-2xl font-bold">
-            Ujian Akademik PPDB — NISN {nisn} • {regLevelRaw}
-          </h1>
-          <div className="flex items-center gap-2">
-            <div className="rounded-lg bg-white/10 px-3 py-1.5 font-mono text-sm" title="Sisa waktu">
-              ⏳ {fmtRemain}
+    <div
+      className="min-h-screen bg-gray-50"
+      onCopy={handleClipboardEvt}
+      onCut={handleClipboardEvt}
+      onPaste={handleClipboardEvt}
+      onContextMenu={handleContextMenu}
+      onDragStart={handleClipboardEvt}
+    >
+      <style jsx global>{`
+        .no-copy, .no-copy * {
+          -webkit-user-select: none !important;
+          -moz-user-select: none !important;
+          -ms-user-select: none !important;
+          user-select: none !important;
+        }
+        img, iframe { pointer-events: none; }
+      `}</style>
+
+      {/* Header - Responsive */}
+      <div className="border-b-4 border-green-500 bg-white shadow-sm sticky top-0 z-10">
+        <div className="max-w-4xl mx-auto px-3 sm:px-6 py-3 sm:py-4">
+          {/* Mobile Layout */}
+          <div className="block lg:hidden">
+            <div className="flex items-center justify-between mb-2">
+              <h1 className="text-sm font-bold text-gray-800">
+                Ujian PPDB
+              </h1>
+              <div className="flex items-center gap-1.5 text-xs bg-green-50 text-green-700 px-2 py-1 rounded font-mono border border-green-200">
+                <Clock className="w-3 h-3" />
+                {fmtRemain}
+              </div>
             </div>
-            <button
-              onClick={() => setShowNav(true)}
-              className="rounded-full border border-white/60 text-white px-4 py-2 backdrop-blur hover:bg-white/10 text-sm"
-              title="Lihat semua nomor soal"
-            >
-              Nomor Soal ({idx + 1}/{totalSoal})
-            </button>
+            <div className="flex items-center justify-between text-xs text-gray-600">
+              <span>NISN {nisn} • {regLevelRaw}</span>
+              <button
+                onClick={() => setShowNav(true)}
+                className="text-green-600 font-medium hover:text-green-700"
+              >
+                Soal {idx + 1}/{totalSoal}
+              </button>
+            </div>
+          </div>
+
+          {/* Desktop Layout */}
+          <div className="hidden lg:flex items-center justify-between">
+            <div>
+              <h1 className="text-lg font-bold text-gray-800">
+                Ujian Akademik PPDB
+              </h1>
+              <p className="text-sm text-gray-600 mt-0.5">
+                NISN {nisn} • {regLevelRaw}
+              </p>
+            </div>
+            <div className="flex items-center gap-3">
+              <div className="flex items-center gap-2 bg-green-50 text-green-700 px-3 py-1.5 rounded-lg font-mono text-sm border border-green-200">
+                <Clock className="w-4 h-4" />
+                {fmtRemain}
+              </div>
+              <button
+                onClick={() => setShowNav(true)}
+                className="text-sm px-3 py-1.5 rounded-lg border border-green-600 text-green-700 hover:bg-green-50 font-medium transition-colors"
+              >
+                Nomor Soal ({idx + 1}/{totalSoal})
+              </button>
+            </div>
           </div>
         </div>
       </div>
 
-      {/* Satu soal */}
-      <main className="max-w-4xl mx-auto px-6 py-8">
-        <div className="rounded-xl border border-slate-200 bg-white shadow-sm overflow-hidden">
-          <div className="p-5">
-            <div className="text-sm text-slate-500 mb-1">
+      {/* Main Content */}
+      <main className="max-w-4xl mx-auto px-3 sm:px-6 py-4 sm:py-6">
+        <div className="rounded-lg sm:rounded-xl border border-gray-200 bg-white shadow-sm overflow-hidden">
+          <div className="p-4 sm:p-6">
+            <div className="text-xs sm:text-sm text-gray-500 mb-2">
               Soal {idx + 1} dari {totalSoal}
             </div>
-            <div className="font-semibold text-slate-800 mb-3">{current?.pertanyaan}</div>
+            <div className="font-semibold text-sm sm:text-base text-gray-800 mb-4">
+              {current?.pertanyaan}
+            </div>
 
             {current?.imageUrl ? (
               <div className="mb-4">
-                <div className="w-full rounded-lg border bg-slate-50 flex justify-center p-4">
-                  <img src={current.imageUrl} alt="" className="max-h-72 object-contain" />
+                <div className="w-full rounded-lg border bg-gray-50 flex justify-center p-3 sm:p-4">
+                  <img 
+                    src={current.imageUrl} 
+                    alt="" 
+                    className="max-h-48 sm:max-h-72 object-contain" 
+                    draggable="false" 
+                  />
                 </div>
               </div>
             ) : null}
@@ -433,12 +552,27 @@ export default function UjianPage() {
             <div className="space-y-2">
               {current?.opsi?.map((ops, i) => {
                 const isChecked = checked === i;
+
+                const text =
+                  typeof ops === "string"
+                    ? ops
+                    : (ops?.text ?? ops?.label ?? ops?.value ?? `Pilihan ${i + 1}`);
+
+                const fromObj =
+                  typeof ops === "object"
+                    ? (ops.imageUrl || ops.imgUrl || ops.image || ops.img || ops.url || null)
+                    : null;
+                const fromArray =
+                  Array.isArray(current?.opsiImages) ? (current.opsiImages[i] || null) : null;
+
+                const optImg = fromObj || fromArray;
+
                 return (
                   <label
                     key={i}
                     className={[
-                      "flex items-center gap-2 p-2 rounded-lg cursor-pointer",
-                      isChecked ? "bg-violet-50 ring-1 ring-violet-200" : "hover:bg-slate-50",
+                      "flex items-start gap-2 sm:gap-3 p-2.5 sm:p-3 rounded-lg cursor-pointer transition-colors",
+                      isChecked ? "bg-green-50 ring-1 ring-green-300" : "hover:bg-gray-50",
                     ].join(" ")}
                   >
                     <input
@@ -447,30 +581,47 @@ export default function UjianPage() {
                       checked={isChecked || false}
                       onChange={() => pilih(current.id, i)}
                       disabled={locked}
-                      className="accent-violet-600"
+                      className="mt-0.5 sm:mt-1 accent-green-600 w-4 h-4"
                     />
-                    <span className="text-slate-700">{ops}</span>
+
+                    <div className="flex-1">
+                      <div className="text-sm sm:text-base text-gray-700">{text}</div>
+
+                      {optImg ? (
+                        <div className="mt-2">
+                          <img
+                            src={optImg}
+                            alt={`opsi-${i + 1}`}
+                            className="max-h-32 sm:max-h-40 rounded-md border border-gray-200 object-contain"
+                            draggable="false"
+                          />
+                        </div>
+                      ) : null}
+                    </div>
                   </label>
                 );
               })}
             </div>
 
-            <div className="mt-6 flex items-center justify-between">
+            {/* Navigation Buttons - Responsive */}
+            <div className="mt-6 flex flex-col sm:flex-row items-center justify-between gap-3">
               <button
                 onClick={prev}
                 disabled={idx === 0 || locked}
-                className="rounded-full border px-5 py-2 text-slate-700 hover:bg-slate-50 disabled:opacity-50"
+                className="w-full sm:w-auto text-sm px-4 py-2 rounded-lg border border-gray-300 text-gray-700 hover:bg-gray-50 disabled:opacity-50 disabled:cursor-not-allowed transition-colors"
               >
                 ← Sebelumnya
               </button>
-              <div className="text-sm text-slate-500">
+              
+              <div className="text-xs sm:text-sm text-gray-500 order-first sm:order-none">
                 Dijawab {answeredCount}/{totalSoal}
               </div>
+              
               {idx < totalSoal - 1 ? (
                 <button
                   onClick={next}
                   disabled={locked}
-                  className="rounded-full bg-violet-700 text-white px-5 py-2 font-semibold shadow hover:bg-violet-800 disabled:opacity-50"
+                  className="w-full sm:w-auto text-sm bg-green-600 text-white px-4 py-2 rounded-lg font-medium shadow hover:bg-green-700 disabled:opacity-50 disabled:cursor-not-allowed transition-colors"
                 >
                   Selanjutnya →
                 </button>
@@ -478,7 +629,7 @@ export default function UjianPage() {
                 <button
                   onClick={() => setAskFinish(true)}
                   disabled={locked}
-                  className="rounded-full bg-violet-700 text-white px-5 py-2 font-semibold shadow hover:bg-violet-800 disabled:opacity-50"
+                  className="w-full sm:w-auto text-sm bg-green-600 text-white px-4 py-2 rounded-lg font-medium shadow hover:bg-green-700 disabled:opacity-50 disabled:cursor-not-allowed transition-colors"
                 >
                   Selesai Ujian
                 </button>

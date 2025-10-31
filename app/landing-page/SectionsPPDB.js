@@ -109,7 +109,7 @@ function SectionHeader({ label, title, subtitle }) {
 
 export default function SectionsPPDB() {
   return (
-    <div className="relative z-10 bg-gradient-to-b from-white via-violet-50/20 to-white">
+     <div className="relative z-10 bg-gradient-to-b from-white via-violet-50/20 to-white pt-10 md:pt-14">
       {/* Decorative background elements */}
       <div className="pointer-events-none absolute inset-0 overflow-hidden">
         <div className="absolute -top-40 right-0 h-96 w-96 rounded-full bg-violet-200/20 blur-3xl" />
@@ -121,10 +121,10 @@ export default function SectionsPPDB() {
         <SectionHeader 
           label="Pengenalan"
           title="Video Profil Pondok"
-          subtitle="Mengenal lebih dekat Pondok Pesantren Assunnah melalui video profil"
+          subtitle="Mengenal lebih dekat Pondok Pesantren Assunnah"
         />
         <div className="mt-12">
-          <Youtube url="https://youtu.be/eZqIq4YAZ68" />
+          <Youtube url="https://www.youtube.com/watch?v=T_Nwg_-GTNo" />
         </div>
       </Section>
 
@@ -180,7 +180,7 @@ export default function SectionsPPDB() {
             <div className="space-y-4">
               {[
                 "Menyelenggarakan Pengajaran dan Pengasuhan untuk Melahirkan Santri yang Beraqidah dan Bermanhaj Salaf Ahlussunnah Wal Jamaah, Mengamalkan Ilmu dan Berakhlaq Mulia",
-                "Menyelenggarakan Pengajaran dan Pengasuhan untuk Melahirkan Santri yang Menghafal, Memahami, dan Mengamalkan Al Qur&apos;an",
+                "Menyelenggarakan Pengajaran dan Pengasuhan untuk Melahirkan Santri yang Menghafal, Memahami, dan Mengamalkan Al Qur'an",
                 "Menyelenggarakan Pengajaran dan Pengasuhan untuk Melahirkan Santri yang Menguasai Bidang Sains, Teknologi Informatika, Bahasa Arab, dan Bahasa Inggris",
                 "Menyelenggarakan Pengajaran dan Pengasuhan untuk Melahirkan Santri yang Mampu Melanjutkan Pendidikan ke Jenjang Perguruan Tinggi Dalam dan Luar Negeri",
                 "Melaksanakan Pembelajaran yang Aktif, Kreatif, Efektif, dan Menyenangkan",
@@ -217,7 +217,7 @@ export default function SectionsPPDB() {
                   "Mencintai Allah dan Rasul-Nya",
                   "BerAqidah dan Bermanhaj Salaf Ahlussunnah Wal Jamaah, Mengamalkan Ilmu dan Berakhlaq Mulia",
                   "Melaksanakan Praktek Ibadah Sesuai Sunnah",
-                  "Menghafal, Memahami, dan Mengamalkan Al Qur&apos;an",
+                  "Menghafal, Memahami, dan Mengamalkan Al Qur'an",
                   "Menguasai Bahasa Arab dan Bahasa Inggris",
                   "Melanjutkan Pendidikan ke Jenjang Perguruan Tinggi Dalam dan Luar Negeri",
                 ].map((txt, i) => (
@@ -248,7 +248,7 @@ export default function SectionsPPDB() {
                 perguruan tinggi luar negeri (Universitas Islam Madinah, Kuliah
                 Masjidil Haram, Kerajaan Saudi Arabia) dan dalam negeri (LIPIA,
                 STAI Ali bin Abi Thalib, STDI Imam Syafi&apos;i, Ma&apos;had Aly As-Sunnah,
-                UNRAM, IKIP dan lulusan berbagai Pondok Pesantren di Indonesia).
+                UNRAM, dan lulusan berbagai Pondok Pesantren di Indonesia).
               </p>
             </div>
           </div>

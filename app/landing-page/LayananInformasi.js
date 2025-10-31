@@ -14,7 +14,7 @@ export default function LayananInformasi({
   addressTitle = "Alamat",
   address = "Jln. TGH. Jamaluddin Bagik Nyaka Santri, Aikmel, Lombok Timur, NTB.",
   phoneTitle = "Telepon/WhatsApp",
-  phone = "(+62) 878 5777 1623",
+  phone = "(+62) 877 2024 2025",
   jamTitle = "Jam Pelayanan Offline",
   jam = "Sabtu - Kamis : 08.00 - 12.00 WITA",
   mapSrc = "https://www.google.com/maps/embed?pb=!1m14!1m8!1m3!1d1972.6191284475178!2d116.54021900000001!3d-8.573075!3m2!1i1024!2i768!4f13.1!3m3!1m2!1s0x2dcc35cff864eeb3%3A0x3b3faa6132c49ded!2sPondok%20Pesantren%20Assunnah%20lombok!5e0!3m2!1sid!2ssg!4v1759373752363!5m2!1sid!2ssg",

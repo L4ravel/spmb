@@ -1,96 +1,112 @@
-"use client";
+// PPDBFormUI.jsx
+import React from "react";
 
-/** ===== UI HELPERS (dipisah untuk reuse & maintenance) ===== */
-export const Field = ({ label, children, required, className }) => (
-  <label className={`block ${className || ""}`}>
-    <span className="block text-sm font-semibold text-slate-700">
-      {label} {required && <span className="text-rose-600">*</span>}
+export const Section = ({ title, desc, children }) => (
+  <div className="rounded-2xl border border-slate-200 bg-white p-4 md:p-5">
+    <div className="mb-3">
+      <div className="text-sm font-semibold text-slate-800">{title}</div>
+      {desc ? <div className="text-xs text-slate-600">{desc}</div> : null}
+    </div>
+    <div className="grid grid-cols-1 md:grid-cols-2 gap-3">{children}</div>
+  </div>
+);
+
+export const Field = ({ label, required, className = "", children }) => (
+  <label className={`block ${className}`}>
+    <span className="mb-1 inline-block text-[13px] font-medium text-slate-700">
+      {label} {required ? <span className="text-rose-600">*</span> : null}
     </span>
-    <div className="mt-1">{children}</div>
+    {children}
   </label>
 );
 
-export const Input = (props) => (
-  <input
-    {...props}
-    className={`w-full rounded-lg border border-slate-300 bg-white px-3 py-2 text-slate-900 shadow-sm focus:outline-none focus:ring-2 focus:ring-indigo-500 disabled:bg-slate-100 disabled:text-slate-500 ${props.className || ""}`}
-  />
-);
-
-export const Select = ({ children, ...p }) => (
-  <select
-    {...p}
-    className="w-full rounded-lg border border-slate-300 bg-white px-3 py-2 text-slate-900 shadow-sm focus:outline-none focus:ring-2 focus:ring-indigo-500 disabled:bg-slate-100 disabled:text-slate-500"
-  >
-    {children}
-  </select>
-);
-
-export const Section = ({ title, desc, children }) => (
-  <section className="rounded-2xl border border-slate-200 bg-white p-5 md:p-6">
-    <h3 className="text-lg font-extrabold text-slate-900">{title}</h3>
-    {desc && <p className="mt-1 text-sm text-slate-600">{desc}</p>}
-    <div className="mt-4 grid grid-cols-1 md:grid-cols-2 gap-4">{children}</div>
-  </section>
-);
-
-/** ===== IncomeSelect (INTEGER) =====
- * - Menyimpan nilai integer rupiah pada onChange (Number).
- * - value terima Number (mis. 1500000) atau "" (belum dipilih).
- * - Titik tengah rentang dipakai sebagai perwakilan nilai.
+/** Input:
+ * - Tidak pakai placeholder normal.
+ * - Jika ada error → tampilkan error sebagai placeholder & ring merah.
  */
-export const IncomeSelect = ({ name, value, onChange, disabled }) => {
-  const handle = (e) => {
-    const raw = e.target.value;
-    // "" tetap string kosong (belum dipilih), selain itu di-cast ke Number
-    const casted = raw === "" ? "" : Number.parseInt(raw, 10);
-    // lempar event bergaya HTMLInputElement dengan value sudah Number
-    onChange?.({
-      ...e,
-      target: { ...e.target, name, value: casted },
-    });
-  };
-
+export const Input = ({ className = "", error, id, name, ...props }) => {
+  const ring = error ? "focus:ring-rose-500 ring-1 ring-rose-400" : "focus:ring-indigo-500";
   return (
-    <Select name={name} value={value === "" ? "" : String(value)} onChange={handle} disabled={disabled}>
-      <option value="">— Pilih Penghasilan —</option>
-      <option value="500000">0 - 1 juta</option>
-      <option value="1500000">1 - 2 juta</option>
-      <option value="2500000">2 - 3 juta</option>
-      <option value="4000000">3 - 5 juta</option>
-      <option value="7500000">5 - 10 juta</option>
-      <option value="10000000">10 juta</option>
-    </Select>
+    <input
+      {...props}
+      id={id || name}
+      name={name}
+      placeholder={error ? String(error) : ""}     // ⬅️ placeholder hanya saat error
+      aria-invalid={!!error}
+      className={[
+        "w-full rounded-lg border border-slate-300 bg-white px-3 py-2 text-slate-900 shadow-sm focus:outline-none",
+        ring,
+        error ? "placeholder-rose-500" : "",
+        "disabled:bg-slate-100 disabled:text-slate-500",
+        className,
+      ].join(" ")}
+    />
   );
 };
 
-export const PekerjaanSelect = (p) => (
-  <Select {...p}>
-    <option value="">— Pilih Pekerjaan —</option>
-    <option value="pns">PNS / ASN</option>
-    <option value="swasta">Pegawai Swasta</option>
-    <option value="wiraswasta">Wiraswasta / Wirausaha</option>
-    <option value="petani">Petani</option>
-    <option value="nelayan">Nelayan</option>
-    <option value="buruh">Buruh / Pekerja Harian</option>
-    <option value="pedagang">Pedagang</option>
-    <option value="transport">Sopir / Ojek / Transportasi</option>
-    <option value="lainnya">Lainnya</option>
+/** Select:
+ * - Tidak ada placeholder; jika error & belum memilih, tampilkan option disabled berisi pesan error.
+ */
+export const Select = ({ children, className = "", error, id, name, value, ...p }) => {
+  const ring = error ? "focus:ring-rose-500 ring-1 ring-rose-400" : "focus:ring-indigo-500";
+  const hasValue = value !== undefined && value !== null && String(value) !== "";
+  return (
+    <select
+      {...p}
+      id={id || name}
+      name={name}
+      value={value}
+      aria-invalid={!!error}
+      className={[
+        "w-full rounded-lg border border-slate-300 bg-white px-3 py-2 text-slate-900 shadow-sm focus:outline-none",
+        ring,
+        "disabled:bg-slate-100 disabled:text-slate-500",
+        className,
+      ].join(" ")}
+    >
+      {!hasValue && error ? (
+        <option value="" disabled>
+          {String(error)}
+        </option>
+      ) : null}
+      {children}
+    </select>
+  );
+};
+
+export const IncomeSelect = (props) => (
+  <Select {...props}>
+    <option value="">— Pilih Penghasilan —</option>
+    <option value="&lt; 1 Juta">{"< 1 Juta"}</option>
+    <option value="1 - 2 Juta">1 - 2 Juta</option>
+    <option value="2 - 3 Juta">2 - 3 Juta</option>
+    <option value="3 - 5 Juta">3 - 5 Juta</option>
+    <option value="5 - 10 Juta">5 - 10 Juta</option>
+    <option value="&gt;= 10 Juta">{">= 10 Juta"}</option>
   </Select>
 );
 
-export const PekerjaanSelectIbu = (p) => (
-  <Select {...p}>
+export const PekerjaanSelect = (props) => (
+  <Select {...props}>
     <option value="">— Pilih Pekerjaan —</option>
-    <option value="irt">Ibu Rumah Tangga (IRT)</option>
-    <option value="pns">PNS / ASN</option>
-    <option value="swasta">Pegawai Swasta</option>
-    <option value="wiraswasta">Wiraswasta / Wirausaha</option>
-    <option value="petani">Petani</option>
-    <option value="nelayan">Nelayan</option>
-    <option value="buruh">Buruh / Pekerja Harian</option>
-    <option value="pedagang">Pedagang</option>
-    <option value="transport">Sopir / Ojek / Transportasi</option>
-    <option value="lainnya">Lainnya</option>
+    <option value="Petani">Petani</option>
+    <option value="Buruh">Buruh</option>
+    <option value="Wiraswasta">Wiraswasta</option>
+    <option value="Karyawan">Karyawan</option>
+    <option value="PNS">PNS</option>
+    <option value="TNI/Polri">TNI/Polri</option>
+    <option value="Lainnya">Lainnya</option>
+  </Select>
+);
+
+export const PekerjaanSelectIbu = (props) => (
+  <Select {...props}>
+    <option value="">— Pilih Pekerjaan —</option>
+    <option value="Ibu Rumah Tangga">Ibu Rumah Tangga</option>
+    <option value="Buruh">Buruh</option>
+    <option value="Wiraswasta">Wiraswasta</option>
+    <option value="Karyawan">Karyawan</option>
+    <option value="PNS">PNS</option>
+    <option value="Lainnya">Lainnya</option>
   </Select>
 );
