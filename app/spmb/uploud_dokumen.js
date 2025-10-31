@@ -114,15 +114,27 @@ const UploudDokumen = forwardRef(function UploudDokumen(props, ref) {
 
   const onPickBenefit = (type) => setBenefitType(type);
 
-  const handleFile = (e) => {
-    const { name, files: ff } = e.target;
-    const f = ff?.[0] ?? null;
-    setFiles((s) => {
+  const handleFile = async (e) => {
+   const { name, files: ff } = e.target;
+    let f = ff?.[0] ?? null;
+   if (!f) return;
+    try {
+     // Kompres bila perlu (gambar kamera biasanya besar)
+      const { compressImageIfNeeded } = await import("@/lib/imageCompress");
+     f = await compressImageIfNeeded(f, 3 * 1024 * 1024); // target 3MB
+     if (f.size > 9 * 1024 * 1024) {
+       alert("Ukuran berkas setelah kompres masih terlalu besar (>9MB). Silakan ambil ulang dengan resolusi lebih rendah.");
+        return;
+      }
+    } catch (err) {
+      console.warn("compressImageIfNeeded failed:", err);
+   }
+   setFiles((s) => {
       const next = { ...s, [name]: f };
       emitChange(next);
       return next;
-    });
-  };
+   });
+ };
 
   // Input file dengan indikator visual ketika sudah terupload
   const FileInput = ({ name, label, required = false, accept = ".jpg,.jpeg,.png,.pdf", extra }) => {

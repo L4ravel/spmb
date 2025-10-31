@@ -1,9 +1,11 @@
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
+export const maxDuration = 60;
 
 import { NextResponse } from "next/server";
 import admin, { adminDb, FieldValue, adminBucket } from "@/lib/firebaseAdmin";
 import { randomBytes } from "crypto";
+import { Readable } from "stream";
 
 /* ===== Helpers & Bucket ===== */
 const digits = (s) => String(s || "").replace(/\D+/g, "");
@@ -39,12 +41,28 @@ const getBucket = () => {
   return admin.storage().bucket(name);
 };
 
+// batas aman produksi (Vercel body limit ketat). Kamera > 9MB ditolak.
+const MAX_FILE_BYTES = 9 * 1024 * 1024;
+
+/**
+ * Upload satu field file via STREAM (tanpa buffer).
+ * - Tolak jika > MAX_FILE_BYTES (kembalikan error 413 yang rapi).
+ */
 async function uploadFieldFile(fd, key, identifier) {
   const f = fd.get(key);
   if (!f || typeof f === "string" || !f.size) return null;
 
-  const ab = await f.arrayBuffer();
-  const buffer = Buffer.from(ab);
+  if (typeof f.size === "number" && f.size > MAX_FILE_BYTES) {
+    const sizeMB = (f.size / (1024 * 1024)).toFixed(1);
+    const maxMB = (MAX_FILE_BYTES / (1024 * 1024)).toFixed(0);
+    const err = new Error(
+      `Berkas "${key}" terlalu besar (${sizeMB}MB). Batas ${maxMB}MB.`
+    );
+    // tambahkan kode agar caller bisa balas 413
+    err.name = "PAYLOAD_TOO_LARGE";
+    throw err;
+  }
+
   const ts = Date.now();
   const ext = getExt(f.name, "bin");
   const storagePath = `ppdb/${identifier}/${key}-${ts}.${ext}`;
@@ -52,11 +70,18 @@ async function uploadFieldFile(fd, key, identifier) {
   const bucket = getBucket();
   const gcsFile = bucket.file(storagePath);
 
-  await gcsFile.save(buffer, {
-    resumable: true,
-    contentType: f.type || "application/octet-stream",
-    validation: "crc32c",
-    metadata: { cacheControl: "public,max-age=31536000" },
+  // stream: WebReadableStream -> Node Readable -> pipe ke GCS
+  const nodeStream = Readable.fromWeb(f.stream());
+  await new Promise((resolve, reject) => {
+    const ws = gcsFile.createWriteStream({
+      resumable: true,
+      contentType: f.type || "application/octet-stream",
+      validation: "crc32c",
+      metadata: { cacheControl: "public,max-age=31536000" },
+    });
+    nodeStream.pipe(ws);
+    ws.on("finish", resolve);
+    ws.on("error", reject);
   });
 
   const [url] = await gcsFile.getSignedUrl({
@@ -88,7 +113,8 @@ async function releaseUniqueNISN(ref) {
 }
 
 /* ===== Registration ID: 2026 + 4 alfanumerik (unik) ===== */
-const ALPHANUM = "0123456789abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ";
+const ALPHANUM =
+  "0123456789abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ";
 function randomToken4() {
   const buf = randomBytes(4);
   let out = "";
@@ -139,7 +165,8 @@ export async function POST(req) {
     const isEarly = isEarlyEducation(jenjang);
 
     // === GENERATE & RESERVE registrationId unik: 2026xxxx ===
-    const { id: registrationId, ref: regRef } = await reserveRegistrationId2026();
+    const { id: registrationId, ref: regRef } =
+      await reserveRegistrationId2026();
     uniqueRegRef = regRef;
 
     // === VALIDASI IDENTIFIER (docId) ===
@@ -147,7 +174,7 @@ export async function POST(req) {
     let docId = "";
 
     if (isEarly) {
-      // TK/SD: gunakan 8 digit terakhir NIK sebagai docId, tapi folder memakai NIK 16 digit (identifier)
+      // TK/SD: gunakan 8 digit terakhir NIK sebagai docId, folder memakai NIK 16 digit (identifier)
       const nik = digits(form.nik || "");
       if (!isNIK(nik)) {
         await releaseRegistrationId(uniqueRegRef);
@@ -156,10 +183,10 @@ export async function POST(req) {
           { status: 400 }
         );
       }
-      identifier = nik; // 16 digit → untuk folder & field identifier
+      identifier = nik; // 16 digit → folder & field identifier
       docId = nik.slice(-8); // ID dokumen
     } else {
-      // SMP/SMA/Ma'had Aly (Universitas): gunakan NISN sebagai docId & identifier
+      // SMP/SMA/Ma'had Aly: gunakan NISN
       const nisn = digits(form.nisn || "");
       if (!isNISN(nisn)) {
         await releaseRegistrationId(uniqueRegRef);
@@ -197,7 +224,7 @@ export async function POST(req) {
       await docRef.create({
         ...form,
         registrationId,
-        identifier, // <— konsisten
+        identifier,
         nik: form.nik || "",
         nisn: form.nisn || "",
         jenjang,
@@ -217,7 +244,7 @@ export async function POST(req) {
       );
     }
 
-    // === Upload berkas → selaras dengan komponen upload_dokumen ===
+    // === Upload berkas (stream) → selaras dengan komponen upload_dokumen ===
     const fileKeys = [
       "kk",
       "akta",
@@ -227,9 +254,9 @@ export async function POST(req) {
       "sktm",
       "pkhDtks",
       "suketMeninggalOrtu",
-      // khusus Ma'had Aly (universitas):
+      // khusus Ma'had Aly:
       "ktpMahasiswa",
-      // (kompatibilitas lama – aman diabaikan bila tidak ada)
+      // kompatibilitas lama:
       "foto",
       "kip",
     ];
@@ -239,17 +266,31 @@ export async function POST(req) {
     let uploadedCount = 0;
 
     for (const key of fileKeys) {
-      const up = await uploadFieldFile(fd, key, identifier);
-      if (up) {
-        uploadedCount++;
-        files[key] = up.url;
-        filesMeta[key] = {
-          path: up.storagePath,
-          url: up.url,
-          contentType: up.contentType,
-          size: up.size,
-          uploadedAt: FieldValue.serverTimestamp(),
-        };
+      try {
+        const up = await uploadFieldFile(fd, key, identifier);
+        if (up) {
+          uploadedCount++;
+          files[key] = up.url;
+          filesMeta[key] = {
+            path: up.storagePath,
+            url: up.url,
+            contentType: up.contentType,
+            size: up.size,
+            uploadedAt: FieldValue.serverTimestamp(),
+          };
+        }
+      } catch (e) {
+        if (e?.name === "PAYLOAD_TOO_LARGE") {
+          // Hapus dokumen & reservasi lalu balas 413 JSON (bukan HTML)
+          await docRef.delete().catch(() => {});
+          await releaseUniqueNISN(uniqueNisnRef);
+          await releaseRegistrationId(uniqueRegRef);
+          return NextResponse.json(
+            { success: false, error: e.message, code: "PAYLOAD_TOO_LARGE" },
+            { status: 413 }
+          );
+        }
+        throw e;
       }
     }
 
@@ -269,7 +310,7 @@ export async function POST(req) {
       {
         ...form,
         registrationId,
-        identifier, // <— konsisten
+        identifier,
         nik: form.nik || "",
         nisn: form.nisn || "",
         jenjang,
@@ -285,7 +326,7 @@ export async function POST(req) {
     return NextResponse.json({
       success: true,
       id: docId,
-      identifier, // <— perbaikan: bukan docId
+      identifier,
       registrationId,
       bucket: bucketName,
       folder: `ppdb/${identifier}/`,
@@ -301,9 +342,12 @@ export async function POST(req) {
       await releaseRegistrationId(uniqueRegRef);
     } catch {}
     console.error("PPDB API error:", err);
+    const status =
+      err?.name === "PAYLOAD_TOO_LARGE" ? 413 :
+      typeof err?.status === "number" ? err.status : 500;
     return NextResponse.json(
       { success: false, error: err?.message || String(err) },
-      { status: 500 }
+      { status }
     );
   }
 }
