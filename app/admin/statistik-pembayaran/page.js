@@ -259,25 +259,41 @@ function RevenueBarChart({ data, labels, height = 280 }) {
 export default function StatistikPembayaranPage() {
   const [activeTab, setActiveTab] = useState("daily");
   const [dateFrom, setDateFrom] = useState(() => {
-  const d = addDays(new Date(), -6);             
-  return dateInputLocal(atStartOfDay(d));       
-});
-const [dateTo, setDateTo] = useState(() => {
-  const today = atStartOfDay(new Date());
-  return dateInputLocal(today);                  
-});
+    const d = addDays(new Date(), -6);
+    return dateInputLocal(atStartOfDay(d));
+  });
+  const [dateTo, setDateTo] = useState(() => {
+    const today = atStartOfDay(new Date());
+    return dateInputLocal(today);
+  });
 
   const [loading, setLoading] = useState(true);
   const [err, setErr] = useState("");
 
   const [labels, setLabels] = useState([]);
-  const [paidOnline, setPaidOnline] = useState([]);    // renamed
-  const [paidOffline, setPaidOffline] = useState([]);  // renamed
+  const [paidOnline, setPaidOnline] = useState([]);
+  const [paidOffline, setPaidOffline] = useState([]);
   const [unpaid, setUnpaid] = useState([]);
   const [totalPaidSeries, setTotalPaidSeries] = useState([]);
   const [totalRegistrants, setTotalRegistrants] = useState([]);
-  const [revenue, setRevenue] = useState([]);           // total paid (online+offline)
-  const [revenueOffline, setRevenueOffline] = useState([]); // offline only
+  const [revenue, setRevenue] = useState([]);
+  const [revenueOffline, setRevenueOffline] = useState([]);
+
+  // NEW: Fullscreen overlay ("count" | "revenue" | null)
+  const [fullscreen, setFullscreen] = useState(null);
+
+  // NEW: tinggi viewport agar chart pas 1 layar (tanpa scroll)
+  const [vh, setVh] = useState(0);
+  useEffect(() => {
+    const on = () => setVh(typeof window !== "undefined" ? window.innerHeight : 0);
+    on();
+    window.addEventListener("resize", on);
+    return () => window.removeEventListener("resize", on);
+  }, []);
+  // header overlay ~60px + padding dsb → sisa untuk chart container
+  const FS_CARD_PADDING = 160; // aman untuk mobile/desktop
+  const countFSHeight   = Math.max(360, vh - FS_CARD_PADDING);
+  const revenueFSHeight = Math.max(320, vh - FS_CARD_PADDING);
 
   const sumPaidOnline   = useMemo(() => paidOnline.reduce((a, b) => a + b, 0), [paidOnline]);
   const sumPaidOffline  = useMemo(() => paidOffline.reduce((a, b) => a + b, 0), [paidOffline]);
@@ -291,7 +307,6 @@ const [dateTo, setDateTo] = useState(() => {
   async function load(kind = activeTab) {
     setLoading(true);
     setErr("");
-
     try {
       let buckets = [];
       if (kind === "daily") {
@@ -337,7 +352,7 @@ const [dateTo, setDateTo] = useState(() => {
       setTotalPaidSeries(resTotPaid);
       setUnpaid(resUnpaid);
 
-      // ====== REVENUE ======
+      // REVENUE
       const feesMap = await fetchFeesMap();
       const feeLabels = Array.from(feesMap.keys());
       const revAll = [];
@@ -350,14 +365,12 @@ const [dateTo, setDateTo] = useState(() => {
 
         for (let i = 0; i < feeLabels.length; i += LCHUNK) {
           const slice = feeLabels.slice(i, i + LCHUNK);
-
           const countsPaid = await Promise.all(
             slice.map((label) => countPaidByLevelInRange(label, b.start, b.end, PERIOD_FIELD))
           );
           const countsOff = await Promise.all(
             slice.map((label) => countPaidByLevelAndMethodInRange(label, b.start, b.end, "offline", PERIOD_FIELD))
           );
-
           countsPaid.forEach((cnt, idx) => {
             const label = slice[idx];
             const fee = feesMap.get(label) || 0;
@@ -374,7 +387,6 @@ const [dateTo, setDateTo] = useState(() => {
       }
       setRevenue(revAll);
       setRevenueOffline(revOff);
-
     } catch (e) {
       console.error(e);
       setErr(e?.message || "Gagal memuat statistik.");
@@ -391,18 +403,18 @@ const [dateTo, setDateTo] = useState(() => {
   const rup = (n) => new Intl.NumberFormat("id-ID",{style:"currency",currency:"IDR",maximumFractionDigits:0}).format(n);
 
   return (
-    <div className="min-h-screen ">
+    <div className="min-h-screen">
       <main className="w-full px-4 md:px-8 lg:px-10 py-8">
         {/* Header */}
         <div className="mb-8">
-          <div className="flex items-center gap-3 mb-2">         
+          <div className="flex items-center gap-3 mb-2">
             <h1 className="text-3xl md:text-4xl font-bold text-black">
               Statistik Pembayaran
             </h1>
-          </div>          
+          </div>
         </div>
 
-        {/* Tab Navigation */}
+        {/* Tab */}
         <div className="mb-6 bg-white rounded-2xl shadow-lg p-2 inline-flex gap-2">
           {[
             { id: "daily", label: "📅 Harian" },
@@ -414,8 +426,8 @@ const [dateTo, setDateTo] = useState(() => {
               onClick={() => { setActiveTab(t.id); load(t.id); }}
               className={[
                 "px-6 py-3 text-sm font-semibold rounded-xl transition-all duration-300",
-                activeTab === t.id 
-                  ? "bg-gradient-to-r from-violet-600 to-blue-600 text-white shadow-lg shadow-violet-200 scale-105" 
+                activeTab === t.id
+                  ? "bg-gradient-to-r from-violet-600 to-blue-600 text-white shadow-lg shadow-violet-200 scale-105"
                   : "text-slate-600 hover:bg-slate-50",
               ].join(" ")}
             >
@@ -424,7 +436,7 @@ const [dateTo, setDateTo] = useState(() => {
           ))}
         </div>
 
-        {/* Date Filter (Harian) */}
+        {/* Date Filter Harian */}
         {activeTab === "daily" && (
           <div className="mb-6 bg-white rounded-2xl shadow-lg p-6">
             <div className="flex items-center gap-2 mb-4">
@@ -452,8 +464,8 @@ const [dateTo, setDateTo] = useState(() => {
                   className="w-full rounded-xl border-2 border-slate-200 px-4 py-3 focus:border-violet-500 focus:ring-4 focus:ring-violet-100 transition-all"
                 />
               </div>
-              <button 
-                onClick={() => load("daily")} 
+              <button
+                onClick={() => load("daily")}
                 className="px-8 py-3 rounded-xl bg-gradient-to-r from-violet-600 to-blue-600 text-white font-semibold shadow-lg hover:shadow-xl hover:scale-105 transition-all duration-200"
               >
                 Tampilkan
@@ -473,7 +485,7 @@ const [dateTo, setDateTo] = useState(() => {
           </div>
         ) : (
           <>
-            {/* Summary Cards */}
+            {/* Summaries */}
             <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-5 gap-4 mb-6">
               <SummaryCard label="Total Pendaftar" value={nf(sumTotReg)} color="violet" icon="👥" />
               <SummaryCard label="Pembayaran Online" value={nf(sumPaidOnline)} color="green" icon="💳" />
@@ -482,7 +494,7 @@ const [dateTo, setDateTo] = useState(() => {
               <RevenueToggleCard offlineValue={rup(sumRevOffline)} onlineValue={rup(sumRevOnline)} />
             </div>
 
-            {/* Revenue Card (total paid) */}
+            {/* Revenue Total */}
             <div className="mb-6 rounded-2xl bg-gradient-to-br from-amber-500 to-orange-600 text-white p-6 shadow-xl">
               <div className="flex items-center justify-between">
                 <div>
@@ -496,32 +508,50 @@ const [dateTo, setDateTo] = useState(() => {
             <div className="w-full rounded-2xl bg-white shadow-xl p-6 mb-6 border border-slate-200">
               <div className="flex items-center justify-between mb-6 flex-wrap gap-4">
                 <h2 className="text-xl font-bold text-slate-800">📊 Grafik Jumlah Pembayaran</h2>
-                <div className="flex flex-wrap items-center gap-4 text-sm">
-                  <Legend color="#10b981" text="Online" />
-                  <Legend color="#3b82f6" text="Offline" />
-                  <Legend color="#8b5cf6" text="Total Bayar" />
-                  <Legend color="#ef4444" text="Belum Bayar" />
+                <div className="flex items-center gap-2">
+                  <div className="hidden sm:flex flex-wrap items-center gap-3 text-sm mr-2">
+                    <Legend color="#10b981" text="Online" />
+                    <Legend color="#3b82f6" text="Offline" />
+                    <Legend color="#8b5cf6" text="Total Bayar" />
+                    <Legend color="#ef4444" text="Belum Bayar" />
+                  </div>
+                  <button
+                    onClick={() => setFullscreen("count")}
+                    className="rounded-lg border border-slate-300 px-3 py-2 text-sm font-semibold text-slate-700 hover:bg-slate-50"
+                    title="Layar Penuh"
+                  >
+                    ⤢ Full Layar
+                  </button>
                 </div>
               </div>
               <div className="overflow-x-auto bg-slate-50 rounded-xl p-4">
-                <BarChart 
+                <BarChart
                   series={[
                     { name: "Online",      color: "#10b981", data: paidOnline },
                     { name: "Offline",     color: "#3b82f6", data: paidOffline },
                     { name: "Total Bayar", color: "#8b5cf6", data: totalPaidSeries },
                     { name: "Belum Bayar", color: "#ef4444", data: unpaid },
-                  ]} 
+                  ]}
                   labels={labels}
                   height={420}
                 />
               </div>
             </div>
 
-            {/* Chart: Revenue (total paid) */}
+            {/* Chart: Revenue */}
             <div className="rounded-2xl bg-white shadow-xl p-6 border border-slate-200">
               <div className="flex items-center justify-between mb-6 flex-wrap gap-4">
                 <h2 className="text-xl font-bold text-slate-800">💵 Grafik Pendapatan (Paid Only)</h2>
-                <Legend color="#f59e0b" text="Pendapatan (Rp)" />
+                <div className="flex items-center gap-2">
+                  <Legend color="#f59e0b" text="Pendapatan (Rp)" />
+                  <button
+                    onClick={() => setFullscreen("revenue")}
+                    className="rounded-lg border border-slate-300 px-3 py-2 text-sm font-semibold text-slate-700 hover:bg-slate-50"
+                    title="Layar Penuh"
+                  >
+                    ⤢ Full Layar
+                  </button>
+                </div>
               </div>
               <div className="overflow-x-auto bg-slate-50 rounded-xl p-4">
                 <RevenueBarChart data={revenue} labels={labels} height={280} />
@@ -530,6 +560,79 @@ const [dateTo, setDateTo] = useState(() => {
           </>
         )}
       </main>
+
+      {/* ===== Fullscreen Overlay (tanpa scroll) ===== */}
+      {fullscreen && (
+        <div className="fixed inset-0 z-[100] bg-black/70 backdrop-blur-sm">
+          <div className="absolute inset-0 flex flex-col">
+            {/* Header sticky */}
+            <div className="sticky top-0 z-[101] bg-slate-900/80 text-white px-4 py-3 flex items-center justify-between ring-1 ring-white/10 backdrop-saturate-150">
+              <div className="flex items-center gap-3">
+                <span className="text-lg font-bold">
+                  {fullscreen === "count" ? "📊 Grafik Jumlah Pembayaran" : "💵 Grafik Pendapatan"}
+                </span>
+                {fullscreen === "count" ? (
+                  <div className="hidden sm:flex items-center gap-3 text-xs">
+                    <Legend color="#10b981" text="Online" />
+                    <Legend color="#3b82f6" text="Offline" />
+                    <Legend color="#8b5cf6" text="Total Bayar" />
+                    <Legend color="#ef4444" text="Belum Bayar" />
+                  </div>
+                ) : (
+                  <div className="hidden sm:flex items-center gap-3 text-xs">
+                    <Legend color="#f59e0b" text="Pendapatan (Rp)" />
+                  </div>
+                )}
+              </div>
+              <button
+                onClick={() => setFullscreen(null)}
+                className="rounded-md bg-white/10 px-3 py-1.5 text-sm font-semibold hover:bg-white/20"
+                title="Tutup"
+              >
+                ✕ Tutup
+              </button>
+            </div>
+
+            {/* Konten pas 1 layar */}
+            {/* Konten pas 1 layar */}
+<div className="flex-1 p-3 sm:p-6 overflow-hidden">
+  {/* Mobile: center, Desktop: layout lama */}
+  <div className="mx-auto w-full max-w-[1600px] h-full md:block flex items-center justify-center">
+    <div className="rounded-xl bg-white shadow-2xl p-3 sm:p-6 md:h-full overflow-hidden
+                    w-full md:w-auto max-w-[100%] md:max-w-none
+                    my-4 md:my-0">
+      {fullscreen === "count" ? (
+        <div className="bg-slate-50 rounded-xl p-3 sm:p-6 overflow-hidden
+                        md:h-full h-auto">
+          <BarChart
+            series={[
+              { name: "Online",      color: "#10b981", data: paidOnline },
+              { name: "Offline",     color: "#3b82f6", data: paidOffline },
+              { name: "Total Bayar", color: "#8b5cf6", data: totalPaidSeries },
+              { name: "Belum Bayar", color: "#ef4444", data: unpaid },
+            ]}
+            labels={labels}
+            /* Desktop tetap memenuhi layar, Mobile punya margin atas-bawah agar tampak tengah */
+            height={countFSHeight}
+          />
+        </div>
+      ) : (
+        <div className="bg-slate-50 rounded-xl p-3 sm:p-6 overflow-hidden
+                        md:h-full h-auto">
+          <RevenueBarChart
+            data={revenue}
+            labels={labels}
+            height={revenueFSHeight}
+          />
+        </div>
+      )}
+    </div>
+  </div>
+</div>
+
+          </div>
+        </div>
+      )}
     </div>
   );
 }
@@ -537,7 +640,7 @@ const [dateTo, setDateTo] = useState(() => {
 /* ======= UI Components ======= */
 function Legend({ color, text }) {
   return (
-    <span className="inline-flex items-center gap-2 px-3 py-1.5 rounded-lg bg-white border border-slate-200">
+    <span className="inline-flex items-center gap-2 px-3 py-1.5 rounded-lg bg-white/90 border border-slate-200">
       <span className="w-3 h-3 rounded-full" style={{ backgroundColor: color }} />
       <span className="font-medium text-slate-700">{text}</span>
     </span>
@@ -552,7 +655,6 @@ function SummaryCard({ label, value, color, icon }) {
     red: "from-red-500 to-rose-600",
     orange: "from-amber-500 to-orange-600",
   };
-
   return (
     <div className="rounded-2xl bg-white shadow-lg p-6 border border-slate-200 hover:shadow-xl transition-shadow duration-300">
       <div className="flex items-start justify-between mb-3">
