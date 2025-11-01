@@ -82,6 +82,8 @@ export default function KuotaPage() {
   const [viewMode, setViewMode] = useState("grid");
   const [form, setForm] = useState({ label: "", limit: 0, open: true });
 
+  
+
   async function load() {
     setLoading(true);
     setErr("");
@@ -171,10 +173,9 @@ export default function KuotaPage() {
 
   const human = (n) => new Intl.NumberFormat("id-ID").format(n);
 
-  // Fungsi untuk menentukan warna berdasarkan persentase
+  // Warna progress per-kartu
   const getColorScheme = (percent) => {
     if (percent > 110) {
-      // Merah - Melebihi >10%
       return {
         border: "border-red-500",
         hoverBorder: "hover:border-red-600",
@@ -190,7 +191,6 @@ export default function KuotaPage() {
         status: "Melebihi Kuota"
       };
     } else if (percent >= 90 && percent <= 110) {
-      // Kuning - Sesuai target (90-110%)
       return {
         border: "border-yellow-500",
         hoverBorder: "hover:border-yellow-600",
@@ -206,7 +206,6 @@ export default function KuotaPage() {
         status: "Target"
       };
     } else {
-      // Hijau - Belum mencapai target
       return {
         border: "border-green-500",
         hoverBorder: "hover:border-green-600",
@@ -224,12 +223,24 @@ export default function KuotaPage() {
     }
   };
 
+  
+
+  // Aggregates
   const totalLimit = rows.reduce((s, r) => s + (Number(r.limit) || 0), 0);
-  const totalUsedValidated = rows.reduce((s, r) => s + (Number(r.usedValidated) || 0), 0);
-  const totalExcess = rows.reduce(
-    (s, r) => s + Math.max(0, (Number(r.usedValidated) || 0) - (Number(r.limit) || 0)),
-    0
-  );
+const totalUsedValidated = rows.reduce((s, r) => s + (Number(r.usedValidated) || 0), 0);
+const totalExcess = rows.reduce(
+  (s, r) => s + Math.max(0, (Number(r.usedValidated) || 0) - (Number(r.limit) || 0)),
+  0
+);
+
+// hitung persen dulu
+const percentOverall =
+  totalLimit > 0
+    ? Math.round((totalUsedValidated / totalLimit) * 100)
+    : (totalUsedValidated > 0 ? 100 : 0);
+
+// lalu clamp ke 0–100 untuk donut
+const pct = Math.min(100, Math.max(0, percentOverall));
 
   return (
     <div className="min-h-screen bg-white">
@@ -270,19 +281,73 @@ export default function KuotaPage() {
           </div>
         </div>
 
-        {/* Summary Cards */}
+        {/* Summary Cards (dengan persentase total) */}
         <div className="grid grid-cols-1 md:grid-cols-3 gap-3 mb-5">
+          {/* Total Kuota */}
           <div className="bg-slate-50 rounded-lg shadow-sm p-4 border-l-4 border-blue-500">
             <p className="text-xs text-slate-600 font-medium">Total Kuota</p>
             <p className="text-2xl font-bold text-slate-900 mt-0.5">{human(totalLimit)}</p>
+            <p className="text-[11px] text-slate-600 mt-1">Target keseluruhan (100%)</p>
           </div>
-          <div className="bg-slate-50 rounded-lg shadow-sm p-4 border-l-4 border-indigo-500">
-            <p className="text-xs text-slate-600 font-medium">Terdaftar</p>
-            <p className="text-2xl font-bold text-indigo-700 mt-0.5">{human(totalUsedValidated)}</p>
-          </div>
+
+          <div className="relative overflow-hidden rounded-lg border-l-4 border-indigo-500 bg-slate-50 p-4 shadow-sm">
+  <p className="text-xs font-medium text-slate-600">Terdaftar</p>
+
+  <div className="mt-1 flex items-center justify-between gap-3">
+    {/* Kiri: jumlah terdaftar + badge % di sampingnya */}
+    <div className="min-w-0">
+      <div className="flex items-baseline gap-2">
+        <span className="text-2xl md:text-3xl font-extrabold text-indigo-700">
+          {new Intl.NumberFormat("id-ID").format(totalUsedValidated)}
+        </span>
+        <span className="inline-flex items-center rounded-full px-2 py-0.5 text-xs font-bold bg-indigo-50 text-indigo-700 ring-1 ring-indigo-200">
+          {pct}%
+        </span>
+      </div>
+
+      {/* badge kecil “X dari Y” */}
+      <span className="mt-1 inline-flex items-center gap-1 rounded-full border border-indigo-200 bg-indigo-50 px-2 py-0.5 text-[11px] font-semibold text-indigo-700">
+        {new Intl.NumberFormat("id-ID").format(totalUsedValidated)} dari {new Intl.NumberFormat("id-ID").format(totalLimit)}
+      </span>
+    </div>
+
+    {/* Kanan: donut progress lebih menonjol + glow */}
+    <div className="relative h-20 w-20 md:h-24 md:w-24 shrink-0">
+      {/* glow belakang */}
+      <div className="absolute inset-0 rounded-full blur-xl opacity-20 bg-gradient-to-tr from-indigo-500 via-violet-500 to-fuchsia-500" />
+      {/* ring donut */}
+      <div
+        className="relative h-full w-full rounded-full shadow-lg"
+        style={{ background: `conic-gradient(#5b21b6 ${pct}%, #e5e7eb 0)` }}
+        aria-label={`Terpakai ${pct} persen dari total kuota`}
+        role="img"
+      >
+        <div className="absolute inset-[12%] rounded-full bg-slate-50" />
+        <div className="absolute inset-0 flex items-center justify-center">
+          <span className="text-sm font-extrabold text-slate-800">{pct}%</span>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  {/* Aksen bar di bawah */}
+  <div className="mt-3">
+    <div className="h-2 w-full overflow-hidden rounded-full bg-slate-200">
+      <div
+        className="h-2 rounded-full bg-gradient-to-r from-indigo-600 via-violet-600 to-fuchsia-600"
+        style={{ width: `${pct}%` }}
+      />
+    </div>
+  </div>
+</div>
+
+          {/* Melebihi */}
           <div className="bg-slate-50 rounded-lg shadow-sm p-4 border-l-4 border-purple-500">
             <p className="text-xs text-slate-600 font-medium">Melebihi</p>
             <p className="text-2xl font-bold text-purple-700 mt-0.5">{human(totalExcess)}</p>
+            <p className="text-[11px] text-slate-600 mt-1">
+              Terdaftar di atas kuota
+            </p>
           </div>
         </div>
 
@@ -336,7 +401,7 @@ export default function KuotaPage() {
           </div>
         </div>
 
-        {/* GRID VIEW - 4 cards per row */}
+        {/* GRID VIEW */}
         {viewMode === "grid" ? (
           loading ? (
             <div className="text-center py-12">
@@ -364,11 +429,10 @@ export default function KuotaPage() {
                     key={r.id}
                     className={`group bg-slate-50 rounded-lg shadow-sm hover:shadow-md p-3 border-l-4 ${colors.border} ${colors.hoverBorder} transition-all duration-300 hover:scale-[1.01] relative overflow-hidden`}
                   >
-                    {/* Background gradient overlay */}
                     <div className={`absolute inset-0 bg-gradient-to-br ${colors.gradient} to-transparent opacity-0 group-hover:opacity-100 transition-opacity duration-300`} />
                     
                     <div className="relative z-10">
-                      {/* Header - Horizontal Layout */}
+                      {/* Header */}
                       <div className="flex items-center justify-between mb-2">
                         <div className="flex items-center gap-2 flex-1 min-w-0">
                           <div className={`w-9 h-9 rounded-lg flex items-center justify-center ${colors.iconBg} ${colors.iconBgHover} transition-all duration-300 group-hover:scale-110 shadow-sm flex-shrink-0`}>
@@ -395,10 +459,10 @@ export default function KuotaPage() {
                         </span>
                       </div>
 
-                      {/* Main Stats - Horizontal Layout */}
+                      {/* Main Stats */}
                       <div className="flex items-center justify-between mb-2">
                         <div>
-                          <p className="text-[9px] text-slate-500 font-medium uppercase tracking-wide">Terpakai / Target</p>
+                          <p className="text-[9px] text-slate-500 font-medium uppercase tracking-wide">Terdaftar / Target</p>
                           <div className="flex items-baseline gap-1">
                             <p className="text-xl font-black text-slate-900">{human(used)}</p>
                             <p className="text-xs text-slate-500 font-medium">/ {human(limit)}</p>
@@ -443,7 +507,7 @@ export default function KuotaPage() {
           )
         ) : null}
 
-        {/* TABLE VIEW - tetap sama */}
+        {/* TABLE VIEW (tetap) */}
         {viewMode === "table" && (
           loading ? (
             <div className="text-center py-12">
@@ -466,9 +530,9 @@ export default function KuotaPage() {
                       <th className="px-4 py-4 text-left text-sm font-bold">Key</th>
                       <th className="px-4 py-4 text-center text-sm font-bold">Status</th>
                       <th className="px-4 py-4 text-right text-sm font-bold">Limit</th>
-                      <th className="px-4 py-4 text-right text-sm font-bold">Terpakai</th>
+                      <th className="px-4 py-4 text-right text-sm font-bold">Terdaftar</th>
                       <th className="px-4 py-4 text-right text-sm font-bold">Melebihi</th>
-                      <th className="px-4 py-4 text-right text-sm font-bold">% Terpakai</th>
+                      <th className="px-4 py-4 text-right text-sm font-bold">% Persentase</th>
                       <th className="px-4 py-4 text-left text-sm font-bold">Progress</th>
                       <th className="px-4 py-4 text-center text-sm font-bold">Aksi</th>
                     </tr>
@@ -555,7 +619,8 @@ export default function KuotaPage() {
                       <td className="px-4 py-4 text-right text-sm">{human(totalLimit)}</td>
                       <td className="px-4 py-4 text-right text-sm text-indigo-300">{human(totalUsedValidated)}</td>
                       <td className="px-4 py-4 text-right text-sm text-purple-300">{human(totalExcess)}</td>
-                      <td colSpan={3} className="px-4 py-4"></td>
+                      <td className="px-4 py-4 text-right text-sm">{percentOverall}%</td>
+                      <td colSpan={2} className="px-4 py-4"></td>
                     </tr>
                   </tfoot>
                 </table>
