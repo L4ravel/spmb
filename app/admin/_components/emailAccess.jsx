@@ -8,6 +8,7 @@ export const EMAIL_ACCESS = {
   "heniherawati@spmb.com": [ "/admin/pembayaran",],
   "zul@spmb.com": [ "/admin/pembayaran",], 
   "bahaudin@smpb.com": [ "/admin/pembayaran",],  
+  "ekasastrawijaya@spmb.com": [ "/admin/nilai-tahfidz",],  
   
 
   // Full Akses
@@ -17,10 +18,9 @@ export const EMAIL_ACCESS = {
   "hisyam.salafy@gmail.com": ["*"],
   "abdurrahman.man.88@gmail.com": ["*"],  
   "wirasandilalu12@gmail.com": ["*"],
-  
+  "amrizkaul@gmail.com": ["*"],
 
    
-
 };
 
 // Fallback kalau email tidak terdaftar:
