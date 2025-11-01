@@ -9,7 +9,12 @@ export const EMAIL_ACCESS = {
   "zul@spmb.com": [ "/admin/pembayaran",], 
   "bahaudin@smpb.com": [ "/admin/pembayaran",],  
   "ekasastrawijaya@spmb.com": [ "/admin/nilai-tahfidz",],  
-  
+  "rahmah@spmb.com": [ "/admin/nilai-tahfidz",],  
+  "zaenab@spmb.com": [ "/admin/nilai-tahfidz",],  
+  "yulianti@spmb.com": [ "/admin/nilai-tahfidz",],  
+  "syafii@spmb.com": [ "/admin/nilai-tahfidz",],  
+  "abuhusna@spmb.com": [ "/admin/nilai-tahfidz",],  
+  "abdulwahid@spmb.com": [ "/admin/nilai-tahfidz",],    
 
   // Full Akses
   "user@admin.com": [ "*"  
