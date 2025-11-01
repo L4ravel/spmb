@@ -228,6 +228,14 @@ function LoginInner() {
     "wirasandilalu12@gmail.com",
     "zul@spmb.com",
     "bahaudin@smpb.com",
+    "amrizkaul@gmail.com",
+    "ekasastrawijaya@spmb.com",
+    "rahmah@spmb.com",
+    "yulianti@spmb.com",
+    "zaenab@spmb.com",
+    "syafii@spmb.com",
+    "abuhusna@spmb.com",
+    "abdulwahid@spmb.com", 
   ].map((e) => e.toLowerCase());
 
   let role = ADMIN_EMAILS.includes(String(user.email || "").toLowerCase())
