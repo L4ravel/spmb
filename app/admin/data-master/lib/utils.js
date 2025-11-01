@@ -41,14 +41,29 @@ export function fmtDurationSince(v) {
   return `${sec} detik`;
 }
 
+/* ====== NEW: koalese teks “cerdas” ====== */
+export function coalesceText(list) {
+  for (const v of list || []) {
+    const s = typeof v === "string" ? v.trim() : "";
+    if (s && s !== "-") return s;
+  }
+  return "-";
+}
+
+/* ====== Perluas kandidat nomor WhatsApp ====== */
 export const pickWhatsApp = (doc) => {
-  const cands = [doc?.hpSiswa, doc?.waliWa, doc?.ibuWa, doc?.waliHP].map((x) =>
-    typeof x === "string" ? x.trim() : ""
-  );
+  const cands = [
+    doc?.hpSiswa, doc?.waliWa, doc?.ibuWa, doc?.waliHP,
+    doc?.noWhatsApp, doc?.noWhatsapp, doc?.noWA, doc?.noWa,
+    doc?.waSiswa, doc?.wa, doc?.telepon, doc?.telp, doc?.phone,
+    doc?.hpAyah, doc?.ayahWa, doc?.waAyah
+  ].map((x) => (typeof x === "string" ? x.trim() : ""));
   return cands.find((x) => x) || "-";
 };
 
-export const getAyahNama = (doc) => (doc?.ayahNama ? String(doc.ayahNama) : "-");
+/* ====== Perluas kandidat Nama Ayah/Wali ====== */
+export const getAyahNama = (doc) =>
+  coalesceText([doc?.ayahNama, doc?.namaAyah, doc?.ayah, doc?.waliNama, doc?.nama_wali]);
 
 export const displayNisn = (r) => {
   const nisn = String(r?.nisn ?? "").trim();

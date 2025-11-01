@@ -529,15 +529,15 @@ export default function AdminPembayaranPage() {
         <div className="mb-6 grid grid-cols-1 md:grid-cols-3 gap-4">
           <div className="rounded-2xl ring-1 ring-slate-200 bg-white p-5">
             <div className="text-xs font-medium text-slate-600">Total siswa (sesuai verifikator)</div>
-            <div className="mt-1 text-2xl font-bold text-black">{logic.totalSiswaByVerifier}</div>
+            <div className="mt-1 text-2xl font-bold text-black">{logic.totalAllRowsCount}</div>
           </div>
           <div className="rounded-2xl ring-1 ring-slate-200 bg-white p-5">
             <div className="text-xs font-medium text-slate-600">Terverifikasi</div>
-            <div className="mt-1 text-2xl font-bold text-emerald-700">{logic.totalVerifiedByVerifier}</div>
+            <div className="mt-1 text-2xl font-bold text-emerald-700">{logic.totalVerifiedGlobal}</div>
           </div>
           <div className="rounded-2xl ring-1 ring-slate-200 bg-white p-5">
             <div className="text-xs font-medium text-slate-600">Pending</div>
-            <div className="mt-1 text-2xl font-bold text-amber-700">{logic.totalPendingByVerifier}</div>
+            <div className="mt-1 text-2xl font-bold text-amber-700">{logic.totalPendingGlobal}</div>
           </div>
         </div>
 

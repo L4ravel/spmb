@@ -1,7 +1,5 @@
 "use client";
 
-import { PAGE_SIZE } from "../lib/utils";
-
 export default function Filters({
   levels,
   levelsLoading,
@@ -10,13 +8,21 @@ export default function Filters({
   filterParents, setFilterParents,
   filterStatus, setFilterStatus,
   search, setSearch,
-  pageIndex, viewLength, hasNext, loading, err,
+
+  // info & kontrol tampilan
+  pageIndex,
+  viewLength,          // jumlah yang benar-benar ditampilkan (dibatasi pageSize)
+  totalFiltered,       // jumlah data setelah filter (sebelum dibatasi pageSize)
+  totalAll,            // total keseluruhan peserta (tanpa filter)
+  hasNext, loading, err,
   onPrev, onNext,
   onExport, exporting,
+
+  pageSize, setPageSize, // 10 / 25 / 50
 }) {
   return (
     <div className="mt-4 rounded-2xl border border-slate-200 bg-white p-3 shadow-sm">
-      <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-5 gap-2">
+      <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-6 gap-2">
         {/* Jenjang */}
         <label className="block text-black">
           <span className="text-xs font-semibold text-slate-700">Jenjang</span>
@@ -38,9 +44,7 @@ export default function Filters({
 
         {/* Penghasilan Ortu (gabungan) */}
         <label className="block text-black">
-          <span className="text-xs font-semibold text-slate-700">
-            Penghasilan Ortu (total)
-          </span>
+          <span className="text-xs font-semibold text-slate-700">Penghasilan Ortu (total)</span>
           <select
             value={filterIncome}
             onChange={(e) => setFilterIncome(e.target.value)}
@@ -53,7 +57,7 @@ export default function Filters({
             <option value="2-3">2 - 3 juta</option>
             <option value="3-5">3 - 5 juta</option>
             <option value="5-10">5 - 10 juta</option>
-            <option value=">=10">10 juta</option>
+            <option value=">=10">≥ 10 juta</option>
           </select>
         </label>
 
@@ -84,6 +88,20 @@ export default function Filters({
             className="mt-1 w-full rounded-lg border border-slate-300 px-3 py-2 text-sm text-slate-800"
           />
         </label>
+
+        {/* Jumlah tampil per halaman (client-side) */}
+        <label className="block text-black">
+          <span className="text-xs font-semibold text-slate-700">Tampil</span>
+          <select
+            value={pageSize}
+            onChange={(e) => setPageSize(Number(e.target.value))}
+            className="mt-1 w-full rounded-lg border border-slate-300 bg-white px-3 py-2 text-sm"
+          >
+            <option value={10}>10</option>
+            <option value={25}>25</option>
+            <option value={50}>50</option>
+          </select>
+        </label>
       </div>
 
       {/* Status segment */}
@@ -110,23 +128,30 @@ export default function Filters({
         ))}
       </div>
 
-      {/* Pager + Export */}
+      {/* Info bar + Export */}
       <div className="mt-3 flex flex-col gap-2 md:flex-row md:items-center md:justify-between">
-        <div className="text-xs text-slate-600">
-          Halaman <b>{pageIndex + 1}</b> • Baris: <b>{viewLength}</b> / {PAGE_SIZE}
-          {err ? <span className="ml-2 text-rose-600">{err}</span> : null}
+        <div className="text-xs text-slate-700">
+          <div className="mb-1">
+            <b>Total peserta terdaftar:</b> {totalAll.toLocaleString("id-ID")}
+          </div>
+          <div>
+            Menampilkan <b>{viewLength}</b> dari <b>{totalFiltered.toLocaleString("id-ID")}</b> 
+            {err ? <span className="ml-2 text-rose-600">{err}</span> : null}
+          </div>
         </div>
+
         <div className="flex items-center gap-2">
+          {/* Tombol Prev/Next dibiarkan untuk kompatibilitas, tapi disabled */}
           <button
             onClick={onPrev}
-            disabled={pageIndex === 0 || loading}
+            disabled
             className="rounded border border-slate-300 px-3 py-1.5 text-sm text-slate-800 disabled:opacity-50"
           >
             ← Kembali
           </button>
           <button
             onClick={onNext}
-            disabled={!hasNext || loading}
+            disabled
             className="rounded border border-slate-300 px-3 py-1.5 text-sm text-slate-800 disabled:opacity-50"
           >
             Berikutnya →

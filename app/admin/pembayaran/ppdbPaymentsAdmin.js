@@ -2,10 +2,7 @@
 "use client";
 
 import { useEffect, useMemo, useRef, useState } from "react";
-import {
-  collection, doc, getDocs, limit, orderBy, query,
-  startAfter, where, updateDoc, serverTimestamp
-} from "firebase/firestore";
+import { collection, query, where, orderBy, limit, startAfter, getDocs, getCountFromServer } from "firebase/firestore";
 import { db, storage } from "@/lib/firebase";
 import { ref as sRef, uploadBytesResumable, getDownloadURL } from "firebase/storage";
 
@@ -63,7 +60,7 @@ export function useAdminPayments() {
   const [search, setSearch]       = useState("");
 
   // filters
-  const [statusFilter, setStatusFilter] = useState("pending"); // pending|verified|all
+  const [statusFilter, setStatusFilter] = useState("all"); // pending|verified|all
   const [filterMethod, setFilterMethod] = useState("all");     // all|online|offline
   const [filterProof, setFilterProof]   = useState("all");     // all|with|without
   const [filterLevel, setFilterLevel]   = useState("all");     // TK|SD|...|all
@@ -92,6 +89,73 @@ export function useAdminPayments() {
   // ====== Filter verifikator (DINAMIS dari data users_app/<nisn>) ======
   const [verifierFilter, setVerifierFilter] = useState("all"); // dari dropdown
   const [verifierQuery, setVerifierQuery]   = useState("");    // override: input bebas
+  const [totalRowsCount, setTotalRowsCount] = useState(0);
+  const [totalVerifiedCount, setTotalVerifiedCount] = useState(0);
+const [totalPendingCount, setTotalPendingCount]   = useState(0);
+
+  function buildCountQuery() {
+  const coll = collection(db, "users_app");
+  const parts = [];
+
+  if (statusFilter === "pending") {
+    parts.push(where("registrationPaymentStatus", "==", "waiting_review"));
+  } else if (statusFilter === "verified") {
+    parts.push(where("verifiedPayment", "==", true));
+  } else {
+    // "all" → tanpa where status
+  }
+
+  if (filterLevel !== "all") {
+    parts.push(where("registrationLevel", "==", filterLevel));
+  }
+
+  // urutan tidak diperlukan untuk count; cukup where*
+  return query(coll, ...parts);
+}
+
+function buildVerifiedCountQuery() {
+  const coll = collection(db, "users_app");
+  const parts = [
+    where("verifiedPayment", "==", true),
+    where("registrationPaymentMethod", "in", ["online", "offline"]),
+  ];
+  if (filterLevel !== "all") parts.push(where("registrationLevel", "==", filterLevel));
+  return query(coll, ...parts);
+}
+
+function buildPendingCountQuery() {
+  const coll = collection(db, "users_app");
+  const parts = [ where("registrationPaymentStatus", "==", "waiting_review") ];
+  if (filterLevel !== "all") parts.push(where("registrationLevel", "==", filterLevel));
+  return query(coll, ...parts);
+}
+
+async function refreshStatusCounts() {
+  try {
+    const [vSnap, pSnap] = await Promise.all([
+      getCountFromServer(buildVerifiedCountQuery()),
+      getCountFromServer(buildPendingCountQuery()),
+    ]);
+    setTotalVerifiedCount(vSnap.data().count || 0);
+    setTotalPendingCount(pSnap.data().count || 0);
+  } catch (e) {
+    console.error("refreshStatusCounts failed", e);
+    setTotalVerifiedCount(0);
+    setTotalPendingCount(0);
+  }
+}
+
+
+async function refreshCount() {
+  try {
+    const q = buildCountQuery();
+    const snap = await getCountFromServer(q);
+    setTotalRowsCount(snap.data().count || 0);
+  } catch (e) {
+    console.error("getCountFromServer failed", e);
+    setTotalRowsCount(0);
+  }
+}
 
   // hanya 3 email ini yang boleh pakai filter verifikator
   const canUseVerifierFilter = useMemo(() => {
@@ -188,6 +252,9 @@ export function useAdminPayments() {
 
   useEffect(() => {
     loadFirst();
+    refreshCount();
+    refreshStatusCounts();
+
   }, [pageSize, statusFilter, filterLevel]);
 
   function setRowMethod(id, val) {
@@ -371,6 +438,7 @@ export function useAdminPayments() {
   return {
     // data
     rows, rowsRaw, loading, err, ok, hasMore, recap, totalVerifiedAmount,
+    totalRowsCount, totalVerifiedCount, totalPendingCount,
 
     // verifikator (dinamis & terproteksi)
     canUseVerifierFilter,

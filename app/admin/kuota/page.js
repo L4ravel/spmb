@@ -1,7 +1,7 @@
 // app/admin/kuota/page.js
 "use client";
 
-import { useEffect, useMemo, useState } from "react";
+import { useEffect, useState } from "react";
 import { getApp, getApps, initializeApp } from "firebase/app";
 import {
   getFirestore,
@@ -15,8 +15,8 @@ import {
   limit as qlimit,
 } from "firebase/firestore";
 
-// >>> Sinkron dengan JenjangPicker
 import { HIERARCHY } from "@/app/spmb/JenjangPicker";
+import { Users, TrendingUp, AlertTriangle, CheckCircle } from "lucide-react";
 
 /* ========= Firebase init ========= */
 function getFirebaseApp() {
@@ -36,18 +36,13 @@ const db = getFirestore(app);
 const toSafeUpperSnake = (s) =>
   (s || "LAINNYA").toString().trim().toUpperCase().replace(/[^\w-]/g, "_");
 
-/** Susun urutan resmi berdasarkan kunci yang BENAR-BENAR ada di JenjangPicker */
 const TOP_KEYS_AVAILABLE = Object.keys(HIERARCHY || {});
-// preferensi urutan jika tersedia:
 const PREFERRED = ["REGULER", "LKSA", "MA'HAD ALY", "STIT / MA'HAD ALY", "STIT", "STAI"];
 const TOP_ORDER = [
-  // kunci preferen yang ada
   ...PREFERRED.filter((k) => TOP_KEYS_AVAILABLE.includes(k)),
-  // sisa kunci lain yang belum tercakup
   ...TOP_KEYS_AVAILABLE.filter((k) => !PREFERRED.includes(k)),
 ];
 
-/** Temukan kunci grup yang cocok untuk Reguler / LKSA / Ma'had Aly/STIT */
 const REG_KEY =
   TOP_ORDER.find((k) => k.toUpperCase().includes("REGULER")) || TOP_ORDER[0] || null;
 const LKSA_KEY =
@@ -60,15 +55,12 @@ const MAHAD_KEY =
   TOP_ORDER.find((k) => k.toUpperCase().includes("ALY")) ||
   null;
 
-// builder daftar label jenjang lengkap untuk sorting
 function buildOrderedLabelList() {
   const ordered = [];
   for (const top of TOP_ORDER) {
     const parents = HIERARCHY[top] || [];
     for (const p of parents) {
-      for (const v of p.values) {
-        ordered.push(v.value); // sudah nama lengkap (mis. "SD Putra")
-      }
+      for (const v of p.values) ordered.push(v.value);
     }
   }
   return ordered;
@@ -83,28 +75,12 @@ function compareByOfficialOrder(aLabel, bLabel) {
   return (aLabel || "").localeCompare(bLabel || "", "id");
 }
 
-// Ambil opsi <option> untuk setiap optgroup secara aman (dinamis)
-const sekolahOpts = REG_KEY ? (HIERARCHY[REG_KEY] || []).flatMap((p) => p.values) : [];
-const lksaOpts = LKSA_KEY ? (HIERARCHY[LKSA_KEY] || []).flatMap((p) => p.values) : [];
-const mahadOpts = MAHAD_KEY ? (HIERARCHY[MAHAD_KEY] || []).flatMap((p) => p.values) : [];
-
-// Label optgroup ramah
-const labelReg = REG_KEY ? "Reguler" : null;
-const labelLksa = LKSA_KEY ? "LKSA" : null;
-const labelMahad =
-  MAHAD_KEY && MAHAD_KEY.toUpperCase().includes("STIT") ? "STIT / Ma'had Aly" : (MAHAD_KEY ? "Ma'had Aly" : null);
-
 export default function KuotaPage() {
   const [rows, setRows] = useState([]);
   const [loading, setLoading] = useState(true);
   const [err, setErr] = useState("");
-  const [viewMode, setViewMode] = useState("grid"); // "grid" | "table"
-
-  const [form, setForm] = useState({
-    label: "",
-    limit: 0,
-    open: true,
-  });
+  const [viewMode, setViewMode] = useState("grid");
+  const [form, setForm] = useState({ label: "", limit: 0, open: true });
 
   async function load() {
     setLoading(true);
@@ -195,29 +171,87 @@ export default function KuotaPage() {
 
   const human = (n) => new Intl.NumberFormat("id-ID").format(n);
 
+  // Fungsi untuk menentukan warna berdasarkan persentase
+  const getColorScheme = (percent) => {
+    if (percent > 110) {
+      // Merah - Melebihi >10%
+      return {
+        border: "border-red-500",
+        hoverBorder: "hover:border-red-600",
+        gradient: "from-red-50",
+        iconBg: "bg-red-100",
+        iconBgHover: "group-hover:bg-red-500",
+        iconColor: "text-red-600",
+        iconColorHover: "group-hover:text-white",
+        bar: "bg-red-500",
+        barHover: "group-hover:bg-red-600",
+        text: "text-red-700",
+        icon: AlertTriangle,
+        status: "Melebihi Kuota"
+      };
+    } else if (percent >= 90 && percent <= 110) {
+      // Kuning - Sesuai target (90-110%)
+      return {
+        border: "border-yellow-500",
+        hoverBorder: "hover:border-yellow-600",
+        gradient: "from-yellow-50",
+        iconBg: "bg-yellow-100",
+        iconBgHover: "group-hover:bg-yellow-500",
+        iconColor: "text-yellow-600",
+        iconColorHover: "group-hover:text-white",
+        bar: "bg-yellow-500",
+        barHover: "group-hover:bg-yellow-600",
+        text: "text-yellow-700",
+        icon: CheckCircle,
+        status: "Target"
+      };
+    } else {
+      // Hijau - Belum mencapai target
+      return {
+        border: "border-green-500",
+        hoverBorder: "hover:border-green-600",
+        gradient: "from-green-50",
+        iconBg: "bg-green-100",
+        iconBgHover: "group-hover:bg-green-500",
+        iconColor: "text-green-600",
+        iconColorHover: "group-hover:text-white",
+        bar: "bg-green-500",
+        barHover: "group-hover:bg-green-600",
+        text: "text-green-700",
+        icon: TrendingUp,
+        status: "Proses"
+      };
+    }
+  };
+
   const totalLimit = rows.reduce((s, r) => s + (Number(r.limit) || 0), 0);
   const totalUsedValidated = rows.reduce((s, r) => s + (Number(r.usedValidated) || 0), 0);
-  const totalRemain = rows.reduce(
-    (s, r) => s + Math.max(0, (Number(r.limit) || 0) - (Number(r.usedValidated) || 0)),
+  const totalExcess = rows.reduce(
+    (s, r) => s + Math.max(0, (Number(r.usedValidated) || 0) - (Number(r.limit) || 0)),
     0
   );
 
   return (
-    <div className="min-h-screen bg-white flex flex-col">
-      <main className="flex-1 min-h-0 w-full max-w-none px-4 md:px-6 lg:px-8 py-8">
-        <div className="mb-5 flex items-start justify-between gap-3 flex-wrap">
+    <div className="min-h-screen bg-white">
+      <main className="w-full px-4 md:px-6 lg:px-8 py-6">
+        {/* Header */}
+        <div className="mb-5 flex items-start justify-between gap-4 flex-wrap">
           <div>
-            <h1 className="text-2xl md:text-3xl font-extrabold text-slate-900">Kuota Pendaftaran</h1>
-            <p className="text-sm text-slate-700">
-              Pilihan jenjang mengikuti <b>JenjangPicker</b> secara dinamis. Jika kamu ubah daftar di JenjangPicker, halaman ini ikut menyesuaikan.
+            <h1 className="text-2xl md:text-3xl font-bold text-slate-900 mb-1">
+              Kuota Pendaftaran
+            </h1>
+            <p className="text-xs text-slate-600 max-w-2xl">
+              Monitoring kuota pendaftaran secara real-time. Hijau = Proses, Kuning = Target Tercapai, Merah = Melebihi &gt;10%
             </p>
           </div>
-          <div className="flex rounded-lg border border-slate-300 overflow-hidden">
+          <div className="flex rounded-xl border-2 border-slate-300 overflow-hidden shadow-sm bg-white">
             <button
               onClick={() => setViewMode("grid")}
               className={[
-                "px-3 py-2 text-sm font-semibold transition-colors",
-                viewMode === "grid" ? "bg-slate-900 text-white" : "bg-white text-slate-800 hover:bg-slate-50",
+                "px-4 py-2.5 text-sm font-semibold transition-all duration-200",
+                viewMode === "grid" 
+                  ? "bg-slate-900 text-white shadow-inner" 
+                  : "bg-white text-slate-700 hover:bg-slate-50",
               ].join(" ")}
             >
               ⊞ Grid
@@ -225,8 +259,10 @@ export default function KuotaPage() {
             <button
               onClick={() => setViewMode("table")}
               className={[
-                "px-3 py-2 text-sm font-semibold transition-colors border-l border-slate-300",
-                viewMode === "table" ? "bg-slate-900 text-white" : "bg-white text-slate-800 hover:bg-slate-50",
+                "px-4 py-2.5 text-sm font-semibold transition-all duration-200 border-l-2 border-slate-300",
+                viewMode === "table" 
+                  ? "bg-slate-900 text-white shadow-inner" 
+                  : "bg-white text-slate-700 hover:bg-slate-50",
               ].join(" ")}
             >
               ≡ Tabel
@@ -234,238 +270,300 @@ export default function KuotaPage() {
           </div>
         </div>
 
-        {/* Form */}
-        <div className="rounded-2xl border border-slate-300 p-4 mb-6 text-black bg-white shadow-sm">
-          <div className="grid grid-cols-1 md:grid-cols-4 gap-3">
-            <div className="md:col-span-2">
-              <label className="text-sm font-medium text-slate-700">Pilih Jenjang</label>
-              <select
-                value={form.label}
-                onChange={(e) => setForm((s) => ({ ...s, label: e.target.value }))}
-                className="mt-1 w-full rounded-lg border px-3 py-2 outline-none bg-white"
-              >
-                <option value="" disabled>— pilih jenjang —</option>
-
-                {REG_KEY && (
-                  <optgroup label={labelReg}>
-                    {sekolahOpts.map((o) => (
-                      <option key={o.value} value={o.value}>{o.value}</option>
-                    ))}
-                  </optgroup>
-                )}
-
-                {LKSA_KEY && (
-                  <optgroup label={labelLksa}>
-                    {lksaOpts.map((o) => (
-                      <option key={o.value} value={o.value}>{o.value}</option>
-                    ))}
-                  </optgroup>
-                )}
-
-                {MAHAD_KEY && (
-                  <optgroup label={labelMahad}>
-                    {mahadOpts.map((o) => (
-                      <option key={o.value} value={o.value}>{o.value}</option>
-                    ))}
-                  </optgroup>
-                )}
-              </select>
-              <div className="text-xs text-slate-500 mt-1">Key: {toSafeUpperSnake(form.label || " ")}</div>
-            </div>
-
-            <div>
-              <label className="text-sm font-medium text-slate-700">Limit</label>
-              <input
-                type="number"
-                min={0}
-                value={form.limit}
-                onChange={(e) => setForm((s) => ({ ...s, limit: e.target.value }))}
-                className="mt-1 w-full rounded-lg border px-3 py-2 outline-none"
-                placeholder="0"
-              />
-            </div>
-
-            <div>
-              <label className="text-sm font-medium text-slate-700">Status</label>
-              <select
-                value={form.open ? "open" : "closed"}
-                onChange={(e) => setForm((s) => ({ ...s, open: e.target.value === "open" }))}
-                className="mt-1 w-full rounded-lg border px-3 py-2 outline-none bg-white"
-              >
-                <option value="open">Dibuka</option>
-                <option value="closed">Ditutup</option>
-              </select>
-            </div>
+        {/* Summary Cards */}
+        <div className="grid grid-cols-1 md:grid-cols-3 gap-3 mb-5">
+          <div className="bg-slate-50 rounded-lg shadow-sm p-4 border-l-4 border-blue-500">
+            <p className="text-xs text-slate-600 font-medium">Total Kuota</p>
+            <p className="text-2xl font-bold text-slate-900 mt-0.5">{human(totalLimit)}</p>
           </div>
-
-          <div className="mt-3 flex justify-end">
-            <button
-              onClick={createOrUpdate}
-              className="rounded-lg bg-indigo-600 text-white px-4 py-2 font-semibold hover:bg-indigo-700 transition-colors"
-            >
-              Simpan / Perbarui
-            </button>
+          <div className="bg-slate-50 rounded-lg shadow-sm p-4 border-l-4 border-indigo-500">
+            <p className="text-xs text-slate-600 font-medium">Terdaftar</p>
+            <p className="text-2xl font-bold text-indigo-700 mt-0.5">{human(totalUsedValidated)}</p>
+          </div>
+          <div className="bg-slate-50 rounded-lg shadow-sm p-4 border-l-4 border-purple-500">
+            <p className="text-xs text-slate-600 font-medium">Melebihi</p>
+            <p className="text-2xl font-bold text-purple-700 mt-0.5">{human(totalExcess)}</p>
           </div>
         </div>
 
-        {/* List Kuota */}
-        {loading ? (
-          <div className="text-slate-600">Memuat…</div>
-        ) : err ? (
-          <div className="rounded-lg border border-rose-300 bg-rose-50 text-rose-800 p-3">{err}</div>
-        ) : (
-          <>
-            {viewMode === "grid" ? (
-              <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4">
-                {rows.map((r) => {
-                  const used = Number(r.usedValidated || 0);
-                  const limit = Number(r.limit || 0);
-                  const remain = Math.max(0, limit - used);
-                  const percent = limit ? Math.round((used / limit) * 100) : 0;
-                  return (
-                    <div key={r.id} className="rounded-2xl border border-slate-300 p-4 bg-white shadow-sm">
-                      <div className="flex items-start justify-between">
-                        <div>
-                          <div className="text-xs uppercase text-slate-600">Jenjang</div>
-                          <div className="text-base md:text-lg font-bold text-slate-900">{r.label}</div>
-                          <div className="text-xs text-slate-500">Key: {r.key}</div>
+        {/* Form Tambah/Update Kuota */}
+        <div className="bg-slate-50 rounded-lg shadow-sm border border-slate-200 p-4 mb-5">
+          <h2 className="text-lg font-bold text-slate-900 mb-3">Tambah / Update Kuota</h2>
+          <div className="grid grid-cols-1 md:grid-cols-4 gap-3">
+            <div>
+              <label className="block text-xs font-semibold text-slate-700 mb-1">Jenjang</label>
+              <select
+                value={form.label}
+                onChange={(e) => setForm({ ...form, label: e.target.value })}
+                className="w-full text-black rounded-md border border-slate-300 px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-slate-900"
+              >
+                <option value="">-- Pilih Jenjang --</option>
+                {ORDERED_LABELS.map((lab) => (
+                  <option key={lab} value={lab}>{lab}</option>
+                ))}
+              </select>
+            </div>
+            <div>
+              <label className="block text-xs font-semibold text-slate-700 mb-1">Limit Kuota</label>
+              <input
+                type="number"
+                min="0"
+                value={form.limit}
+                onChange={(e) => setForm({ ...form, limit: e.target.value })}
+                className="w-full text-black rounded-md border border-slate-300 px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-slate-900"
+                placeholder="0"
+              />
+            </div>
+            <div>
+              <label className="block text-xs font-semibold text-slate-700 mb-1">Status</label>
+              <select
+                value={form.open ? "true" : "false"}
+                onChange={(e) => setForm({ ...form, open: e.target.value === "true" })}
+                className="w-full text-black rounded-md border border-slate-300 px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-slate-900"
+              >
+                <option value="true">Dibuka</option>
+                <option value="false">Ditutup</option>
+              </select>
+            </div>
+            <div className="flex items-end">
+              <button
+                onClick={createOrUpdate}
+                className="w-full rounded-md bg-slate-900 text-white px-4 py-2 text-sm font-semibold hover:bg-slate-700 transition-colors"
+              >
+                Simpan
+              </button>
+            </div>
+          </div>
+        </div>
+
+        {/* GRID VIEW - 4 cards per row */}
+        {viewMode === "grid" ? (
+          loading ? (
+            <div className="text-center py-12">
+              <div className="inline-block animate-spin rounded-full h-12 w-12 border-4 border-slate-300 border-t-slate-900"></div>
+              <p className="text-slate-600 mt-4">Memuat data...</p>
+            </div>
+          ) : err ? (
+            <div className="rounded-xl border-2 border-rose-300 bg-rose-50 text-rose-800 p-5 shadow-md">
+              <p className="font-semibold">Error:</p>
+              <p>{err}</p>
+            </div>
+          ) : (
+            <div className="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-4 gap-5">
+              {rows.map((r) => {
+                const used = Number(r.usedValidated || 0);
+                const limit = Number(r.limit || 0);
+                const excess = Math.max(0, used - limit);
+                const percent = limit ? Math.round((used / limit) * 100) : (used > 0 ? 100 : 0);
+                
+                const colors = getColorScheme(percent);
+                const StatusIcon = colors.icon;
+
+                return (
+                  <div
+                    key={r.id}
+                    className={`group bg-slate-50 rounded-lg shadow-sm hover:shadow-md p-3 border-l-4 ${colors.border} ${colors.hoverBorder} transition-all duration-300 hover:scale-[1.01] relative overflow-hidden`}
+                  >
+                    {/* Background gradient overlay */}
+                    <div className={`absolute inset-0 bg-gradient-to-br ${colors.gradient} to-transparent opacity-0 group-hover:opacity-100 transition-opacity duration-300`} />
+                    
+                    <div className="relative z-10">
+                      {/* Header - Horizontal Layout */}
+                      <div className="flex items-center justify-between mb-2">
+                        <div className="flex items-center gap-2 flex-1 min-w-0">
+                          <div className={`w-9 h-9 rounded-lg flex items-center justify-center ${colors.iconBg} ${colors.iconBgHover} transition-all duration-300 group-hover:scale-110 shadow-sm flex-shrink-0`}>
+                            <StatusIcon className={`${colors.iconColor} ${colors.iconColorHover} transition-colors duration-300`} size={18} strokeWidth={2.5} />
+                          </div>
+                          <div className="flex-1 min-w-0">
+                            <h3 className="text-xs font-bold text-slate-900 leading-tight truncate">
+                              {r.label}
+                            </h3>
+                            <span className={`inline-flex items-center rounded-full px-1.5 py-0.5 text-[8px] font-bold uppercase tracking-wide ${colors.text} bg-opacity-20 ${colors.iconBg}`}>
+                              {colors.status}
+                            </span>
+                          </div>
                         </div>
                         <span
                           className={[
-                            "inline-flex items-center rounded-full px-2 py-0.5 text-xs font-semibold ring-1",
+                            "inline-flex items-center rounded-md px-2 py-0.5 text-[10px] font-semibold ring-1",
                             r.open
-                              ? "bg-emerald-100 text-emerald-800 ring-emerald-300"
-                              : "bg-slate-100 text-slate-800 ring-slate-300",
+                              ? "bg-emerald-50 text-emerald-800 ring-emerald-300"
+                              : "bg-slate-100 text-slate-700 ring-slate-300",
                           ].join(" ")}
                         >
-                          {r.open ? "Dibuka" : "Ditutup"}
+                          {r.open ? "●" : "○"}
                         </span>
                       </div>
 
-                      <div className="mt-3 grid grid-cols-3 gap-2">
-                        <Mini label="Limit" val={limit} />
-                        <Mini label="Terpakai" val={used} />
-                        <Mini label="Sisa" val={remain} />
+                      {/* Main Stats - Horizontal Layout */}
+                      <div className="flex items-center justify-between mb-2">
+                        <div>
+                          <p className="text-[9px] text-slate-500 font-medium uppercase tracking-wide">Terpakai / Target</p>
+                          <div className="flex items-baseline gap-1">
+                            <p className="text-xl font-black text-slate-900">{human(used)}</p>
+                            <p className="text-xs text-slate-500 font-medium">/ {human(limit)}</p>
+                          </div>
+                        </div>
+                        <div className="text-right">
+                          <p className="text-[9px] text-slate-500 font-medium uppercase tracking-wide">Melebihi</p>
+                          <p className={`text-xl font-bold ${excess > 0 ? colors.text : 'text-slate-400'}`}>
+                            {human(excess)}
+                          </p>
+                        </div>
+                        <div className="text-right">
+                          <p className="text-[9px] text-slate-500 font-medium uppercase tracking-wide">Progress</p>
+                          <p className={`text-xl font-bold ${colors.text}`}>{percent}%</p>
+                        </div>
                       </div>
 
-                      <div className="mt-3 h-2 rounded-full bg-slate-200 overflow-hidden">
-                        <div className="h-2 rounded-full bg-indigo-600 transition-all" style={{ width: `${percent}%` }} />
+                      {/* Progress Bar */}
+                      <div className="mb-2">
+                        <div className="w-full bg-slate-200 rounded-full h-2 overflow-hidden shadow-inner">
+                          <div
+                            className={`h-2 rounded-full transition-all duration-700 ease-out ${colors.bar} ${colors.barHover} shadow-sm`}
+                            style={{ width: `${Math.min(percent, 100)}%` }}
+                          />
+                        </div>
                       </div>
 
-                      <div className="mt-3 flex items-center justify-between text-black">
+                      {/* Action */}
+                      <div className="flex items-center justify-end">
                         <button
                           onClick={() => toggleOpen(r, !r.open)}
-                          className="rounded-lg border border-slate-300 px-3 py-1.5 text-sm hover:bg-slate-50 transition-colors"
+                          className="rounded-md text-black border border-slate-300 px-2.5 py-1 text-[10px] font-semibold hover:bg-slate-900 hover:text-white hover:border-slate-900 transition-all duration-200"
                         >
-                          {r.open ? "Tutup Pendaftaran" : "Buka Pendaftaran"}
+                          {r.open ? "Tutup" : "Buka"}
                         </button>
                       </div>
                     </div>
-                  );
-                })}
-              </div>
-            ) : (
-              <div className="rounded-2xl border border-slate-300 bg-white shadow-sm overflow-hidden">
-                <div className="overflow-x-auto">
-                  <table className="w-full">
-                    <thead>
-                      <tr className="bg-slate-100 border-b border-slate-300">
-                        <th className="px-4 py-3 text-left text-sm font-bold text-slate-900">No</th>
-                        <th className="px-4 py-3 text-left text-sm font-bold text-slate-900">Jenjang</th>
-                        <th className="px-4 py-3 text-left text-sm font-bold text-slate-900">Key</th>
-                        <th className="px-4 py-3 text-center text-sm font-bold text-slate-900">Status</th>
-                        <th className="px-4 py-3 text-right text-sm font-bold text-slate-900">Limit</th>
-                        <th className="px-4 py-3 text-right text-sm font-bold text-slate-900">Terpakai</th>
-                        <th className="px-4 py-3 text-right text-sm font-bold text-slate-900">Sisa</th>
-                        <th className="px-4 py-3 text-right text-sm font-bold text-slate-900">% Terpakai</th>
-                        <th className="px-4 py-3 text-left text-sm font-bold text-slate-900">Progress</th>
-                        <th className="px-4 py-3 text-center text-sm font-bold text-slate-900">Aksi</th>
+                  </div>
+                );
+              })}
+            </div>
+          )
+        ) : null}
+
+        {/* TABLE VIEW - tetap sama */}
+        {viewMode === "table" && (
+          loading ? (
+            <div className="text-center py-12">
+              <div className="inline-block animate-spin rounded-full h-12 w-12 border-4 border-slate-300 border-t-slate-900"></div>
+              <p className="text-slate-600 mt-4">Memuat data...</p>
+            </div>
+          ) : err ? (
+            <div className="rounded-xl border-2 border-rose-300 bg-rose-50 text-rose-800 p-5 shadow-md">
+              <p className="font-semibold">Error:</p>
+              <p>{err}</p>
+            </div>
+          ) : (
+            <div className="rounded-2xl border-2 border-slate-300 bg-white shadow-lg overflow-hidden">
+              <div className="overflow-x-auto">
+                <table className="w-full">
+                  <thead>
+                    <tr className="bg-slate-900 text-white">
+                      <th className="px-4 py-4 text-left text-sm font-bold">No</th>
+                      <th className="px-4 py-4 text-left text-sm font-bold">Jenjang</th>
+                      <th className="px-4 py-4 text-left text-sm font-bold">Key</th>
+                      <th className="px-4 py-4 text-center text-sm font-bold">Status</th>
+                      <th className="px-4 py-4 text-right text-sm font-bold">Limit</th>
+                      <th className="px-4 py-4 text-right text-sm font-bold">Terpakai</th>
+                      <th className="px-4 py-4 text-right text-sm font-bold">Melebihi</th>
+                      <th className="px-4 py-4 text-right text-sm font-bold">% Terpakai</th>
+                      <th className="px-4 py-4 text-left text-sm font-bold">Progress</th>
+                      <th className="px-4 py-4 text-center text-sm font-bold">Aksi</th>
+                    </tr>
+                  </thead>
+                  <tbody>
+                    {rows.length === 0 ? (
+                      <tr>
+                        <td colSpan={10} className="px-4 py-12 text-center text-slate-600">
+                          Tidak ada data kuota.
+                        </td>
                       </tr>
-                    </thead>
-                    <tbody>
-                      {rows.length === 0 ? (
-                        <tr>
-                          <td colSpan="10" className="px-4 py-8 text-center text-slate-700">Tidak ada data kuota.</td>
-                        </tr>
-                      ) : (
-                        rows.map((r, idx) => {
-                          const used = Number(r.usedValidated || 0);
-                          const limit = Number(r.limit || 0);
-                          const remain = Math.max(0, limit - used);
-                          const percent = limit ? Math.round((used / limit) * 100) : 0;
-                          return (
-                            <tr key={r.id} className="border-b border-slate-200 hover:bg-slate-50 transition-colors">
-                              <td className="px-4 py-3 text-sm text-slate-700">{idx + 1}</td>
-                              <td className="px-4 py-3"><div className="text-sm font-semibold text-slate-900">{r.label}</div></td>
-                              <td className="px-4 py-3">
-                                <code className="text-xs text-slate-600 bg-slate-100 px-2 py-0.5 rounded">{r.key}</code>
-                              </td>
-                              <td className="px-4 py-3 text-center">
-                                <span
-                                  className={[
-                                    "inline-flex items-center rounded-full px-2 py-0.5 text-xs font-semibold ring-1",
-                                    r.open
-                                      ? "bg-emerald-100 text-emerald-800 ring-emerald-300"
-                                      : "bg-slate-100 text-slate-800 ring-slate-300",
-                                  ].join(" ")}
-                                >
-                                  {r.open ? "Dibuka" : "Ditutup"}
-                                </span>
-                              </td>
-                              <td className="px-4 py-3 text-right text-sm font-semibold text-slate-900">{human(limit)}</td>
-                              <td className="px-4 py-3 text-right text-sm font-bold text-indigo-700">{human(used)}</td>
-                              <td className="px-4 py-3 text-right text-sm font-semibold text-slate-900">{human(remain)}</td>
-                              <td className="px-4 py-3 text-right text-sm font-bold text-slate-900">{percent}%</td>
-                              <td className="px-4 py-3">
-                                <div className="w-24 h-2 rounded-full bg-slate-200 overflow-hidden">
-                                  <div className="h-2 rounded-full bg-indigo-600 transition-all" style={{ width: `${percent}%` }} />
-                                </div>
-                              </td>
-                              <td className="px-4 py-3 text-center">
-                                <button
-                                  onClick={() => toggleOpen(r, !r.open)}
-                                  className={[
-                                    "rounded-lg px-3 py-1.5 text-xs font-semibold transition-colors",
-                                    r.open
-                                      ? "bg-slate-100 text-slate-800 hover:bg-slate-200 ring-1 ring-slate-300"
-                                      : "bg-emerald-100 text-emerald-800 hover:bg-emerald-200 ring-1 ring-emerald-300",
-                                  ].join(" ")}
-                                >
-                                  {r.open ? "Tutup" : "Buka"}
-                                </button>
-                              </td>
-                            </tr>
-                          );
-                        })
-                      )}
-                    </tbody>
-                    <tfoot>
-                      <tr className="bg-slate-100 border-t-2 border-slate-400 font-bold">
-                        <td colSpan="4" className="px-4 py-3 text-sm text-slate-900">TOTAL</td>
-                        <td className="px-4 py-3 text-right text-sm text-slate-900">{human(totalLimit)}</td>
-                        <td className="px-4 py-3 text-right text-sm text-indigo-700">{human(totalUsedValidated)}</td>
-                        <td className="px-4 py-3 text-right text-sm text-slate-900">{human(totalRemain)}</td>
-                        <td colSpan="3" className="px-4 py-3"></td>
-                      </tr>
-                    </tfoot>
-                  </table>
-                </div>
+                    ) : (
+                      rows.map((r, idx) => {
+                        const used = Number(r.usedValidated || 0);
+                        const limit = Number(r.limit || 0);
+                        const excess = Math.max(0, used - limit);
+                        const percent = limit ? Math.round((used / limit) * 100) : (used > 0 ? 100 : 0);
+                        const colors = getColorScheme(percent);
+
+                        return (
+                          <tr key={r.id} className="border-b border-slate-200 hover:bg-slate-50 transition-colors">
+                            <td className="px-4 py-4 text-sm text-slate-700 font-medium">{idx + 1}</td>
+                            <td className="px-4 py-4">
+                              <div className="text-sm font-semibold text-slate-900">{r.label}</div>
+                            </td>
+                            <td className="px-4 py-4">
+                              <code className="text-xs text-slate-600 bg-slate-100 px-2 py-1 rounded font-mono">
+                                {r.key}
+                              </code>
+                            </td>
+                            <td className="px-4 py-4 text-center">
+                              <span
+                                className={[
+                                  "inline-flex items-center rounded-full px-3 py-1 text-xs font-semibold ring-2",
+                                  r.open
+                                    ? "bg-emerald-50 text-emerald-800 ring-emerald-300"
+                                    : "bg-slate-100 text-slate-700 ring-slate-300",
+                                ].join(" ")}
+                              >
+                                {r.open ? "Dibuka" : "Ditutup"}
+                              </span>
+                            </td>
+                            <td className="px-4 py-4 text-right text-sm font-semibold text-slate-900">
+                              {human(limit)}
+                            </td>
+                            <td className="px-4 py-4 text-right text-sm font-semibold text-indigo-700">
+                              {human(used)}
+                            </td>
+                            <td className={`px-4 py-4 text-right text-sm font-semibold ${colors.text}`}>
+                              {human(excess)}
+                            </td>
+                            <td className={`px-4 py-4 text-right text-sm font-bold ${colors.text}`}>
+                              {percent}%
+                            </td>
+                            <td className="px-4 py-4">
+                              <div className="w-32 h-3 rounded-full bg-slate-200 overflow-hidden shadow-inner">
+                                <div 
+                                  className={`h-3 rounded-full transition-all duration-500 ${colors.bar}`}
+                                  style={{ width: `${Math.min(percent, 100)}%` }} 
+                                />
+                              </div>
+                            </td>
+                            <td className="px-4 py-4 text-center">
+                              <button
+                                onClick={() => toggleOpen(r, !r.open)}
+                                className={[
+                                  "rounded-lg px-4 py-2 text-xs font-semibold transition-all duration-200 ring-2",
+                                  r.open
+                                    ? "bg-slate-100 text-slate-800 hover:bg-slate-200 ring-slate-300"
+                                    : "bg-emerald-100 text-emerald-800 hover:bg-emerald-200 ring-emerald-300",
+                                ].join(" ")}
+                              >
+                                {r.open ? "Tutup" : "Buka"}
+                              </button>
+                            </td>
+                          </tr>
+                        );
+                      })
+                    )}
+                  </tbody>
+                  <tfoot>
+                    <tr className="bg-slate-900 text-white font-bold">
+                      <td colSpan={4} className="px-4 py-4 text-sm">TOTAL</td>
+                      <td className="px-4 py-4 text-right text-sm">{human(totalLimit)}</td>
+                      <td className="px-4 py-4 text-right text-sm text-indigo-300">{human(totalUsedValidated)}</td>
+                      <td className="px-4 py-4 text-right text-sm text-purple-300">{human(totalExcess)}</td>
+                      <td colSpan={3} className="px-4 py-4"></td>
+                    </tr>
+                  </tfoot>
+                </table>
               </div>
-            )}
-          </>
+            </div>
+          )
         )}
       </main>
-    </div>
-  );
-}
-
-function Mini({ label, val }) {
-  return (
-    <div className="rounded-lg border border-slate-300 p-3 text-center">
-      <div className="text-[11px] font-medium text-slate-700">{label}</div>
-      <div className="text-xl font-extrabold text-slate-900">
-        {new Intl.NumberFormat("id-ID").format(val)}
-      </div>
     </div>
   );
 }

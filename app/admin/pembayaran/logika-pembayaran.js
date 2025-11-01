@@ -69,7 +69,6 @@ export function buildWaMessage({ fullName, registrationId, registrationLevel, am
     "",
     "Butuh Bantuan : 0877 2024 2025",
     "— Panitia SPMB",
-    
   ].join("\n");
 }
 
@@ -103,6 +102,27 @@ export async function fetchFeeByLevel(levelLabel) {
     return { fee: Number(f?.fee ?? 0), currency: String(f?.currency || "IDR"), label: String(f?.label || levelLabel) };
   }
   return { fee: 0, currency: "IDR", label: String(levelLabel) };
+}
+
+/* ========= NEW: fetch users_app/{nisn} utk ambil registrationPaymentMethod ========= */
+export async function fetchUsersAppPaymentMeta(nisn) {
+  if (!nisn) return null;
+
+  // 1) id dok = nisn
+  let snap = await getDoc(doc(db, "users_app", String(nisn)));
+  if (snap.exists()) return snap.data();
+
+  // 2) cari via field nisn
+  const q1 = query(collection(db, "users_app"), where("nisn", "==", String(nisn)), qLimit(1));
+  const d1 = await getDocs(q1);
+  if (!d1.empty) return d1.docs[0].data();
+
+  // 3) fallback: identifier
+  const q2 = query(collection(db, "users_app"), where("identifier", "==", String(nisn)), qLimit(1));
+  const d2 = await getDocs(q2);
+  if (!d2.empty) return d2.docs[0].data();
+
+  return null;
 }
 
 /** =========================
@@ -199,14 +219,16 @@ const ALLOWED_VERIFIER_EMAILS = [
 export function usePembayaranLogic() {
   const base = useAdminPayments();
 
-  // 🚀 Pastikan fetch awal jalan
-
   // cache meta PPDB & fee per jenjang
   const [ppdbMap, setPpdbMap] = useState({});
   const [loadingPPDB, setLoadingPPDB] = useState({});
   const [feesMap, setFeesMap] = useState({}); // { [labelJenjang]: {fee,currency,label} }
 
-  // prefetch fee per jenjang yang muncul di halaman
+  // NEW: cache users_app utk registrationPaymentMethod
+  const [userAppMap, setUserAppMap] = useState({});        // { [nisn]: users_app doc }
+  const [loadingUserApp, setLoadingUserApp] = useState({}); // { [nisn]: boolean }
+
+  // prefetch fee per jenjang yang muncul di halaman (irit read)
   useEffect(() => {
     const seen = new Set();
     base.rows.slice(0, base.pageSize).forEach((r) => {
@@ -220,6 +242,22 @@ export function usePembayaranLogic() {
     });
   }, [base.rows, base.pageSize]); // feesMap diabaikan agar prefetch tidak loop
 
+  // NEW: prefetch users_app.registrationPaymentMethod utk baris yang tampil
+  useEffect(() => {
+    const seen = new Set();
+    base.rows.slice(0, base.pageSize).forEach((r) => {
+      const nisn = String(r?.username || r?.id || r?.nisn || "").trim();
+      if (!nisn) return;
+      if (!seen.has(nisn) && !userAppMap[nisn] && !loadingUserApp[nisn]) {
+        seen.add(nisn);
+        setLoadingUserApp((s) => ({ ...s, [nisn]: true }));
+        fetchUsersAppPaymentMeta(nisn)
+          .then((d) => { if (d) setUserAppMap((m) => ({ ...m, [nisn]: d })); })
+          .finally(() => setLoadingUserApp((s) => ({ ...s, [nisn]: false })));
+      }
+    });
+  }, [base.rows, base.pageSize, userAppMap, loadingUserApp]);
+
   const getFeeCached = useCallback(async (level) => {
     if (!level) return { fee: 0, currency: "IDR", label: null };
     if (feesMap[level]) return feesMap[level];
@@ -230,9 +268,7 @@ export function usePembayaranLogic() {
 
   const fetchPPDB = useCallback(async (nisn) => {
     if (!nisn) return null;
-    // kalau sudah ada di cache, kembalikan langsung
     if (ppdbMap[nisn]) return ppdbMap[nisn];
-    // kalau sedang dimuat, biarkan render berikutnya yang mengambil dari cache
     if (loadingPPDB[nisn]) return ppdbMap[nisn] ?? null;
     setLoadingPPDB((s) => ({ ...s, [nisn]: true }));
     try {
@@ -267,27 +303,24 @@ export function usePembayaranLogic() {
   const isPrivileged = ALLOWED_VERIFIER_EMAILS.includes(myKey);
 
   const privilegedTargeting = useMemo(() => {
-    // true jika 3 email privilege dan ada target verifikator yg dipilih/ditik
     const hasTarget =
       String(base.verifierQuery || "").trim() !== "" ||
       base.verifierFilter !== "all";
     return base.canUseVerifierFilter && hasTarget;
   }, [base.canUseVerifierFilter, base.verifierQuery, base.verifierFilter]);
 
-  const visibleRows = useMemo(() => {
-    // Jika 3 email privilege sedang menargetkan verifikator tertentu,
-    // JANGAN batasi by === myKey (hasil sudah difilter di hook data).
-    if (isPrivileged && privilegedTargeting) return base.rows;
+ const visibleRows = useMemo(() => {
+  if (isPrivileged && privilegedTargeting) return base.rows;
+  // NEW: bila status "all" → tampilkan semua baris apa adanya
+  if (String(base.statusFilter || "all") === "all") return base.rows;
 
-    // Default (non-privilege atau tidak menargetkan siapa pun):
-    // verified hanya terlihat oleh verifikatornya sendiri.
-    return base.rows.filter((r) => {
-      const isVerified = r?.verifiedPayment === true;
-      if (!isVerified) return true; // pending → semua bisa lihat
-      const by = String(r?.registrationPaymentVerifiedBy || "").toLowerCase();
-      return by === myKey;
-    });
-  }, [base.rows, myKey, isPrivileged, privilegedTargeting]);
+  return base.rows.filter((r) => {
+    const isVerified = r?.verifiedPayment === true;
+    if (!isVerified) return true; // pending → semua bisa lihat
+    const by = String(r?.registrationPaymentVerifiedBy || "").toLowerCase();
+    return by === myKey;
+  });
+}, [base.rows, myKey, isPrivileged, privilegedTargeting, base.statusFilter]);
 
   const filteredRows = visibleRows;
 
@@ -299,33 +332,45 @@ export function usePembayaranLogic() {
       if (!by) continue;
       map[by] = (map[by] || 0) + 1;
     }
-    // Urutkan descending by count agar mudah dibaca di UI
     return Object.entries(map).sort((a, b) => b[1] - a[1]);
   }, [verifiedRows]);
 
   // ======== Nominal untuk verifikator / privileged ========
-  // verifiedRowsByMe → milik saya
   const verifiedRowsByMe = useMemo(
     () => verifiedRows.filter((r) => String(r?.registrationPaymentVerifiedBy || "").toLowerCase() === myKey),
     [verifiedRows, myKey]
   );
 
-  // Jika privileged → agregasi dari SEMUA verifiedRows,
-  // jika bukan → tetap hanya verifiedRowsByMe (perilaku lama)
   const sourceRows = useMemo(
     () => (isPrivileged ? verifiedRows : verifiedRowsByMe),
     [isPrivileged, verifiedRows, verifiedRowsByMe]
   );
 
+  /* ========= NEW: resolver metode dari users_app SAJA ========= */
+  const methodForRow = useCallback((r) => {
+    const nisn = String(r?.username || r?.id || r?.nisn || "").trim();
+    const mUsersApp = String(userAppMap?.[nisn]?.registrationPaymentMethod || "").toLowerCase();
+    // hanya terima "online" / "offline"; selain itu unknown
+    if (mUsersApp === "online" || mUsersApp === "offline") return mUsersApp;
+    return ""; // unknown → tidak dihitung di online/offline
+  }, [userAppMap]);
+
+  /* ========= REVISI: hitung nominal pakai method dari users_app SAJA ========= */
   const onlineAmount  = useMemo(
-    () => sourceRows.filter((r)=>r._method==="online").reduce((s,r)=>s+getFeeForRow(r),0),
-    [sourceRows, getFeeForRow]
+    () => sourceRows
+      .filter((r) => methodForRow(r) === "online")
+      .reduce((s, r) => s + getFeeForRow(r), 0),
+    [sourceRows, methodForRow, getFeeForRow]
   );
+
   const offlineAmount = useMemo(
-    () => sourceRows.filter((r)=>r._method==="offline").reduce((s,r)=>s+getFeeForRow(r),0),
-    [sourceRows, getFeeForRow]
+    () => sourceRows
+      .filter((r) => methodForRow(r) === "offline")
+      .reduce((s, r) => s + getFeeForRow(r), 0),
+    [sourceRows, methodForRow, getFeeForRow]
   );
-  const totalDynamicAmount = useMemo(()=> onlineAmount + offlineAmount, [onlineAmount, offlineAmount]);
+
+  const totalDynamicAmount = useMemo(() => onlineAmount + offlineAmount, [onlineAmount, offlineAmount]);
 
   // ======== Total jumlah siswa sesuai filter verifikator (ikut filteredRows) ========
   const selectedVerifier = useMemo(() => {
@@ -346,16 +391,18 @@ export function usePembayaranLogic() {
     [rowsBySelectedVerifier]
   );
   const totalPendingByVerifier = useMemo(
-    () => rowsBySelectedVerifier.length - totalVerifiedByVerifier,
-    [rowsBySelectedVerifier, totalVerifiedByVerifier]
-  );
+  () =>
+    rowsBySelectedVerifier.filter(
+      (r) => String(r?.registrationPaymentStatus || "") === "waiting_review"
+    ).length,
+  [rowsBySelectedVerifier]
+);
   const totalSiswaByVerifier = useMemo(
     () => rowsBySelectedVerifier.length,
     [rowsBySelectedVerifier]
   );
 
-  // hak melihat nominal pada modal bukti (UI modal bukti sekarang sudah menampilkan nominal selalu;
-  // fungsi ini masih dipakai di tempat lain/RowDetail, biarkan behavior lama)
+  // hak melihat nominal pada modal bukti (behavior lama dipertahankan)
   const canSeeAmount = useCallback((row) => {
     return row?.verifiedPayment === true &&
       String(row?.registrationPaymentVerifiedBy || "").toLowerCase() === myKey;
@@ -367,6 +414,8 @@ export function usePembayaranLogic() {
 
     // cache & loaders tambahan
     ppdbMap, loadingPPDB, feesMap,
+    // expose meta users_app (berguna debugging)
+    userAppMap, loadingUserApp,
 
     // computed utk UI
     levelOptions, filteredRows,
@@ -377,10 +426,14 @@ export function usePembayaranLogic() {
 
     // >>> total berbasis filter verifikator <<<
     totalSiswaByVerifier,
-    totalVerifiedByVerifier,
-    totalPendingByVerifier,
+totalVerifiedByVerifier,   // (tetap ada untuk yang berbasis visibleRows)
+ totalPendingByVerifier,    // (tetap ada untuk yang berbasis visibleRows)
+ // >>> angka global (tidak terpengaruh pagination)
+ totalVerifiedGlobal: base.totalVerifiedCount,
+ totalPendingGlobal:  base.totalPendingCount,
+    totalAllRowsCount: base.totalRowsCount,
 
-    // fetchers exposed ke UI
+    // fetchers
     fetchPPDB, getFeeCached,
 
     // permission
