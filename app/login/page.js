@@ -236,6 +236,7 @@ function LoginInner() {
     "syafii@spmb.com",
     "abuhusna@spmb.com",
     "abdulwahid@spmb.com", 
+    "abdullahhusni@spmb.com",
   ].map((e) => e.toLowerCase());
 
   let role = ADMIN_EMAILS.includes(String(user.email || "").toLowerCase())
