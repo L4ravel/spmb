@@ -249,11 +249,8 @@ const pct = Math.min(100, Math.max(0, percentOverall));
         <div className="mb-5 flex items-start justify-between gap-4 flex-wrap">
           <div>
             <h1 className="text-2xl md:text-3xl font-bold text-slate-900 mb-1">
-              Kuota Pendaftaran
-            </h1>
-            <p className="text-xs text-slate-600 max-w-2xl">
-              Monitoring kuota pendaftaran secara real-time. Hijau = Proses, Kuning = Target Tercapai, Merah = Melebihi &gt;10%
-            </p>
+              Monitoring Pendaftaran
+            </h1>            
           </div>
           <div className="flex rounded-xl border-2 border-slate-300 overflow-hidden shadow-sm bg-white">
             <button
@@ -285,7 +282,7 @@ const pct = Math.min(100, Math.max(0, percentOverall));
         <div className="grid grid-cols-1 md:grid-cols-3 gap-3 mb-5">
           {/* Total Kuota */}
           <div className="bg-slate-50 rounded-lg shadow-sm p-4 border-l-4 border-blue-500">
-            <p className="text-xs text-slate-600 font-medium">Total Kuota</p>
+            <p className="text-xs text-slate-600 font-medium">Target Kuota</p>
             <p className="text-2xl font-bold text-slate-900 mt-0.5">{human(totalLimit)}</p>
             <p className="text-[11px] text-slate-600 mt-1">Target keseluruhan (100%)</p>
           </div>
