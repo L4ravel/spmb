@@ -5,7 +5,7 @@ import { useEffect, useRef, useState } from "react";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { db } from "@/lib/firebase";
-import { doc, serverTimestamp, runTransaction } from "firebase/firestore";
+import { doc, serverTimestamp, runTransaction, getDoc } from "firebase/firestore";
 import JenjangPicker from "./JenjangPicker";
 import Ketentuan from "./ketentuan";
 import WilayahPicker from "./WilayahPicker";
@@ -21,13 +21,14 @@ const digits = (s) => String(s ?? "").replace(/\D+/g, "");
 const required = (v) => String(v ?? "").trim().length > 0;
 const isAlive = (s) => s === "hidup";
 
-/** Early hanya TK & SD (Putra/Putri). */
+/** Early: TK, SD, dan PPS Ula (Putra/Putri). */
 function normalizeJenjang(s) {
   return (s || "").toLowerCase().replace(/[().]/g, "").replace(/\s+/g, " ").trim();
 }
 const isEarlyEducation = (jenjang) => {
   const j = normalizeJenjang(jenjang);
   if (j === "tk" || j.startsWith("sd ")) return true;
+  if (j.includes("pps ula")) return true; // PPS Ula ikut early
   return false;
 };
 const last8 = (nik) => digits(nik).slice(-8);
@@ -73,10 +74,8 @@ function scrollToAnchor(anchor) {
   if (!el) return;
 
   el.scrollIntoView({ behavior: "smooth", block: "center" });
-  // fokus kalau bisa
   setTimeout(() => {
     if (typeof el.focus === "function") el.focus();
-    // highlight singkat biar “ketemu”
     el.classList?.add("ring-2", "ring-rose-500");
     setTimeout(() => el.classList?.remove("ring-2", "ring-rose-500"), 1500);
   }, 200);
@@ -101,11 +100,11 @@ export default function PPDBPage() {
     jenjang: "",
     nik: "", noKK: "", nama: "", jk: "", tempatLahir: "", tglLahir: "",
     // Wilayah (dipakai di form "Alamat Rumah")
-    provinceCode: "52",   // preset NTB
+    provinceCode: "52",
     regencyCode: "",
     districtCode: "",
-    alamat: "",           // Alamat Lengkap (dipindah ke section Alamat Rumah)
-    // pendidikan sebelumnya (non TK/SD)
+    alamat: "",
+    // pendidikan sebelumnya (non TK/SD/PPS Ula)
     nisn: "", asalSekolah: "",
     // orang tua/wali
     ayahNama: "", ayahDidik: "", ayahKerja: "", ayahStatus: "", ayahIncome: "",
@@ -164,226 +163,286 @@ export default function PPDBPage() {
     upload: "Lengkapi dokumen",
   };
 
-  const pushMiss = (arr, name, label = FIELD_LABELS[name] || name, anchor) => {
-    arr.push({ name, label, anchor: anchor || name });
+  const validateDetailed = () => {
+    const miss = [];
+    const digitsOnly = (s) => String(s ?? "").replace(/\D+/g, "");
+    const isAlive = (s) => s === "hidup";
+    const isNTB = (provCode) => {
+      const code = String(provCode || "");
+      return code === "52" || code.split(".")[0] === "52";
+    };
+
+    // 1) Klasifikasi & identitas dasar
+    if (!required(form.jenjang)) miss.push({ name: "jenjang", label: "Pilih jenjang", anchor: "jenjang" });
+    if (!required(form.nik)) miss.push({ name: "nik", label: "NIK harus diisi", anchor: "nik" });
+    if (!required(form.noKK)) miss.push({ name: "noKK", label: "Nomor KK harus diisi", anchor: "noKK" });
+    if (!required(form.nama)) miss.push({ name: "nama", label: "Nama lengkap harus diisi", anchor: "nama" });
+    if (!required(form.jk)) miss.push({ name: "jk", label: "Pilih jenis kelamin", anchor: "jk" });
+    if (!required(form.tempatLahir)) miss.push({ name: "tempatLahir", label: "Isi tempat lahir", anchor: "tempatLahir" });
+    if (!required(form.tglLahir)) miss.push({ name: "tglLahir", label: "Tanggal lahir harus diisi", anchor: "tglLahir" });
+
+    // 2) Alamat Rumah — kondisi khusus NTB
+    const provRequired = required(form.provinceCode);
+    if (!provRequired) {
+      miss.push({ name: "provinceCode", label: "Pilih Provinsi", anchor: "alamat-rumah" });
+    }
+
+    const ntbSelected = isNTB(form.provinceCode);
+    if (!required(form.alamat)) {
+      miss.push({ name: "alamat", label: "Alamat lengkap harus diisi", anchor: "alamat-rumah" });
+    }
+    if (ntbSelected) {
+      if (!required(form.regencyCode)) {
+        miss.push({ name: "regencyCode", label: "Pilih Kab/Kota", anchor: "alamat-rumah" });
+      }
+      if (!required(form.districtCode)) {
+        miss.push({ name: "districtCode", label: "Pilih Kecamatan", anchor: "alamat-rumah" });
+      }
+    }
+
+    // 3) Pendidikan sebelumnya (non TK/SD/PPS Ula)
+    const showPendidikan = !isEarlyEducation(form.jenjang);
+    if (showPendidikan) {
+      const nisnDigits = digitsOnly(form.nisn);
+      if (!(nisnDigits.length >= 8 && nisnDigits.length <= 12)) {
+        miss.push({ name: "nisn", label: "NISN (8–12 digit)", anchor: "nisn" });
+      }
+      if (!required(form.asalSekolah)) miss.push({ name: "asalSekolah", label: "Asal sekolah harus diisi", anchor: "asalSekolah" });
+    }
+
+    // 4) Data orang tua
+    if (!required(form.ayahNama)) miss.push({ name: "ayahNama", label: "Nama Ayah harus diisi" });
+    if (!required(form.ibuNama)) miss.push({ name: "ibuNama", label: "Nama Ibu harus diisi" });
+    if (!required(form.ayahStatus)) miss.push({ name: "ayahStatus", label: "Pilih status Ayah" });
+    if (!required(form.ibuStatus)) miss.push({ name: "ibuStatus", label: "Pilih status Ibu" });
+
+    if (isAlive(form.ayahStatus)) {
+      if (!required(form.ayahKerja)) miss.push({ name: "ayahKerja", label: "Pilih pekerjaan Ayah" });
+      if (!required(form.ayahIncome)) miss.push({ name: "ayahIncome", label: "Pilih penghasilan Ayah" });
+    }
+    if (isAlive(form.ibuStatus)) {
+      if (!required(form.ibuKerja)) miss.push({ name: "ibuKerja", label: "Pilih pekerjaan Ibu" });
+      if (!required(form.ibuIncome)) miss.push({ name: "ibuIncome", label: "Pilih penghasilan Ibu" });
+    }
+
+    // 5) Kontak wali
+    if (!required(form.waliWa)) miss.push({ name: "waliWa", label: "(masukkan nomor wali)" });
+    if (!required(form.waliTelp)) miss.push({ name: "waliTelp", label: "(masukkan nomor wali)" });
+
+    // 6) Upload dokumen
+    const okFiles = filesRef.current?.isComplete?.();
+    if (!okFiles) {
+      const missingDocs = filesRef.current?.getMissingFields?.() || [];
+      if (missingDocs.length === 0) {
+        miss.push({ name: "upload", label: "Lengkapi dokumen", anchor: "upload-section" });
+      } else {
+        missingDocs.forEach((label) => miss.push({ name: `doc:${label}`, label, anchor: "upload-section" }));
+      }
+    }
+
+    return miss;
   };
-
-const validateDetailed = () => {
-  const miss = [];
-
-  // helper
-  const digitsOnly = (s) => String(s ?? "").replace(/\D+/g, "");
-  const required = (v) => String(v ?? "").trim().length > 0;
-  const isAlive = (s) => s === "hidup";
-  const isNTB = (provCode) => {
-    const code = String(provCode || "");
-    return code === "52" || code.split(".")[0] === "52";
-  };
-
-  // 1) Klasifikasi & identitas dasar
-  if (!required(form.jenjang)) miss.push({ name: "jenjang", label: "Pilih jenjang", anchor: "jenjang" });
-  if (!required(form.nik)) miss.push({ name: "nik", label: "NIK harus diisi", anchor: "nik" });
-  if (!required(form.noKK)) miss.push({ name: "noKK", label: "Nomor KK harus diisi", anchor: "noKK" });
-  if (!required(form.nama)) miss.push({ name: "nama", label: "Nama lengkap harus diisi", anchor: "nama" });
-  if (!required(form.jk)) miss.push({ name: "jk", label: "Pilih jenis kelamin", anchor: "jk" });
-  if (!required(form.tempatLahir)) miss.push({ name: "tempatLahir", label: "Isi tempat lahir", anchor: "tempatLahir" });
-  if (!required(form.tglLahir)) miss.push({ name: "tglLahir", label: "Tanggal lahir harus diisi", anchor: "tglLahir" });
-
-  // 2) Alamat Rumah — kondisi khusus NTB
-  const provRequired = required(form.provinceCode);
-  if (!provRequired) {
-    miss.push({ name: "provinceCode", label: "Pilih Provinsi", anchor: "alamat-rumah" });
-  }
-
-  const ntbSelected = isNTB(form.provinceCode);
-  // alamat selalu wajib
-  if (!required(form.alamat)) {
-    miss.push({ name: "alamat", label: "Alamat lengkap harus diisi", anchor: "alamat-rumah" });
-  }
-  // regency/district wajib HANYA untuk NTB
-  if (ntbSelected) {
-    if (!required(form.regencyCode)) {
-      miss.push({ name: "regencyCode", label: "Pilih Kab/Kota", anchor: "alamat-rumah" });
-    }
-    if (!required(form.districtCode)) {
-      miss.push({ name: "districtCode", label: "Pilih Kecamatan", anchor: "alamat-rumah" });
-    }
-  }
-
-  // 3) Pendidikan sebelumnya (non TK/SD)
-  const showPendidikan = !isEarlyEducation(form.jenjang);
-  if (showPendidikan) {
-    const nisnDigits = digitsOnly(form.nisn);
-    if (!(nisnDigits.length >= 8 && nisnDigits.length <= 12)) {
-      miss.push({ name: "nisn", label: "NISN (8–12 digit)", anchor: "nisn" });
-    }
-    if (!required(form.asalSekolah)) miss.push({ name: "asalSekolah", label: "Asal sekolah harus diisi", anchor: "asalSekolah" });
-  }
-
-  // 4) Data orang tua
-  if (!required(form.ayahNama)) miss.push({ name: "ayahNama", label: "Nama Ayah harus diisi" });
-  if (!required(form.ibuNama)) miss.push({ name: "ibuNama", label: "Nama Ibu harus diisi" });
-  if (!required(form.ayahStatus)) miss.push({ name: "ayahStatus", label: "Pilih status Ayah" });
-  if (!required(form.ibuStatus)) miss.push({ name: "ibuStatus", label: "Pilih status Ibu" });
-
-  if (isAlive(form.ayahStatus)) {
-    if (!required(form.ayahKerja)) miss.push({ name: "ayahKerja", label: "Pilih pekerjaan Ayah" });
-    if (!required(form.ayahIncome)) miss.push({ name: "ayahIncome", label: "Pilih penghasilan Ayah" });
-  }
-  if (isAlive(form.ibuStatus)) {
-    if (!required(form.ibuKerja)) miss.push({ name: "ibuKerja", label: "Pilih pekerjaan Ibu" });
-    if (!required(form.ibuIncome)) miss.push({ name: "ibuIncome", label: "Pilih penghasilan Ibu" });
-  }
-
-  // 5) Kontak wali
-  if (!required(form.waliWa)) miss.push({ name: "waliWa", label: "(masukkan nomor wali)" });
-  if (!required(form.waliTelp)) miss.push({ name: "waliTelp", label: "(masukkan nomor wali)" });
-
-  // 6) Upload dokumen (pakai ref yang sudah ada)
-  const okFiles = filesRef.current?.isComplete?.();
-  if (!okFiles) {
-    const missingDocs = filesRef.current?.getMissingFields?.() || [];
-    if (missingDocs.length === 0) {
-      miss.push({ name: "upload", label: "Lengkapi dokumen", anchor: "upload-section" });
-    } else {
-      missingDocs.forEach((label) => miss.push({ name: `doc:${label}`, label, anchor: "upload-section" }));
-    }
-  }
-
-  return miss;
-};
-
 
   const getErr = (name) => {
     const it = missing.find((m) => m.name === name);
     return it ? it.label : "";
   };
 
-  /* ===== Membuat akun user ===== */
-  const createUserAccount = async (registrationId, fullName, jenjang, nik, nisn) => {
+  /* ===== Membuat akun user (username ikut docId unik dari API; fallback auto-panjang) ===== */
+  const createUserAccount = async (registrationId, fullName, jenjang, nik, nisn, preferredUsername) => {
     const isEarly = isEarlyEducation(jenjang);
-    const username = isEarly ? last8(nik) : digits(nisn);
-    const passwordHash = await sha256Hex(username);
-    const ref = doc(db, "users_app", username);
-    await runTransaction(db, async (tx) => {
-      const snap = await tx.get(ref);
-      if (snap.exists()) {
+    const nikDigits = digits(nik);
+    const nisnDigits = digits(nisn);
+
+    // Gunakan docId unik dari API jika early; selain itu pakai NISN
+    let username = preferredUsername || (isEarly ? last8(nikDigits) : nisnDigits);
+
+    // Jika sudah ada user dengan username ini:
+    // - Kalau identitas sama (nik/nisn sama) => reuse (idempotent)
+    // - Kalau berbeda & early => panjangkan tail NIK 1 digit demi 1 hingga 16
+    // - Kalau berbeda & non-early (NISN) => lempar error (NISN harus unik)
+    const ensureUniqueUsername = async () => {
+      const tryGet = async (u) => {
+        const ref = doc(db, "users_app", u);
+        const s = await getDoc(ref);
+        return { ref, snap: s };
+      };
+
+      let { ref, snap } = await tryGet(username);
+      if (!snap.exists()) return ref; // aman
+
+      // Sudah ada → cek kepemilikan
+      const data = snap.data() || {};
+      const sameNik = digits(data.nik || "") === nikDigits;
+      const sameNisn = digits(data.nisn || "") === nisnDigits;
+
+      if (sameNik || sameNisn) {
+        // Akun milik orang yang sama → reuse
+        return ref;
+      }
+
+      if (!isEarly) {
         throw new Error("Akun sudah ada untuk ID ini. Hubungi admin bila perlu reset.");
       }
-      tx.set(ref, {
-        username,
-        role: "siswa",
-        registrationId,
-        fullName: fullName || "",
-        fullNameLower: (fullName || "").toLowerCase(),
-        registrationLevel: jenjang || "",
-        nik: digits(nik) || "",
-        nisn: digits(nisn) || "",
-        // wilayah tersimpan (Alamat Rumah)
-        provinceCode: form.provinceCode || "",
-        regencyCode: form.regencyCode || "",
-        districtCode: form.districtCode || "",
-        addressLine: form.alamat || "",
-        registrationPaymentProof: null,
-        registrationPaymentStatus: null,
-        registrationPaymentAt: null,
-        registrationPaymentVerifiedBy: null,
-        reRegistrationPaymentProof: null,
-        reRegistrationPaymentStatus: null,
-        reRegistrationPaymentAt: null,
-        reRegistrationVerifiedBy: null,
-        examAllowed: false,
-        examAccessStatus: "pending",
-        requestExamAt: serverTimestamp(),
-        verifiedPayment: false,
-        examPaketId: null,
-        examMapel: null,
-        examScheduleId: null,
-        createdAt: serverTimestamp(),
-        updatedAt: serverTimestamp(),
-        passwordHash,
-      });
+
+      // Early & beda orang → panjangkan tail NIK
+      for (let len = Math.max(8, String(username).length + 1); len <= 16; len++) {
+        const candidate = nikDigits.slice(-len);
+        const { ref: r2, snap: s2 } = await tryGet(candidate);
+        if (!s2.exists()) {
+          username = candidate;
+          return r2;
+        }
+        const d2 = s2.data() || {};
+        const sameNik2 = digits(d2.nik || "") === nikDigits;
+        if (sameNik2) {
+          username = candidate;
+          return r2; // milik orang sama (idempotent)
+        }
+      }
+      throw new Error("Gagal memilih username unik (NIK ekor 8–16).");
+    };
+
+    const userRef = await ensureUniqueUsername();
+
+    await runTransaction(db, async (tx) => {
+      const snap = await tx.get(userRef);
+      if (snap.exists()) {
+        // idempotent update ringan (tidak merusak flag pembayaran)
+        const data = snap.data() || {};
+        tx.update(userRef, {
+          registrationId: data.registrationId || registrationId,
+          fullName: fullName || data.fullName || "",
+          fullNameLower: (fullName || data.fullName || "").toLowerCase(),
+          registrationLevel: jenjang || data.registrationLevel || "",
+          nik: nikDigits || data.nik || "",
+          nisn: nisnDigits || data.nisn || "",
+          provinceCode: form.provinceCode || data.provinceCode || "",
+          regencyCode: form.regencyCode || data.regencyCode || "",
+          districtCode: form.districtCode || data.districtCode || "",
+          addressLine: form.alamat || data.addressLine || "",
+          updatedAt: serverTimestamp(),
+        });
+      } else {
+        const passwordHash = await sha256Hex(username);
+        tx.set(userRef, {
+          username,
+          role: "siswa",
+          registrationId,
+          fullName: fullName || "",
+          fullNameLower: (fullName || "").toLowerCase(),
+          registrationLevel: jenjang || "",
+          nik: nikDigits || "",
+          nisn: nisnDigits || "",
+          // wilayah tersimpan (Alamat Rumah)
+          provinceCode: form.provinceCode || "",
+          regencyCode: form.regencyCode || "",
+          districtCode: form.districtCode || "",
+          addressLine: form.alamat || "",
+          registrationPaymentProof: null,
+          registrationPaymentStatus: null,
+          registrationPaymentAt: null,
+          registrationPaymentVerifiedBy: null,
+          reRegistrationPaymentProof: null,
+          reRegistrationPaymentStatus: null,
+          reRegistrationPaymentAt: null,
+          reRegistrationVerifiedBy: null,
+          examAllowed: false,
+          examAccessStatus: "pending",
+          requestExamAt: serverTimestamp(),
+          verifiedPayment: false,
+          examPaketId: null,
+          examMapel: null,
+          examScheduleId: null,
+          createdAt: serverTimestamp(),
+          updatedAt: serverTimestamp(),
+          passwordHash,
+        });
+      }
     });
+
     return username;
   };
 
+  const onSubmit = async (e) => {
+    e.preventDefault();
 
-const onSubmit = async (e) => {
-  e.preventDefault();
-
-  // === validasi existing (tetap) ===
-  const miss = validateDetailed();
-  if (miss.length) {
-  setMissing(miss);
-  const first = miss[0];
-  scrollToAnchor(first.anchor || first.name);   // ⬅️ ini kuncinya
-  return;
-}
-  if (digits(form.nik).length !== 16) { setMissing([{name:"nik",label:"NIK harus 16 digit",anchor:"nik"}]); return; }
-  if (!isEarlyEducation(form.jenjang)) {
-    const nisnD = digits(form.nisn);
-    if (!(nisnD.length >= 8 && nisnD.length <= 12)) {
-      setMissing([{ name:"nisn", label:"NISN tidak valid (8–12 digit).", anchor:"nisn"}]);
+    const miss = validateDetailed();
+    if (miss.length) {
+      setMissing(miss);
+      const first = miss[0];
+      scrollToAnchor(first.anchor || first.name);
       return;
     }
-  }
-
-  setMissing([]);
-  setSubmitting(true);
-  let quotaClaimed = false;
-
-  try {
-    // 1) klaim kuota dulu
-    await claimQuota(form.jenjang);
-    quotaClaimed = true;
-
-    // 2) tentukan identifier utk folder Storage & validasi API
-    const identifier = isEarlyEducation(form.jenjang) ? digits(form.nik) : digits(form.nisn);
-
-    // 3) upload SEMUA file ke Firebase Storage (resumable, sequential)
-    //    -> KEMBALIKAN filesMeta (path,url,size,contentType)
-    const { filesMeta } = await filesRef.current.uploadSequential(identifier);
-
-    // 4) panggil API FINALIZE (JSON kecil, aman dari limit)
-    const res = await fetch("/api/ppdb", {
-      method: "POST",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({
-        op: "finalize",
-        identifier,
-        form,
-        filesMeta, // hanya metadata hasil upload client
-      }),
-    });
-
-    // 5) tangani respons yang mungkin non-JSON (mis. 413 halaman html)
-    const ct = (res.headers.get("content-type") || "").toLowerCase();
-    const payload = ct.includes("application/json") ? await res.json() : { success:false, error:(await res.text()) };
-
-    if (!res.ok || !payload.success) {
-      throw new Error(payload.error || "Gagal menyimpan data PPDB.");
+    if (digits(form.nik).length !== 16) { setMissing([{name:"nik",label:"NIK harus 16 digit",anchor:"nik"}]); return; }
+    if (!isEarlyEducation(form.jenjang)) {
+      const nisnD = digits(form.nisn);
+      if (!(nisnD.length >= 8 && nisnD.length <= 12)) {
+        setMissing([{ name:"nisn", label:"NISN tidak valid (8–12 digit).", anchor:"nisn"}]);
+        return;
+      }
     }
 
-    // 6) buat akun user (sudah ada), lalu redirect sukses
-    const registrationId = payload.registrationId;
-    const username = await createUserAccount(registrationId, form.nama, form.jenjang, form.nik, form.nisn);
-    const namaEnc = encodeURIComponent(form.nama);
-    router.push(`/spmb/success?id=${registrationId}&username=${username}&nama=${namaEnc}`);
-  } catch (err) {
-    // jika gagal setelah klaim kuota, kembalikan kuota
-    if (quotaClaimed) { try { await releaseQuota(form.jenjang); } catch {} }
+    setMissing([]);
+    setSubmitting(true);
+    let quotaClaimed = false;
 
-    // Pesan ramah untuk batas unggahan
-    const msg = String(err?.message || err || "");
-    if (/entity too large|413/i.test(msg)) {
-      alert("❌ Ukuran unggahan terlalu besar. Dokumen sudah otomatis diunggah per-berkas; coba perkecil ukuran file dan kirim ulang.");
-    } else {
-      alert("❌ " + msg);
+    try {
+      await claimQuota(form.jenjang);
+      quotaClaimed = true;
+
+      const early = isEarlyEducation(form.jenjang);
+      const identifier = early ? digits(form.nik) : digits(form.nisn);
+
+      const { filesMeta } = await filesRef.current.uploadSequential(identifier);
+
+      const res = await fetch("/api/ppdb", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          op: "finalize",
+          identifier,
+          form,
+          filesMeta,
+        }),
+      });
+
+      const ct = (res.headers.get("content-type") || "").toLowerCase();
+      const payload = ct.includes("application/json") ? await res.json() : { success:false, error:(await res.text()) };
+
+      if (!res.ok || !payload.success) {
+        throw new Error(payload.error || "Gagal menyimpan data PPDB.");
+      }
+
+      const registrationId = payload.registrationId;
+
+      // 💡 KUNCI: gunakan docId unik dari API sebagai username untuk early
+      const preferredUsername = early ? String(payload.id) : digits(form.nisn);
+
+      const username = await createUserAccount(
+        registrationId,
+        form.nama,
+        form.jenjang,
+        form.nik,
+        form.nisn,
+        preferredUsername
+      );
+
+      const namaEnc = encodeURIComponent(form.nama);
+      router.push(`/spmb/success?id=${registrationId}&username=${username}&nama=${namaEnc}`);
+    } catch (err) {
+      if (quotaClaimed) { try { await releaseQuota(form.jenjang); } catch {} }
+
+      const msg = String(err?.message || err || "");
+      if (/entity too large|413/i.test(msg)) {
+        alert("❌ Ukuran unggahan terlalu besar. Dokumen sudah otomatis diunggah per-berkas; coba perkecil ukuran file dan kirim ulang.");
+      } else {
+        alert("❌ " + msg);
+      }
+    } finally {
+      setSubmitting(false);
     }
-  } finally {
-    setSubmitting(false);
-  }
-};
+  };
 
   const showPendidikanSebelumnya = !isEarlyEducation(form.jenjang);
 
@@ -408,7 +467,8 @@ const onSubmit = async (e) => {
                     <div className="backdrop-blur-md bg-white/10 border border-white/20 p-2 rounded-lg shadow">
                       <div className="font-semibold text-white mb-0.5 text-[11px]">Kredensial Akun</div>
                       <div className="text-indigo-100 text-[11px] leading-snug">
-                        • TK/SD: 8 digit terakhir NIK<br />• Jenjang lainnya: NISN
+                        • TK/SD/PPS Ula: 8–16 digit akhir NIK (otomatis unik)<br />
+                        • Jenjang lainnya: NISN
                       </div>
                     </div>
                   </div>
@@ -447,7 +507,7 @@ const onSubmit = async (e) => {
               </div>
             </Section>
 
-            {/* 2. Identitas Utama (TANPA alamat & tanpa WilayahPicker) */}
+            {/* 2. Identitas Utama */}
             <Section title="Identitas Utama" desc="Sesuai Kartu Keluarga / Akta Kelahiran.">
               <Field label="NIK" required>
                 <Input name="nik" id="nik" value={form.nik} onChange={handle} maxLength={16}
@@ -483,69 +543,69 @@ const onSubmit = async (e) => {
               </Field>
             </Section>
 
-            {/* 3. Alamat Rumah (REVISI: satukan picker + alamat) */}
+            {/* 3. Alamat Rumah */}
             <Section title="Alamat Rumah" desc="Pilih wilayah domisili dan tulis alamat lengkap." id="alamat-rumah">
-  <div className="md:col-span-2 text-black">
-    <WilayahPicker
-      compact
-      label="Wilayah Domisili (Provinsi NTB, Kab/Kota, Kecamatan)"
-      value={{
-        provinceCode: form.provinceCode,
-        regencyCode: form.regencyCode,
-        districtCode: form.districtCode,
-        addressLine: form.alamat, // sinkron dengan state lama
-      }}
-      onChange={(v) =>
-        setForm((s) => ({
-          ...s,
-          provinceCode: v.provinceCode || "",
-          regencyCode: v.regencyCode || "",
-          districtCode: v.districtCode || "",
-          alamat: v.addressLine || "",
-        }))
-      }
-      addressLabel="Alamat Lengkap"
-      addressRequired
-      addressPlaceholder=""
-    />
+              <div className="md:col-span-2 text-black">
+                <WilayahPicker
+                  compact
+                  label="Wilayah Domisili (Provinsi NTB, Kab/Kota, Kecamatan)"
+                  value={{
+                    provinceCode: form.provinceCode,
+                    regencyCode: form.regencyCode,
+                    districtCode: form.districtCode,
+                    addressLine: form.alamat,
+                  }}
+                  onChange={(v) =>
+                    setForm((s) => ({
+                      ...s,
+                      provinceCode: v.provinceCode || "",
+                      regencyCode: v.regencyCode || "",
+                      districtCode: v.districtCode || "",
+                      alamat: v.addressLine || "",
+                    }))
+                  }
+                  addressLabel="Alamat Lengkap"
+                  addressRequired
+                  addressPlaceholder=""
+                />
 
-    {/* Anchor/error helpers (hidden) agar getErr tetap bekerja & bisa discroll */}
-    <Input
-      name="provinceCode"
-      id="provinceCode"
-      value={form.provinceCode}
-      readOnly
-      className="sr-only opacity-0 h-0 p-0 m-0 pointer-events-none"
-      error={getErr("provinceCode")}
-    />
-    <Input
-      name="regencyCode"
-      id="regencyCode"
-      value={form.regencyCode}
-      readOnly
-      className="sr-only opacity-0 h-0 p-0 m-0 pointer-events-none"
-      error={getErr("regencyCode")}
-    />
-    <Input
-      name="districtCode"
-      id="districtCode"
-      value={form.districtCode}
-      readOnly
-      className="sr-only opacity-0 h-0 p-0 m-0 pointer-events-none"
-      error={getErr("districtCode")}
-    />
-    <Input
-      name="alamat"
-      id="alamat"
-      value={form.alamat}
-      readOnly
-      className="sr-only opacity-0 h-0 p-0 m-0 pointer-events-none"
-      error={getErr("alamat")}
-    />
-  </div>
-</Section>
+                {/* Anchor/error helpers */}
+                <Input
+                  name="provinceCode"
+                  id="provinceCode"
+                  value={form.provinceCode}
+                  readOnly
+                  className="sr-only opacity-0 h-0 p-0 m-0 pointer-events-none"
+                  error={getErr("provinceCode")}
+                />
+                <Input
+                  name="regencyCode"
+                  id="regencyCode"
+                  value={form.regencyCode}
+                  readOnly
+                  className="sr-only opacity-0 h-0 p-0 m-0 pointer-events-none"
+                  error={getErr("regencyCode")}
+                />
+                <Input
+                  name="districtCode"
+                  id="districtCode"
+                  value={form.districtCode}
+                  readOnly
+                  className="sr-only opacity-0 h-0 p-0 m-0 pointer-events-none"
+                  error={getErr("districtCode")}
+                />
+                <Input
+                  name="alamat"
+                  id="alamat"
+                  value={form.alamat}
+                  readOnly
+                  className="sr-only opacity-0 h-0 p-0 m-0 pointer-events-none"
+                  error={getErr("alamat")}
+                />
+              </div>
+            </Section>
 
-            {/* 4. Pendidikan Sebelumnya */}
+            {/* 4. Pendidikan Sebelumnya — otomatis tersembunyi untuk TK/SD/PPS Ula */}
             {!isEarlyEducation(form.jenjang) && (
               <Section title="Pendidikan Sebelumnya">
                 <Field label="NISN" required>
