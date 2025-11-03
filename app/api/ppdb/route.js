@@ -11,14 +11,21 @@ const digits = (s) => String(s ?? "").replace(/\D+/g, "");
 const isNISN = (s) => /^\d{8,12}$/.test(digits(s));
 const isNIK = (s) => /^\d{16}$/.test(digits(s));
 
+/** Early education: TK, SD, dan PPS Ula (Putra/Putri) */
 const isEarlyEducation = (jenjang) => {
   const norm = String(jenjang || "")
     .toLowerCase()
     .replace(/[().]/g, "")
     .replace(/\s+/g, " ")
     .trim();
+
   if (norm === "tk" || norm === "taman kanak kanak") return true;
   if (norm === "sd" || norm.startsWith("sd ")) return true;
+
+  // Tambahan: "pps ula", termasuk varian putra/putri dari UI (lihat JenjangPicker)
+  // contoh value: "PPS Ula Putra", "PPS Ula Putri"
+  if (norm.includes("pps ula")) return true;
+
   return false;
 };
 
@@ -117,6 +124,30 @@ async function releaseRegistrationId(ref) {
   try { await ref.delete(); } catch {}
 }
 
+/* ===== Penentu ID unik untuk early-education (NIK ekor 8→16) ===== */
+async function pickDocIdForEarly(nik) {
+  const full = digits(nik || "");
+  if (!/^\d{16}$/.test(full)) throw new Error("NIK harus 16 digit.");
+
+  for (let len = 8; len <= 16; len++) {
+    const candidate = full.slice(-len);
+    const ref = adminDb.collection("ppdb").doc(candidate);
+    const snap = await ref.get();
+
+    if (!snap.exists) {
+      return candidate; // benar-benar unik
+    }
+    // Idempotensi: kalau dokumen itu milik NIK yang sama, reuse ID
+    const data = snap.data() || {};
+    const existingIdentifier = digits(data.identifier || data.nik || "");
+    if (existingIdentifier === full) {
+      return candidate; // milik orang yang sama → pakai ulang
+    }
+    // else: bentrok dengan orang lain → lanjut perpanjang
+  }
+  throw new Error("FAILED_ASSIGN_UNIQUE_DOC_ID");
+}
+
 /* ===== Finalize writer (dipakai kedua mode) ===== */
 async function finalizeWrite({ form, jenjang, identifier, registrationId, files, filesMeta }) {
   const isEarly = isEarlyEducation(jenjang);
@@ -124,7 +155,8 @@ async function finalizeWrite({ form, jenjang, identifier, registrationId, files,
   let docId = "";
   if (isEarly) {
     const nik = digits(form?.nik || "");
-    docId = nik.slice(-8);
+    // pilih ID unik berdasarkan ekor NIK (8→16)
+    docId = await pickDocIdForEarly(nik);
   } else {
     const nisn = digits(form?.nisn || "");
     docId = nisn;
@@ -271,7 +303,8 @@ export async function POST(req) {
         return NextResponse.json({ success: false, error: "NIK harus 16 digit." }, { status: 400 });
       }
       identifier = nik;
-      docId = nik.slice(-8);
+      // gunakan pemanjang dinamis 8→16
+      docId = await pickDocIdForEarly(nik);
     } else {
       const nisn = digits(form.nisn || "");
       if (!isNISN(nisn)) {
