@@ -14,7 +14,10 @@ export const EMAIL_ACCESS = {
   "yulianti@spmb.com": [ "/admin/nilai-tahfidz",],  
   "syafii@spmb.com": [ "/admin/nilai-tahfidz",],  
   "abuhusna@spmb.com": [ "/admin/nilai-tahfidz",],  
-  "abdulwahid@spmb.com": [ "/admin/nilai-tahfidz",],    
+  "abdulwahid@spmb.com": [ "/admin/nilai-tahfidz",], 
+  "abdullahhusni@spmb.com": [ "/admin/kuota",],   
+  
+  
 
   // Full Akses
   "user@admin.com": [ "*"  
