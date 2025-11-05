@@ -44,10 +44,12 @@ const NO_IJAZAH = new Set([
   "PPS Ula Putri",
 ]);
 
-/** Daftar wajib per tipe keringanan (tanpa foto) — 'ijazah' akan ditambahkan dinamis sesuai jenjang */
+/** Daftar wajib per tipe keringanan (tanpa foto) — 'ijazah' akan ditambahkan dinamis sesuai jenjang
+ *  REVISI: untuk Yatim/Piatu TIDAK mewajibkan pkhDtks.
+ */
 const REQUIRED_BY_TYPE_BASE = {
   dhuafa: ["kk", "akta", "ktpWali", "sktm", "pkhDtks"],
-  yatimPiatu: ["kk", "akta", "ktpWali", "suketMeninggalOrtu", "sktm", "pkhDtks"],
+  yatimPiatu: ["kk", "akta", "ktpWali", "suketMeninggalOrtu", "sktm"], // pkhDtks DIHAPUS
 };
 
 const LABELS = {
@@ -282,7 +284,9 @@ const UploudDokumen = forwardRef(function UploudDokumen(props, ref) {
                 ].join(" ")}
               >
                 <div className="text-slate-900">Yatim atau Piatu</div>
-                <div className="text-xs text-slate-600">Wajib unggah Suket Meninggal Orang Tua + SKTM & PKH/DTKS</div>
+                <div className="text-xs text-slate-600">
+                  Wajib unggah Suket Meninggal Orang Tua + SKTM (PKH/DTKS tidak diwajibkan)
+                </div>
               </button>
             </div>
 
@@ -308,8 +312,11 @@ const UploudDokumen = forwardRef(function UploudDokumen(props, ref) {
               <FileInput name="ktpWali" label={LABELS.ktpWali} required={requiredSetBenefit.includes("ktpWali")} />
 
               {/* Baris 3 */}
-              <FileInput name="sktm"    label={LABELS.sktm}    required={requiredSetBenefit.includes("sktm")} />
-              <FileInput name="pkhDtks" label={LABELS.pkhDtks} required={requiredSetBenefit.includes("pkhDtks")} />
+              <FileInput name="sktm" label={LABELS.sktm} required={requiredSetBenefit.includes("sktm")} />
+              {/* REVISI: pkhDtks disembunyikan bila Yatim/Piatu */}
+              {benefitType !== "yatimPiatu" && (
+                <FileInput name="pkhDtks" label={LABELS.pkhDtks} required={requiredSetBenefit.includes("pkhDtks")} />
+              )}
 
               {/* Khusus Yatim/Piatu */}
               {benefitType === "yatimPiatu" && (
