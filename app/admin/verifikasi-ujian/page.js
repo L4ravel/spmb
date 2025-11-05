@@ -404,7 +404,7 @@ function WaCell({ nisn, name, wsMs, weMs, scheduleId }) {
       "3) Tes Wawancara.",
       "4) Pengukuran baju/seragam.",
       "",
-      "Peserta wajib hadir bersama wali yang sesuai, tepat waktu, dan mengenakan pakaian rapi. Dianjurkan tiba 10–15 menit lebih awal.",
+      "Peserta wajib hadir bersama wali yang sesuai (siswa putra dengan wali putra, siswa putri dengan wali putri), tepat waktu, dan mengenakan pakaian rapi. Dianjurkan tiba 10–15 menit lebih awal.",
       "(Catatan: Bagi yang berada di luar daerah, silakan konfirmasi kepada panitia untuk pelaksanaan ujian secara online.)",
       "",
       "Jazakumullahu khairan.",
@@ -689,4 +689,5 @@ function WaCell({ nisn, name, wsMs, weMs, scheduleId }) {
     </div>
   );
 }
+
 
