@@ -297,148 +297,162 @@ export default function VerifikasiUjian() {
   };
 
   /* ====== WA Cell (WhatsApp Web, "surat" format, hari & waktu) ====== */
-  function WaCell({ nisn, name, wsMs, weMs, scheduleId }) {
-    const [loading, setLoading] = useState(true);
-    const [phoneRaw, setPhoneRaw] = useState("");
-    const [hasPhone, setHasPhone] = useState(false);
-    const [sent, setSent] = useState(false);
-    const [localWs, setLocalWs] = useState(wsMs || 0);
-    const [localWe, setLocalWe] = useState(weMs || 0);
+  /* ====== WA Cell (WhatsApp Web, "surat" + kredensial login) ====== */
+function WaCell({ nisn, name, wsMs, weMs, scheduleId }) {
+  const [loading, setLoading] = useState(true);
+  const [phoneRaw, setPhoneRaw] = useState("");
+  const [hasPhone, setHasPhone] = useState(false);
+  const [sent, setSent] = useState(false);
+  const [localWs, setLocalWs] = useState(wsMs || 0);
+  const [localWe, setLocalWe] = useState(weMs || 0);
 
-    // restore sent flag
-    useEffect(() => {
+  // restore sent flag
+  useEffect(() => {
+    try {
+      const map = JSON.parse(localStorage.getItem("wa_sent_flags") || "{}");
+      if (map && map[nisn]) setSent(true);
+    } catch {}
+  }, [nisn]);
+
+  // ambil nomor + fallback jadwal dari exam_schedules bila belum ada
+  useEffect(() => {
+    let alive = true;
+    (async () => {
       try {
-        const map = JSON.parse(localStorage.getItem("wa_sent_flags") || "{}");
-        if (map && map[nisn]) setSent(true);
-      } catch {}
-    }, [nisn]);
-
-    // ambil nomor + fallback jadwal dari exam_schedules bila belum ada
-    useEffect(() => {
-      let alive = true;
-      (async () => {
-        try {
-          setLoading(true);
-          // nomor
-          const ppdbRef = doc(db, "ppdb", String(nisn));
-          const ppdbSnap = await getDoc(ppdbRef);
-          if (!alive) return;
-          if (ppdbSnap.exists()) {
-            const d = ppdbSnap.data() || {};
-            const wa = (d.waliWa || "").toString().trim();
-            const telp = (d.waliTelp || d.waliTel || "").toString().trim();
-            const chosen = wa || telp || "";
-            setPhoneRaw(chosen);
-            setHasPhone(!!chosen);
-          } else {
-            setPhoneRaw("");
-            setHasPhone(false);
-          }
-
-          // fallback jadwal
-          if ((!wsMs || !weMs) && scheduleId) {
-            const schRef = doc(db, "exam_schedules", String(scheduleId));
-            const schSnap = await getDoc(schRef);
-            if (!alive) return;
-            if (schSnap.exists()) {
-              const sd = schSnap.data() || {};
-              const a = toMs(sd.windowStartAt);
-              const b = toMs(sd.windowEndAt);
-              if (a) setLocalWs(a);
-              if (b) setLocalWe(b);
-            }
-          }
-        } catch (e) {
-          console.error("Fetch WA/jadwal error:", e);
-          if (!alive) return;
+        setLoading(true);
+        // nomor
+        const ppdbRef = doc(db, "ppdb", String(nisn));
+        const ppdbSnap = await getDoc(ppdbRef);
+        if (!alive) return;
+        if (ppdbSnap.exists()) {
+          const d = ppdbSnap.data() || {};
+          const wa = (d.waliWa || "").toString().trim();
+          const telp = (d.waliTelp || d.waliTel || "").toString().trim();
+          const chosen = wa || telp || "";
+          setPhoneRaw(chosen);
+          setHasPhone(!!chosen);
+        } else {
           setPhoneRaw("");
           setHasPhone(false);
-        } finally {
-          if (alive) setLoading(false);
         }
-      })();
-      return () => {
-        alive = false;
-      };
-    }, [nisn, scheduleId, wsMs, weMs]);
 
-    const handleSend = () => {
-      if (!hasPhone) return;
-      const phone = normalizePhoneID(phoneRaw);
-      if (!phone) return;
-
-      const jadwal = fmtJadwalSurat(localWs, localWe);
-      // === Format "surat" (multi-baris) ===
-      const lines = [
-  "Bismillah.",
-  "Panitia SPMB Ponpes As-Sunnah",
-  "",
-  "Kepada Yth. Orang Tua/Wali Peserta,",
-  `Nama   : ${name || "—"}`,
-  `NISN   : ${nisn}`,
-  "",
-  "Undangan Pelaksanaan Ujian SPMB:",
-  jadwal
-    ? `Hari/Tanggal : ${jadwal.hari}, ${jadwal.tanggal}`
-    : "Hari/Tanggal : -",
-  jadwal ? `Waktu        : ${jadwal.waktu}` : "Waktu        : -",
-  "Tempat       : Pondok As-Sunnah",
-  "",
-  "Runtutan Ujian:",
-  "1) Tes Akademik (online—membawa HP/ponsel, baterai cukup & kuota).",
-  "2) Baca Al-Qur’an.",
-  "3) Tes Wawancara.",
-  "4) Pengukuran baju/seragam.",
-  "",
-  "Peserta wajib hadir bersama wali yang sesuai (siswa putra dengan wali putra, siswa putri dengan wali putri), tepat waktu, dan mengenakan pakaian rapi. Dianjurkan tiba 10–15 menit lebih awal.",
-  "(Catatan : Bagi yang berada di luar daerah, silakan konfirmasi kepada panitia untuk pelaksanaan ujian secara online.)",
-  "",
-  "Jazakallah khairan.",
-  "Panitia SPMB Ponpes As-Sunnah",
-];
-
-const pesan = lines.join("\n");
-
-
-      const url = `https://web.whatsapp.com/send?phone=${phone}&text=${encodeURIComponent(pesan)}`;
-      try {
-        window.open(url, "_blank", "noopener,noreferrer");
-        setSent(true);
-        try {
-          const map = JSON.parse(localStorage.getItem("wa_sent_flags") || "{}");
-          map[nisn] = true;
-          localStorage.setItem("wa_sent_flags", JSON.stringify(map));
-        } catch {}
+        // fallback jadwal
+        if ((!wsMs || !weMs) && scheduleId) {
+          const schRef = doc(db, "exam_schedules", String(scheduleId));
+          const schSnap = await getDoc(schRef);
+          if (!alive) return;
+          if (schSnap.exists()) {
+            const sd = schSnap.data() || {};
+            const a = toMs(sd.windowStartAt);
+            const b = toMs(sd.windowEndAt);
+            if (a) setLocalWs(a);
+            if (b) setLocalWe(b);
+          }
+        }
       } catch (e) {
-        console.error("Open WhatsApp Web failed:", e);
+        console.error("Fetch WA/jadwal error:", e);
+        if (!alive) return;
+        setPhoneRaw("");
+        setHasPhone(false);
+      } finally {
+        if (alive) setLoading(false);
       }
+    })();
+    return () => {
+      alive = false;
     };
+  }, [nisn, scheduleId, wsMs, weMs]);
 
-    if (loading) return <span className="text-slate-500">Memuat…</span>;
-    if (!hasPhone) {
-      return (
-        <span className="inline-flex items-center rounded-full bg-slate-100 px-2.5 py-1 text-xs font-medium text-slate-600">
-          Tidak memiliki nomor WA
-        </span>
-      );
+  const handleSend = () => {
+    if (!hasPhone) return;
+    const phone = normalizePhoneID(phoneRaw);
+    if (!phone) return;
+
+    const jadwal = fmtJadwalSurat(localWs, localWe);
+
+    // ====== Kredensial login (username & password = NISN) + link login (domain aktif) ======
+    let origin = "";
+    try {
+      origin = window?.location?.origin || "";
+    } catch {}
+    const loginUrl = origin ? `${origin}/login` : "/login";
+    const username = String(nisn);
+    const password = String(nisn);
+
+    // === Format "surat" (multi-baris) ===
+    const lines = [
+      "Bismillah.",
+      "Panitia SPMB Ponpes As-Sunnah",
+      "",
+      "Kepada Yth. Orang Tua/Wali Peserta,",
+      `Nama   : ${name || "—"}`,
+      `NISN   : ${nisn}`,
+      "",
+      "Undangan Pelaksanaan Ujian SPMB:",
+      jadwal ? `Hari/Tanggal : ${jadwal.hari}, ${jadwal.tanggal}` : "Hari/Tanggal : -",
+      jadwal ? `Waktu        : ${jadwal.waktu}` : "Waktu        : -",
+      "Tempat       : Pondok As-Sunnah",
+      "",
+      "Akses Akun Peserta:",      
+      `Username    : ${username}`,
+      `Password    : ${password}`,
+      `Login       : ${loginUrl}`,
+      "",
+      "Runtutan Ujian:",
+      "1) Tes Akademik (online—membawa HP/ponsel, baterai cukup & kuota).",
+      "2) Baca Al-Qur’an.",
+      "3) Tes Wawancara.",
+      "4) Pengukuran baju/seragam.",
+      "",
+      "Peserta wajib hadir bersama wali yang sesuai, tepat waktu, dan mengenakan pakaian rapi. Dianjurkan tiba 10–15 menit lebih awal.",
+      "(Catatan: Bagi yang berada di luar daerah, silakan konfirmasi kepada panitia untuk pelaksanaan ujian secara online.)",
+      "",
+      "Jazakumullahu khairan.",
+      "Panitia SPMB Ponpes As-Sunnah",
+    ];
+
+    const pesan = lines.join("\n");
+    const url = `https://web.whatsapp.com/send?phone=${phone}&text=${encodeURIComponent(pesan)}`;
+
+    try {
+      window.open(url, "_blank", "noopener,noreferrer");
+      setSent(true);
+      try {
+        const map = JSON.parse(localStorage.getItem("wa_sent_flags") || "{}");
+        map[nisn] = true;
+        localStorage.setItem("wa_sent_flags", JSON.stringify(map));
+      } catch {}
+    } catch (e) {
+      console.error("Open WhatsApp Web failed:", e);
     }
+  };
 
+  if (loading) return <span className="text-slate-500">Memuat…</span>;
+  if (!hasPhone) {
     return (
-      <div className="flex items-center gap-2">
-        <button
-          onClick={handleSend}
-          className="rounded-lg bg-emerald-600 px-3 py-1.5 text-sm font-semibold text-white hover:bg-emerald-700"
-        >
-          Kirim via WhatsApp
-        </button>
-        {sent && (
-          <span className="inline-flex items-center gap-1 rounded-full bg-emerald-50 px-2.5 py-1 text-xs font-medium text-emerald-700 ring-1 ring-emerald-200">
-            <CheckCircle2 size={14} /> Sudah terkirim
-          </span>
-        )}
-      </div>
+      <span className="inline-flex items-center rounded-full bg-slate-100 px-2.5 py-1 text-xs font-medium text-slate-600">
+        Tidak memiliki nomor WA
+      </span>
     );
   }
+
+  return (
+    <div className="flex items-center gap-2">
+      <button
+        onClick={handleSend}
+        className="rounded-lg bg-emerald-600 px-3 py-1.5 text-sm font-semibold text-white hover:bg-emerald-700"
+      >
+        Kirim via WhatsApp
+      </button>
+      {sent && (
+        <span className="inline-flex items-center gap-1 rounded-full bg-emerald-50 px-2.5 py-1 text-xs font-medium text-emerald-700 ring-1 ring-emerald-200">
+          <CheckCircle2 size={14} /> Sudah terkirim
+        </span>
+      )}
+    </div>
+  );
+}
+
 
   /* =============== UI =============== */
   return (
@@ -675,3 +689,4 @@ const pesan = lines.join("\n");
     </div>
   );
 }
+
