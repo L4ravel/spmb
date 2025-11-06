@@ -24,14 +24,20 @@ const fmtIDR = (n) =>
   new Intl.NumberFormat("id-ID", { style: "currency", currency: "IDR", maximumFractionDigits: 0 })
     .format(Number(n || 0));
 
-// ---------- Ambil fee berdasarkan registrationLevel ----------
-async function resolveAmountAndLevelByNisn(nisn) {
-  // 1) Ambil registrationLevel dari users_app/{nisn}
+// ---------- Ambil fee + level + username berdasarkan NISN ----------
+async function resolveUserMetaByNisn(nisn) {
+  // 1) Ambil registrationLevel & username dari users_app/{nisn}
   const userRef = doc(db, "users_app", String(nisn));
   const userSnap = await getDoc(userRef);
-  if (!userSnap.exists()) return { amount: 0, registrationLevel: "-" };
+  let registrationLevel = "-";
+  let username = String(nisn || "").trim();
 
-  const registrationLevel = userSnap.data()?.registrationLevel || "-";
+  if (userSnap.exists()) {
+    const u = userSnap.data() || {};
+    registrationLevel = u.registrationLevel || "-";
+    // Prioritas field username; fallback ke nisn
+    username = (u.username && String(u.username).trim()) || username;
+  }
 
   // 2) Cari fees where label == registrationLevel
   const feesCol = collection(db, "fees");
@@ -39,19 +45,23 @@ async function resolveAmountAndLevelByNisn(nisn) {
   const feesSnap = await getDocs(q);
 
   const amount = feesSnap.empty ? 0 : Number(feesSnap.docs[0].data()?.fee || 0);
-  return { amount, registrationLevel };
+  return { amount, registrationLevel, username };
 }
 
 // ---------- Template pesan WA ----------
-function buildMessage({ fullName, registrationId, registrationLevel, amount, method }) {
+function buildMessage({ fullName, registrationId, registrationLevel, amount, method, username, nisn }) {
   const NAME = String(fullName || "").toUpperCase();
   const loginUrl = `${location.origin}/login`; // otomatis localhost/prod
+
   return [
     "Bismillah.",
     "",
-     `Pembayaran pendaftaran *${registrationLevel}* atas nama *${NAME}* (ID: ${registrationId}) telah *DISETUJUI*.`,
+    `Pembayaran pendaftaran *${registrationLevel}* atas nama *${NAME}* (ID: ${registrationId}) telah *DISETUJUI*.`,
     `Metode: ${String(method || "-").toUpperCase()}`,
     `Jumlah: ${fmtIDR(amount)}`,
+    "",
+    `Username: *${username || "-"}*`,
+    `NISN: *${nisn || "-"}*`,
     `Login: ${loginUrl}`,
     "",
     "Butuh Bantuan : 0877 2024 2025",
@@ -113,7 +123,7 @@ async function deliverWhatsApp({ to62, text }) {
 /**
  * Kirim WA konfirmasi pembayaran.
  * - Ambil nomor dari ppdb/{nisn} (ayahWa/waliWa/ayahTelp/waliTelp)
- * - Ambil fee otomatis dari users_app/{nisn}.registrationLevel -> fees.label == registrationLevel
+ * - Ambil fee & username otomatis dari users_app/{nisn}
  * @param {Object} args
  * @param {string} args.nisn - id dokumen di /ppdb/{nisn}
  * @param {string} args.registrationId
@@ -150,7 +160,7 @@ export async function sendWaKonfirmasi(args) {
     if (!snap.exists()) return { ok: false, reason: `ppdb/${nisn} tidak ditemukan.` };
 
     const data = snap.data() || {};
-    const rawWa = data.waliWa || data.waliWa || data.ayahTelp || data.waliTelp || "";
+    const rawWa = data.ayahWa || data.waliWa || data.ayahTelp || data.waliTelp || "";
     const to62 = normalizeWa(rawWa);
     if (!to62) {
       await setDoc(
@@ -161,22 +171,27 @@ export async function sendWaKonfirmasi(args) {
       return { ok: false, reason: "Nomor WA wali kosong/invalid pada dokumen ppdb." };
     }
 
-    // Resolve fee & level jika belum diberikan oleh caller
+    // Resolve fee, level, dan username jika belum diberikan oleh caller
     let finalAmount = Number(amount ?? NaN);
     let finalLevel = registrationLevel;
-    if (!(finalAmount > 0) || !finalLevel) {
-      const { amount: amt, registrationLevel: lvl } = await resolveAmountAndLevelByNisn(nisn);
-      if (!(finalAmount > 0)) finalAmount = amt;
-      if (!finalLevel) finalLevel = lvl;
+    let finalUsername = null;
+
+    if (!(finalAmount > 0) || !finalLevel || !finalUsername) {
+      const meta = await resolveUserMetaByNisn(nisn);
+      if (!(finalAmount > 0)) finalAmount = meta.amount;
+      if (!finalLevel) finalLevel = meta.registrationLevel;
+      finalUsername = meta.username; // selalu diisi (fallback ke nisn)
     }
 
-    // Bangun pesan sesuai template /login
+    // Bangun pesan (sekarang menyertakan Username & NISN)
     const text = buildMessage({
       fullName,
       registrationId,
       registrationLevel: finalLevel,
       amount: finalAmount,
       method,
+      username: finalUsername,
+      nisn,
     });
 
     // Kirim
@@ -200,6 +215,7 @@ export async function sendWaKonfirmasi(args) {
           registrationLevel: finalLevel,
           amount: Number(finalAmount || 0),
           method: method || null,
+          username: finalUsername,
         },
       },
       { merge: true }

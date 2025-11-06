@@ -56,20 +56,35 @@ export function normalizeWa(raw) {
   if (d.startsWith("0")) return `62${d.slice(1)}`;
   return d;
 }
-export function buildWaMessage({ fullName, registrationId, registrationLevel, amount, method }) {
+
+/* ====== REVISI: tambahkan username & nisn (opsional) ke pesan ====== */
+export function buildWaMessage({
+  fullName,
+  registrationId,
+  registrationLevel,
+  amount,
+  method,
+  username,   // NEW (opsional)
+  nisn,       // NEW (opsional)
+}) {
   const NAME = String(fullName || "").toUpperCase();
   const loginUrl = `${location.origin}/login`;
-  return [
+  const lines = [
     "Bismillah.",
     "",
     `Pembayaran pendaftaran *${registrationLevel}* atas nama *${NAME}* (ID: ${registrationId}) telah *DISETUJUI*.`,
     `Metode: ${String(method || "-").toUpperCase()}`,
     `Jumlah: ${fmtIDR(amount)}`,
-    `Login: ${loginUrl}`,
+  ];
+  if (username) lines.push(`Username: *${username}*`);
+  if (nisn) lines.push(`Password: *${nisn}*`);
+  lines.push(`Login: ${loginUrl}`);
+  lines.push(
     "",
     "Butuh Bantuan : 0877 2024 2025",
-    "— Panitia SPMB",
-  ].join("\n");
+    "— Panitia SPMB"
+  );
+  return lines.join("\n");
 }
 
 /** =========================
@@ -185,12 +200,15 @@ export function useVerifiedWaEffect() {
           if (!phone62) return;
           const level = r.registrationLevel || "-";
           const amount = await getFee(level);
+          /* REVISI: sertakan username & nisn ke pesan fallback */
           const text = buildWaMessage({
             fullName: r.fullName,
             registrationId: r.registrationId,
             registrationLevel: level,
             amount,
             method: r._method,
+            username: r?.username || nisn, // kalau ada username, pakai; fallback ke nisn
+            nisn,                          // selalu kirimkan nisn
           });
           openWhatsAppSafe({ phone62, text });
         } catch (fallbackErr) {
@@ -309,18 +327,18 @@ export function usePembayaranLogic() {
     return base.canUseVerifierFilter && hasTarget;
   }, [base.canUseVerifierFilter, base.verifierQuery, base.verifierFilter]);
 
- const visibleRows = useMemo(() => {
-  if (isPrivileged && privilegedTargeting) return base.rows;
-  // NEW: bila status "all" → tampilkan semua baris apa adanya
-  if (String(base.statusFilter || "all") === "all") return base.rows;
+  const visibleRows = useMemo(() => {
+    if (isPrivileged && privilegedTargeting) return base.rows;
+    // NEW: bila status "all" → tampilkan semua baris apa adanya
+    if (String(base.statusFilter || "all") === "all") return base.rows;
 
-  return base.rows.filter((r) => {
-    const isVerified = r?.verifiedPayment === true;
-    if (!isVerified) return true; // pending → semua bisa lihat
-    const by = String(r?.registrationPaymentVerifiedBy || "").toLowerCase();
-    return by === myKey;
-  });
-}, [base.rows, myKey, isPrivileged, privilegedTargeting, base.statusFilter]);
+    return base.rows.filter((r) => {
+      const isVerified = r?.verifiedPayment === true;
+      if (!isVerified) return true; // pending → semua bisa lihat
+      const by = String(r?.registrationPaymentVerifiedBy || "").toLowerCase();
+      return by === myKey;
+    });
+  }, [base.rows, myKey, isPrivileged, privilegedTargeting, base.statusFilter]);
 
   const filteredRows = visibleRows;
 
@@ -391,12 +409,12 @@ export function usePembayaranLogic() {
     [rowsBySelectedVerifier]
   );
   const totalPendingByVerifier = useMemo(
-  () =>
-    rowsBySelectedVerifier.filter(
-      (r) => String(r?.registrationPaymentStatus || "") === "waiting_review"
-    ).length,
-  [rowsBySelectedVerifier]
-);
+    () =>
+      rowsBySelectedVerifier.filter(
+        (r) => String(r?.registrationPaymentStatus || "") === "waiting_review"
+      ).length,
+    [rowsBySelectedVerifier]
+  );
   const totalSiswaByVerifier = useMemo(
     () => rowsBySelectedVerifier.length,
     [rowsBySelectedVerifier]
@@ -426,11 +444,11 @@ export function usePembayaranLogic() {
 
     // >>> total berbasis filter verifikator <<<
     totalSiswaByVerifier,
-totalVerifiedByVerifier,   // (tetap ada untuk yang berbasis visibleRows)
- totalPendingByVerifier,    // (tetap ada untuk yang berbasis visibleRows)
- // >>> angka global (tidak terpengaruh pagination)
- totalVerifiedGlobal: base.totalVerifiedCount,
- totalPendingGlobal:  base.totalPendingCount,
+    totalVerifiedByVerifier,   // (tetap ada untuk yang berbasis visibleRows)
+    totalPendingByVerifier,    // (tetap ada untuk yang berbasis visibleRows)
+    // >>> angka global (tidak terpengaruh pagination)
+    totalVerifiedGlobal: base.totalVerifiedCount,
+    totalPendingGlobal:  base.totalPendingCount,
     totalAllRowsCount: base.totalRowsCount,
 
     // fetchers
