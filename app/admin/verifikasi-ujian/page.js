@@ -356,88 +356,81 @@ export default function VerifikasiUjian() {
       };
     }, [nisn, scheduleId, wsMs, weMs]);
 
-    const handleSend = () => {
-      if (!hasPhone) return;
-      const phone = normalizePhoneID(phoneRaw);
-      if (!phone) return;
+    // di dalam function WaCell(...)
+const handleSend = () => {
+  if (!hasPhone) return;
+  const phone = normalizePhoneID(phoneRaw);
+  if (!phone) return;
 
-      const jadwal = fmtJadwalSurat(localWs, localWe);
+  const jadwal = fmtJadwalSurat(localWs, localWe);
 
-      let origin = "";
-      try {
-        origin = window?.location?.origin || "";
-      } catch {}
-      const loginUrl = origin ? `${origin}/login` : "/login";
-      const username = String(nisn);
-      const password = String(nisn);
+  let origin = "";
+  try { origin = window?.location?.origin || ""; } catch {}
+  const loginUrl = origin ? `${origin}/login` : "/login";
+  const username = String(nisn);
+  const password = String(nisn);
 
-      const lines = [
-        "Bismillah.",
-        "Panitia SPMB Ponpes As-Sunnah",
-        "",
-        "Kepada Yth. Orang Tua/Wali Peserta,",
-        `Nama   : ${name || "—"}`,
-        `NISN   : ${nisn}`,
-        "",
-        "Undangan Pelaksanaan Ujian SPMB:",
-        jadwal ? `Hari/Tanggal : ${jadwal.hari}, ${jadwal.tanggal}` : "Hari/Tanggal : -",
-        jadwal ? `Waktu        : ${jadwal.waktu}` : "Waktu        : -",
-        "Tempat       : Pondok As-Sunnah",
-        "",
-        "Akses Akun Peserta:",
-        `Username    : ${username}`,
-        `Password    : ${password}`,
-        `Login       : ${loginUrl}`,
-        "",
-        "Runtutan Ujian:",
-        "1) Tes Akademik (online—membawa HP/ponsel, baterai cukup & kuota).",
-        "2) Baca Al-Qur’an.",
-        "3) Tes Wawancara.",
-        "4) Pengukuran baju/seragam.",
-        "",
-        "Peserta wajib hadir bersama wali yang sesuai, tepat waktu, dan berpakaian rapi. Dianjurkan tiba 10–15 menit lebih awal.",
-        "",
-        "(Catatan: Bagi yang berada di luar daerah, silakan konfirmasi kepada panitia untuk pelaksanaan ujian secara online.)",
-        "",
-        "Terkait informasi yang belum jelas, silahkan hubungi panitia.",
-        "",
-        "Jazakumullahu khairan.",
-        "Panitia SPMB Ponpes As-Sunnah",
-      ];
+  const lines = [
+    "Bismillah.",
+    "Panitia SPMB Ponpes As-Sunnah",
+    "",
+    "Kepada Yth. Orang Tua/Wali Peserta,",
+    `Nama   : ${name || "—"}`,
+    `NISN   : ${nisn}`,
+    "",
+    "Undangan Pelaksanaan Ujian SPMB:",
+    jadwal ? `Hari/Tanggal : ${jadwal.hari}, ${jadwal.tanggal}` : "Hari/Tanggal : -",
+    jadwal ? `Waktu        : ${jadwal.waktu}` : "Waktu        : -",
+    "Tempat       : Pondok As-Sunnah",
+    "",
+    "Akses Akun Peserta:",
+    `Username    : ${username}`,
+    `Password    : ${password}`,
+    `Login       : ${loginUrl}`,
+    "",
+    "Runtutan Ujian:",
+    "1) Tes Akademik (online—membawa HP/ponsel, baterai cukup & kuota).",
+    "2) Baca Al-Qur’an.",
+    "3) Tes Wawancara.",
+    "4) Pengukuran baju/seragam.",
+    "",
+    "Peserta wajib hadir bersama wali yang sesuai (Peserta putra bersama wali putra dan Peserta putri bersama wali putri), tepat waktu, dan berpakaian rapi. Dianjurkan tiba 10–15 menit lebih awal.",
+    "",
+    "(Catatan: Bagi yang berada di luar daerah, silakan konfirmasi kepada panitia untuk pelaksanaan ujian secara online.)",
+    "",
+    "Terkait informasi yang belum jelas, silahkan hubungi panitia.",
+    "",
+    "Jazakumullahu khairan.",
+    "Panitia SPMB Ponpes As-Sunnah",
+  ];
+  const pesan = lines.join("\n");
 
-      const pesan = lines.join("\n");
+  let ua = "";
+  try { ua = navigator?.userAgent || ""; } catch {}
+  const isMobile = /Android|iPhone|iPad|iPod|webOS|BlackBerry|IEMobile|Windows Phone/i.test(ua);
 
-      let ua = "";
-      try {
-        ua = navigator?.userAgent || "";
-      } catch {}
-      const isMobile = /Android|iPhone|iPad|iPod|webOS|BlackBerry|IEMobile|Windows Phone/i.test(ua);
+  const waWeb = `https://web.whatsapp.com/send?phone=${phone}&text=${encodeURIComponent(pesan)}`;
+  const waApp = `whatsapp://send?phone=${phone}&text=${encodeURIComponent(pesan)}`;
+  const waMe  = `https://wa.me/${phone}?text=${encodeURIComponent(pesan)}`;
 
-      const waWeb = `https://web.whatsapp.com/send?phone=${phone}&text=${encodeURIComponent(pesan)}`;
-      const waApp = `whatsapp://send?phone=${phone}&text=${encodeURIComponent(pesan)}`;
-      const waMe = `https://wa.me/${phone}?text=${encodeURIComponent(pesan)}`;
+  try {
+    if (isMobile) {
+      window.location.href = waApp;        // buka aplikasi WA
+      setTimeout(() => { try { window.location.href = waMe; } catch {} }, 400); // fallback
+    } else {
+      window.open(waWeb, "_blank", "noopener,noreferrer"); // desktop: WA Web
+    }
+    setSent(true);
+    try {
+      const map = JSON.parse(localStorage.getItem("wa_sent_flags") || "{}");
+      map[nisn] = true;
+      localStorage.setItem("wa_sent_flags", JSON.stringify(map));
+    } catch {}
+  } catch (e) {
+    console.error("Open WhatsApp link failed:", e);
+  }
+};
 
-      try {
-        if (isMobile) {
-          window.location.href = waApp;
-          setTimeout(() => {
-            try {
-              window.location.href = waMe;
-            } catch {}
-          }, 400);
-        } else {
-          window.open(waWeb, "_blank", "noopener,noreferrer");
-        }
-        setSent(true);
-        try {
-          const map = JSON.parse(localStorage.getItem("wa_sent_flags") || "{}");
-          map[nisn] = true;
-          localStorage.setItem("wa_sent_flags", JSON.stringify(map));
-        } catch {}
-      } catch (e) {
-        console.error("Open WhatsApp link failed:", e);
-      }
-    };
 
     if (loading) return <span className="text-slate-500">Memuat…</span>;
     if (!hasPhone) {
@@ -788,7 +781,7 @@ export default function VerifikasiUjian() {
   const name =
     r.fullName || r.namaLengkap || r.nama || r.name ||
     r.profile?.fullName || r.profile?.name || "—";
-  const level = (r.registrationLevel || "").toString().trim() || "—"; // <— tambahkan baris ini
+  const level = (r.registrationLevel || "").toString().trim() || "—"; 
   const wsMs = toMs(r.examWindowStartAt);
   const weMs = toMs(r.examWindowEndAt);
   return (
