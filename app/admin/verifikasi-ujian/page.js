@@ -52,11 +52,9 @@ function normalizePhoneID(raw) {
 const HARI_ID = ["Ahad", "Senin", "Selasa", "Rabu", "Kamis", "Jumat", "Sabtu"];
 const pad2 = (n) => String(n).padStart(2, "0");
 function fmtTanggalID(d) {
-  // dd/mm/yyyy
   return `${pad2(d.getDate())}/${pad2(d.getMonth() + 1)}/${d.getFullYear()}`;
 }
 function fmtJamID(d) {
-  // HH:mm (tanpa detik)
   return `${pad2(d.getHours())}:${pad2(d.getMinutes())}`;
 }
 function fmtJadwalSurat(wsMs, weMs) {
@@ -123,7 +121,7 @@ export default function VerifikasiUjian() {
     })();
   }, []);
 
-  /* ===== Load jadwal aktif (untuk filter & assign) ===== */
+  /* ===== Load jadwal aktif ===== */
   useEffect(() => {
     (async () => {
       try {
@@ -296,166 +294,176 @@ export default function VerifikasiUjian() {
     }
   };
 
-  /* ====== WA Cell (WhatsApp Web, "surat" format, hari & waktu) ====== */
-  /* ====== WA Cell (WhatsApp Web, "surat" + kredensial login) ====== */
-function WaCell({ nisn, name, wsMs, weMs, scheduleId }) {
-  const [loading, setLoading] = useState(true);
-  const [phoneRaw, setPhoneRaw] = useState("");
-  const [hasPhone, setHasPhone] = useState(false);
-  const [sent, setSent] = useState(false);
-  const [localWs, setLocalWs] = useState(wsMs || 0);
-  const [localWe, setLocalWe] = useState(weMs || 0);
+  /* ====== WA Cell ====== */
+  function WaCell({ nisn, name, wsMs, weMs, scheduleId }) {
+    const [loading, setLoading] = useState(true);
+    const [phoneRaw, setPhoneRaw] = useState("");
+    const [hasPhone, setHasPhone] = useState(false);
+    const [sent, setSent] = useState(false);
+    const [localWs, setLocalWs] = useState(wsMs || 0);
+    const [localWe, setLocalWe] = useState(weMs || 0);
 
-  // restore sent flag
-  useEffect(() => {
-    try {
-      const map = JSON.parse(localStorage.getItem("wa_sent_flags") || "{}");
-      if (map && map[nisn]) setSent(true);
-    } catch {}
-  }, [nisn]);
-
-  // ambil nomor + fallback jadwal dari exam_schedules bila belum ada
-  useEffect(() => {
-    let alive = true;
-    (async () => {
-      try {
-        setLoading(true);
-        // nomor
-        const ppdbRef = doc(db, "ppdb", String(nisn));
-        const ppdbSnap = await getDoc(ppdbRef);
-        if (!alive) return;
-        if (ppdbSnap.exists()) {
-          const d = ppdbSnap.data() || {};
-          const wa = (d.waliWa || "").toString().trim();
-          const telp = (d.waliTelp || d.waliTel || "").toString().trim();
-          const chosen = wa || telp || "";
-          setPhoneRaw(chosen);
-          setHasPhone(!!chosen);
-        } else {
-          setPhoneRaw("");
-          setHasPhone(false);
-        }
-
-        // fallback jadwal
-        if ((!wsMs || !weMs) && scheduleId) {
-          const schRef = doc(db, "exam_schedules", String(scheduleId));
-          const schSnap = await getDoc(schRef);
-          if (!alive) return;
-          if (schSnap.exists()) {
-            const sd = schSnap.data() || {};
-            const a = toMs(sd.windowStartAt);
-            const b = toMs(sd.windowEndAt);
-            if (a) setLocalWs(a);
-            if (b) setLocalWe(b);
-          }
-        }
-      } catch (e) {
-        console.error("Fetch WA/jadwal error:", e);
-        if (!alive) return;
-        setPhoneRaw("");
-        setHasPhone(false);
-      } finally {
-        if (alive) setLoading(false);
-      }
-    })();
-    return () => {
-      alive = false;
-    };
-  }, [nisn, scheduleId, wsMs, weMs]);
-
-  const handleSend = () => {
-    if (!hasPhone) return;
-    const phone = normalizePhoneID(phoneRaw);
-    if (!phone) return;
-
-    const jadwal = fmtJadwalSurat(localWs, localWe);
-
-    // ====== Kredensial login (username & password = NISN) + link login (domain aktif) ======
-    let origin = "";
-    try {
-      origin = window?.location?.origin || "";
-    } catch {}
-    const loginUrl = origin ? `${origin}/login` : "/login";
-    const username = String(nisn);
-    const password = String(nisn);
-
-    // === Format "surat" (multi-baris) ===
-    const lines = [
-      "Bismillah.",
-      "Panitia SPMB Ponpes As-Sunnah",
-      "",
-      "Kepada Yth. Orang Tua/Wali Peserta,",
-      `Nama   : ${name || "—"}`,
-      `NISN   : ${nisn}`,
-      "",
-      "Undangan Pelaksanaan Ujian SPMB:",
-      jadwal ? `Hari/Tanggal : ${jadwal.hari}, ${jadwal.tanggal}` : "Hari/Tanggal : -",
-      jadwal ? `Waktu        : ${jadwal.waktu}` : "Waktu        : -",
-      "Tempat       : Pondok As-Sunnah",
-      "",
-      "Akses Akun Peserta:",      
-      `Username    : ${username}`,
-      `Password    : ${password}`,
-      `Login       : ${loginUrl}`,
-      "",
-      "Runtutan Ujian:",
-      "1) Tes Akademik (online—membawa HP/ponsel, baterai cukup & kuota).",
-      "2) Baca Al-Qur’an.",
-      "3) Tes Wawancara.",
-      "4) Pengukuran baju/seragam.",
-      "",
-      "Peserta wajib hadir bersama wali yang sesuai (siswa putra dengan wali putra, siswa putri dengan wali putri), tepat waktu, dan mengenakan pakaian rapi. Dianjurkan tiba 10–15 menit lebih awal.",
-      "",
-      "(Catatan: Bagi yang berada di luar daerah, silakan konfirmasi kepada panitia untuk pelaksanaan ujian secara online.)",
-      "",
-      "Terkait informasi yang belum jelas, silahkan hubungi panitia.",
-      "",
-      "Jazakumullahu khairan.",
-      "Panitia SPMB Ponpes As-Sunnah",
-    ];
-
-    const pesan = lines.join("\n");
-    const url = `https://web.whatsapp.com/send?phone=${phone}&text=${encodeURIComponent(pesan)}`;
-
-    try {
-      window.open(url, "_blank", "noopener,noreferrer");
-      setSent(true);
+    useEffect(() => {
       try {
         const map = JSON.parse(localStorage.getItem("wa_sent_flags") || "{}");
-        map[nisn] = true;
-        localStorage.setItem("wa_sent_flags", JSON.stringify(map));
+        if (map && map[nisn]) setSent(true);
       } catch {}
-    } catch (e) {
-      console.error("Open WhatsApp Web failed:", e);
-    }
-  };
+    }, [nisn]);
 
-  if (loading) return <span className="text-slate-500">Memuat…</span>;
-  if (!hasPhone) {
+    useEffect(() => {
+      let alive = true;
+      (async () => {
+        try {
+          setLoading(true);
+          const ppdbRef = doc(db, "ppdb", String(nisn));
+          const ppdbSnap = await getDoc(ppdbRef);
+          if (!alive) return;
+          if (ppdbSnap.exists()) {
+            const d = ppdbSnap.data() || {};
+            const wa = (d.waliWa || "").toString().trim();
+            const telp = (d.waliTelp || d.waliTel || "").toString().trim();
+            const chosen = wa || telp || "";
+            setPhoneRaw(chosen);
+            setHasPhone(!!chosen);
+          } else {
+            setPhoneRaw("");
+            setHasPhone(false);
+          }
+
+          if ((!wsMs || !weMs) && scheduleId) {
+            const schRef = doc(db, "exam_schedules", String(scheduleId));
+            const schSnap = await getDoc(schRef);
+            if (!alive) return;
+            if (schSnap.exists()) {
+              const sd = schSnap.data() || {};
+              const a = toMs(sd.windowStartAt);
+              const b = toMs(sd.windowEndAt);
+              if (a) setLocalWs(a);
+              if (b) setLocalWe(b);
+            }
+          }
+        } catch (e) {
+          console.error("Fetch WA/jadwal error:", e);
+          if (!alive) return;
+          setPhoneRaw("");
+          setHasPhone(false);
+        } finally {
+          if (alive) setLoading(false);
+        }
+      })();
+      return () => {
+        alive = false;
+      };
+    }, [nisn, scheduleId, wsMs, weMs]);
+
+    const handleSend = () => {
+      if (!hasPhone) return;
+      const phone = normalizePhoneID(phoneRaw);
+      if (!phone) return;
+
+      const jadwal = fmtJadwalSurat(localWs, localWe);
+
+      let origin = "";
+      try {
+        origin = window?.location?.origin || "";
+      } catch {}
+      const loginUrl = origin ? `${origin}/login` : "/login";
+      const username = String(nisn);
+      const password = String(nisn);
+
+      const lines = [
+        "Bismillah.",
+        "Panitia SPMB Ponpes As-Sunnah",
+        "",
+        "Kepada Yth. Orang Tua/Wali Peserta,",
+        `Nama   : ${name || "—"}`,
+        `NISN   : ${nisn}`,
+        "",
+        "Undangan Pelaksanaan Ujian SPMB:",
+        jadwal ? `Hari/Tanggal : ${jadwal.hari}, ${jadwal.tanggal}` : "Hari/Tanggal : -",
+        jadwal ? `Waktu        : ${jadwal.waktu}` : "Waktu        : -",
+        "Tempat       : Pondok As-Sunnah",
+        "",
+        "Akses Akun Peserta:",
+        `Username    : ${username}`,
+        `Password    : ${password}`,
+        `Login       : ${loginUrl}`,
+        "",
+        "Runtutan Ujian:",
+        "1) Tes Akademik (online—membawa HP/ponsel, baterai cukup & kuota).",
+        "2) Baca Al-Qur’an.",
+        "3) Tes Wawancara.",
+        "4) Pengukuran baju/seragam.",
+        "",
+        "Peserta wajib hadir bersama wali yang sesuai, tepat waktu, dan berpakaian rapi. Dianjurkan tiba 10–15 menit lebih awal.",
+        "",
+        "(Catatan: Bagi yang berada di luar daerah, silakan konfirmasi kepada panitia untuk pelaksanaan ujian secara online.)",
+        "",
+        "Terkait informasi yang belum jelas, silahkan hubungi panitia.",
+        "",
+        "Jazakumullahu khairan.",
+        "Panitia SPMB Ponpes As-Sunnah",
+      ];
+
+      const pesan = lines.join("\n");
+
+      let ua = "";
+      try {
+        ua = navigator?.userAgent || "";
+      } catch {}
+      const isMobile = /Android|iPhone|iPad|iPod|webOS|BlackBerry|IEMobile|Windows Phone/i.test(ua);
+
+      const waWeb = `https://web.whatsapp.com/send?phone=${phone}&text=${encodeURIComponent(pesan)}`;
+      const waApp = `whatsapp://send?phone=${phone}&text=${encodeURIComponent(pesan)}`;
+      const waMe = `https://wa.me/${phone}?text=${encodeURIComponent(pesan)}`;
+
+      try {
+        if (isMobile) {
+          window.location.href = waApp;
+          setTimeout(() => {
+            try {
+              window.location.href = waMe;
+            } catch {}
+          }, 400);
+        } else {
+          window.open(waWeb, "_blank", "noopener,noreferrer");
+        }
+        setSent(true);
+        try {
+          const map = JSON.parse(localStorage.getItem("wa_sent_flags") || "{}");
+          map[nisn] = true;
+          localStorage.setItem("wa_sent_flags", JSON.stringify(map));
+        } catch {}
+      } catch (e) {
+        console.error("Open WhatsApp link failed:", e);
+      }
+    };
+
+    if (loading) return <span className="text-slate-500">Memuat…</span>;
+    if (!hasPhone) {
+      return (
+        <span className="inline-flex items-center rounded-full bg-slate-100 px-2.5 py-1 text-xs font-medium text-slate-600">
+          Tidak memiliki nomor WA
+        </span>
+      );
+    }
+
     return (
-      <span className="inline-flex items-center rounded-full bg-slate-100 px-2.5 py-1 text-xs font-medium text-slate-600">
-        Tidak memiliki nomor WA
-      </span>
+      <div className="flex items-center gap-2">
+        <button
+          onClick={handleSend}
+          className="rounded-lg bg-emerald-600 px-3 py-1.5 text-sm font-semibold text-white hover:bg-emerald-700 w-full sm:w-auto"
+        >
+          Kirim via WhatsApp
+        </button>
+        {sent && (
+          <span className="hidden sm:inline-flex items-center gap-1 rounded-full bg-emerald-50 px-2.5 py-1 text-xs font-medium text-emerald-700 ring-1 ring-emerald-200">
+            <CheckCircle2 size={14} /> Sudah terkirim
+          </span>
+        )}
+      </div>
     );
   }
-
-  return (
-    <div className="flex items-center gap-2">
-      <button
-        onClick={handleSend}
-        className="rounded-lg bg-emerald-600 px-3 py-1.5 text-sm font-semibold text-white hover:bg-emerald-700"
-      >
-        Kirim via WhatsApp
-      </button>
-      {sent && (
-        <span className="inline-flex items-center gap-1 rounded-full bg-emerald-50 px-2.5 py-1 text-xs font-medium text-emerald-700 ring-1 ring-emerald-200">
-          <CheckCircle2 size={14} /> Sudah terkirim
-        </span>
-      )}
-    </div>
-  );
-}
-
 
   /* =============== UI =============== */
   return (
@@ -463,11 +471,7 @@ function WaCell({ nisn, name, wsMs, weMs, scheduleId }) {
       <div className="w-full max-w-none px-4 md:px-6 lg:px-8 py-8 min-h-[calc(100vh-5rem-4rem)]">
         <div className="mb-5">
           <h1 className="text-3xl font-extrabold tracking-tight">Verifikasi Tes Akademik</h1>
-          <p className="mt-1 text-slate-700">
-            Filter <b>Gelombang</b>, <b>Tingkat</b>, dan <b>Status Jadwal</b>. Input{" "}
-            <b>Kuota Pilihan</b> akan otomatis mencontreng N peserta pertama (yang{" "}
-            <i>belum</i> dijadwalkan) dari hasil filter.
-          </p>
+         
           <div className="mt-2 text-xs text-slate-600">
             Total: <b>{stats.all}</b> • Sudah dijadwalkan: <b>{stats.has}</b> • Belum:{" "}
             <b>{stats.none}</b>
@@ -479,6 +483,30 @@ function WaCell({ nisn, name, wsMs, weMs, scheduleId }) {
           <div className="flex flex-col gap-3 md:flex-row md:items-center md:justify-between">
             {/* LEFT */}
             <div className="flex flex-wrap items-center gap-2 md:gap-3">
+
+              {/* ===== GEL0MBANG — PALING MENCOLOK ===== */}
+              <div className="order-first w-full sm:order-none sm:w-auto">
+                <label className="block text-sm font-bold text-indigo-800 mb-1">
+                  Gelombang (Filter Utama)
+                </label>
+                <div className="rounded-xl border-2 border-indigo-500 ring-2 ring-indigo-200 bg-indigo-50/70 shadow-sm hover:bg-white transition-colors">
+                  <select
+                    value={filterScheduleId}
+                    onChange={(e) => setFilterScheduleId(e.target.value)}
+                    className="w-full rounded-[10px] bg-transparent px-3 py-2.5 text-base font-semibold text-indigo-900 outline-none"
+                  >
+                    <option value="ALL">Semua Gelombang</option>
+                    {schedules.map((s) => (
+                      <option key={s.id} value={s.id}>
+                        {s.title || s.id} — {new Date(toMs(s.windowStartAt)).toLocaleString()} s/d{" "}
+                        {new Date(toMs(s.windowEndAt)).toLocaleString()} {s.level ? `(${s.level})` : ""}
+                      </option>
+                    ))}
+                  </select>
+                </div>
+              </div>
+              {/* ===== END GEL0MBANG ===== */}
+
               <button
                 onClick={toggleAll}
                 className="inline-flex items-center gap-2 rounded-lg border border-slate-300 px-3 py-2 text-sm font-semibold hover:bg-slate-50"
@@ -491,23 +519,6 @@ function WaCell({ nisn, name, wsMs, weMs, scheduleId }) {
               </button>
 
               <div className="mx-1 hidden h-6 w-px bg-slate-200 sm:block" />
-
-              <div className="flex items-center gap-2">
-                <label className="text-sm font-semibold text-slate-800">Gelombang</label>
-                <select
-                  value={filterScheduleId}
-                  onChange={(e) => setFilterScheduleId(e.target.value)}
-                  className="min-w-[280px] rounded-lg border border-slate-300 bg-white px-3 py-2 text-base"
-                >
-                  <option value="ALL">Semua Gelombang</option>
-                  {schedules.map((s) => (
-                    <option key={s.id} value={s.id}>
-                      {s.title || s.id} — {new Date(toMs(s.windowStartAt)).toLocaleString()} s/d{" "}
-                      {new Date(toMs(s.windowEndAt)).toLocaleString()} {s.level ? `(${s.level})` : ""}
-                    </option>
-                  ))}
-                </select>
-              </div>
 
               <div className="flex items-center gap-2">
                 <label className="text-sm font-semibold text-slate-800">Tingkat</label>
@@ -553,8 +564,8 @@ function WaCell({ nisn, name, wsMs, weMs, scheduleId }) {
               </div>
             </div>
 
-            {/* RIGHT */}
-            <div className="flex flex-wrap items-center gap-2 md:gap-3">
+            {/* RIGHT (DESKTOP DEFAULT – TAK DIUBAH) */}
+            <div className="hidden sm:flex flex-wrap items-center gap-2 md:gap-3">
               <div className="flex items-center gap-2">
                 <label className="text-sm font-semibold text-slate-800">Jadwal Target</label>
                 <select
@@ -611,15 +622,78 @@ function WaCell({ nisn, name, wsMs, weMs, scheduleId }) {
                 {saving ? "Memproses…" : "Assign ke Jadwal"}
               </button>
             </div>
+
+            {/* RIGHT (MOBILE-ONLY, rapi & tulisan info di bawah) */}
+            <div className="sm:hidden space-y-2">
+              <div>
+                <label className="block text-sm font-semibold text-slate-800 mb-1">
+                  Jadwal Target
+                </label>
+                <select
+                  value={targetScheduleId}
+                  onChange={(e) => setTargetScheduleId(e.target.value)}
+                  className="w-full rounded-lg border border-slate-300 bg-white px-3 py-2 text-base"
+                >
+                  {schedules.length === 0 ? (
+                    <option value="">— Tidak ada jadwal aktif —</option>
+                  ) : (
+                    schedules.map((s) => (
+                      <option key={s.id} value={s.id}>
+                        {s.title || s.id}
+                      </option>
+                    ))
+                  )}
+                </select>
+
+                <div className="mt-2 text-xs text-slate-600">
+                  Kuota Jadwal: <b>{targetSchedule?.maxCandidates ?? "—"}</b>
+                  {targetSchedule?.maxCandidates ? (
+                    <span className="ml-2">
+                      Terisi: {filled} • Sisa: {Math.max(Number(targetSchedule.maxCandidates) - filled, 0)}
+                    </span>
+                  ) : (
+                    <span className="ml-2">(Tidak dibatasi)</span>
+                  )}
+                </div>
+              </div>
+
+              <div className="flex items-center gap-2">
+                <label className="text-sm font-semibold text-slate-800">
+                  Kuota Pilihan
+                </label>
+                <input
+                  type="number"
+                  min="1"
+                  value={quotaPick}
+                  onChange={(e) => setQuotaPick(e.target.value)}
+                  placeholder="mis. 30"
+                  className="flex-1 rounded-lg border border-slate-300 bg-white px-3 py-2 text-base"
+                />
+              </div>
+
+              <div className="flex items-center gap-2">
+                <span className="inline-flex items-center rounded-full bg-slate-100 px-2.5 py-1 text-xs font-medium text-slate-700">
+                  Terpilih: <b className="ml-1">{selected.size}</b>
+                </span>
+                <button
+                  onClick={assignNow}
+                  disabled={!targetSchedule || selected.size === 0 || saving}
+                  className="ml-auto rounded-lg bg-violet-600 px-4 py-2 text-sm font-semibold text-white hover:bg-violet-700 disabled:opacity-60"
+                >
+                  {saving ? "Memproses…" : "Assign ke Jadwal"}
+                </button>
+              </div>
+            </div>
+            {/* END RIGHT (MOBILE) */}
           </div>
         </div>
 
-        {/* Tabel */}
-        <div className="overflow-x-auto rounded-2xl border border-slate-200 bg-white shadow">
+        {/* ===================== DESKTOP TABLE (TIDAK DIUBAH) ===================== */}
+        <div className="overflow-x-auto rounded-2xl border border-slate-200 bg-white shadow hidden sm:block">
           <table className="min-w-full text-base">
             <thead className="bg-slate-50 text-slate-800">
               <tr>
-                <th className="w-12 px-3 py-3 text-left"><span className="sr-only">Pilih</span></th>
+                <th className="w-12 px-3 py-3 text-left"><span className="sr-none">Pilih</span></th>
                 <th className="px-3 py-3 text-left">NISN</th>
                 <th className="px-3 py-3 text-left">Nama</th>
                 <th className="px-3 py-3 text-left">Tingkat</th>
@@ -688,8 +762,60 @@ function WaCell({ nisn, name, wsMs, weMs, scheduleId }) {
             </tbody>
           </table>
         </div>
+
+        {/* ===================== MOBILE LIST (NAMA + KIRIM WA SAJA) ===================== */}
+        <div className="sm:hidden">
+          {loading ? (
+            <div className="rounded-2xl border border-slate-200 bg-white shadow p-4 text-center text-slate-600">
+              Memuat data…
+            </div>
+          ) : view.length === 0 ? (
+            <div className="rounded-2xl border border-slate-200 bg-white shadow p-4 text-center text-slate-600">
+              Tidak ada data.
+            </div>
+          ) : (
+            <ul className="space-y-3">
+              {view.map((r) => {
+                const name =
+                  r.fullName || r.namaLengkap || r.nama || r.name ||
+                  r.profile?.fullName || r.profile?.name || "—";
+                const wsMs = toMs(r.examWindowStartAt);
+                const weMs = toMs(r.examWindowEndAt);
+                return (
+                  <li
+                    key={r.id}
+                    className="rounded-2xl border border-slate-200 bg-white shadow-sm p-4"
+                  >
+                    <div className="flex items-start justify-between gap-3">
+                      <div className="min-w-0">
+                        <p className="text-base font-semibold text-slate-900 truncate">{name}</p>
+                      </div>
+                      <input
+                        type="checkbox"
+                        className="hidden"
+                        checked={selected.has(r.id)}
+                        onChange={() => toggleRow(r.id)}
+                        aria-label={`pilih ${r.id}`}
+                      />
+                    </div>
+
+                    <div className="mt-3">
+                      <WaCell
+                        nisn={r.id}
+                        name={name}
+                        wsMs={wsMs}
+                        weMs={weMs}
+                        scheduleId={r.examScheduleId || ""}
+                      />
+                    </div>
+                  </li>
+                );
+              })}
+            </ul>
+          )}
+        </div>
+        {/* =================== END MOBILE LIST =================== */}
       </div>
     </div>
   );
 }
-
