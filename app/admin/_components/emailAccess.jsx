@@ -16,8 +16,9 @@ export const EMAIL_ACCESS = {
   "abuhusna@spmb.com": [ "/admin/nilai-tahfidz",],  
   "abdulwahid@spmb.com": [ "/admin/nilai-tahfidz",], 
   "abdullahhusni@spmb.com": [ "/admin/kuota",],   
-  
-  
+  "riaruqoyyah16@gmail.com": [ "/admin/tes-wawancara",],  
+  "heniherawati530@gmail.com": [ "/admin/tes-wawancara",],  
+  "rabiatuladwyh2612@gmail.com": [ "/admin/tes-wawancara",],    
 
   // Full Akses
   "user@admin.com": [ "*"  
