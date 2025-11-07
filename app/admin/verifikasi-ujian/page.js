@@ -356,81 +356,103 @@ export default function VerifikasiUjian() {
       };
     }, [nisn, scheduleId, wsMs, weMs]);
 
-    // di dalam function WaCell(...)
-const handleSend = () => {
-  if (!hasPhone) return;
-  const phone = normalizePhoneID(phoneRaw);
-  if (!phone) return;
+    // === Revisi: Buka pilihan aplikasi WA di mobile (tanpa ke web) ===
+    const handleSend = () => {
+      if (!hasPhone) return;
+      const phone = normalizePhoneID(phoneRaw);
+      if (!phone) return;
 
-  const jadwal = fmtJadwalSurat(localWs, localWe);
+      const jadwal = fmtJadwalSurat(localWs, localWe);
 
-  let origin = "";
-  try { origin = window?.location?.origin || ""; } catch {}
-  const loginUrl = origin ? `${origin}/login` : "/login";
-  const username = String(nisn);
-  const password = String(nisn);
+      let origin = "";
+      try { origin = window?.location?.origin || ""; } catch {}
+      const loginUrl = origin ? `${origin}/login` : "/login";
+      const username = String(nisn);
+      const password = String(nisn);
 
-  const lines = [
-    "Bismillah.",
-    "Panitia SPMB Ponpes As-Sunnah",
-    "",
-    "Kepada Yth. Orang Tua/Wali Peserta,",
-    `Nama   : ${name || "—"}`,
-    `NISN   : ${nisn}`,
-    "",
-    "Undangan Pelaksanaan Ujian SPMB:",
-    jadwal ? `Hari/Tanggal : ${jadwal.hari}, ${jadwal.tanggal}` : "Hari/Tanggal : -",
-    jadwal ? `Waktu        : ${jadwal.waktu}` : "Waktu        : -",
-    "Tempat       : Pondok As-Sunnah",
-    "",
-    "Akses Akun Peserta:",
-    `Username    : ${username}`,
-    `Password    : ${password}`,
-    `Login       : ${loginUrl}`,
-    "",
-    "Runtutan Ujian:",
-    "1) Tes Akademik (online—membawa HP/ponsel, baterai cukup & kuota).",
-    "2) Baca Al-Qur’an.",
-    "3) Tes Wawancara.",
-    "4) Pengukuran baju/seragam.",
-    "",
-    "Peserta wajib hadir bersama wali yang sesuai (Peserta putra bersama wali putra dan Peserta putri bersama wali putri), tepat waktu, dan berpakaian rapi. Dianjurkan tiba 10–15 menit lebih awal.",
-    "",
-    "(Catatan: Bagi yang berada di luar daerah, silakan konfirmasi kepada panitia untuk pelaksanaan ujian secara online.)",
-    "",
-    "Terkait informasi yang belum jelas, silahkan hubungi panitia.",
-    "",
-    "Jazakumullahu khairan.",
-    "Panitia SPMB Ponpes As-Sunnah",
-  ];
-  const pesan = lines.join("\n");
+      const lines = [
+        "Bismillah.",
+        "Panitia SPMB Ponpes As-Sunnah",
+        "",
+        "Kepada Yth. Orang Tua/Wali Peserta,",
+        `Nama   : ${name || "—"}`,
+        `NISN   : ${nisn}`,
+        "",
+        "Undangan Pelaksanaan Ujian SPMB:",
+        jadwal ? `Hari/Tanggal : ${jadwal.hari}, ${jadwal.tanggal}` : "Hari/Tanggal : -",
+        jadwal ? `Waktu        : ${jadwal.waktu}` : "Waktu        : -",
+        "Tempat       : Pondok As-Sunnah",
+        "",
+        "Akses Akun Peserta:",
+        `Username    : ${username}`,
+        `Password    : ${password}`,
+        `Login       : ${loginUrl}`,
+        "",
+        "Runtutan Ujian:",
+        "1) Tes Akademik (online—membawa HP/ponsel, baterai cukup & kuota).",
+        "2) Baca Al-Qur’an.",
+        "3) Tes Wawancara.",
+        "4) Pengukuran baju/seragam.",
+        "",
+        "Peserta wajib hadir bersama wali yang sesuai (Peserta putra bersama wali putra dan Peserta putri bersama wali putri), tepat waktu, dan berpakaian rapi. Dianjurkan tiba 10–15 menit lebih awal.",
+        "",
+        "(Catatan: Bagi yang berada di luar daerah, silakan konfirmasi kepada panitia untuk pelaksanaan ujian secara online.)",
+        "",
+        "Terkait informasi yang belum jelas, silahkan hubungi panitia.",
+        "",
+        "Jazakumullahu khairan.",
+        "Panitia SPMB Ponpes As-Sunnah",
+      ];
+      const pesan = lines.join("\n");
 
-  let ua = "";
-  try { ua = navigator?.userAgent || ""; } catch {}
-  const isMobile = /Android|iPhone|iPad|iPod|webOS|BlackBerry|IEMobile|Windows Phone/i.test(ua);
+      let ua = "";
+      try { ua = navigator?.userAgent || ""; } catch {}
+      const isMobile = /Android|iPhone|iPad|iPod|webOS|BlackBerry|IEMobile|Windows Phone/i.test(ua);
 
-  const waWeb = `https://web.whatsapp.com/send?phone=${phone}&text=${encodeURIComponent(pesan)}`;
-  const waApp = `whatsapp://send?phone=${phone}&text=${encodeURIComponent(pesan)}`;
-  const waMe  = `https://wa.me/${phone}?text=${encodeURIComponent(pesan)}`;
+      // Tautan khusus
+      const waWeb = `https://web.whatsapp.com/send?phone=${phone}&text=${encodeURIComponent(pesan)}`;
+      const waScheme = `whatsapp://send?phone=${phone}&text=${encodeURIComponent(pesan)}`;
+      const waBizScheme = `whatsapp-business://send?phone=${phone}&text=${encodeURIComponent(pesan)}`;
 
-  try {
-    if (isMobile) {
-      window.location.href = waApp;        // buka aplikasi WA
-      setTimeout(() => { try { window.location.href = waMe; } catch {} }, 400); // fallback
-    } else {
-      window.open(waWeb, "_blank", "noopener,noreferrer"); // desktop: WA Web
-    }
-    setSent(true);
-    try {
-      const map = JSON.parse(localStorage.getItem("wa_sent_flags") || "{}");
-      map[nisn] = true;
-      localStorage.setItem("wa_sent_flags", JSON.stringify(map));
-    } catch {}
-  } catch (e) {
-    console.error("Open WhatsApp link failed:", e);
-  }
-};
+      // Android Chrome "intent://" — memunculkan pilihan aplikasi yang kompatibel (WA / WA Business) tanpa ke web
+      const waIntent = `intent://send/?phone=${phone}&text=${encodeURIComponent(
+        pesan
+      )}#Intent;scheme=whatsapp;end`;
 
+      try {
+        if (isMobile) {
+          // 1) Coba intent chooser (Android Chrome)
+          try {
+            window.location.href = waIntent;
+            // Jika tidak didukung (iOS/Safari), lanjut ke skema universal.
+          } catch {}
+
+          // 2) Coba skema WA standar (banyak perangkat akan menawarkan pilih WA/WA Business bila keduanya terpasang)
+          setTimeout(() => {
+            try { window.location.href = waScheme; } catch {}
+          }, 200);
+
+          // 3) Coba WhatsApp Business secara eksplisit (jika pengguna ingin WA Business)
+          setTimeout(() => {
+            try { window.location.href = waBizScheme; } catch {}
+          }, 450);
+
+          // Catatan: Tidak ada fallback ke wa.me di mobile sesuai permintaan agar tidak lewat web.
+        } else {
+          // Desktop tetap WA Web
+          window.open(waWeb, "_blank", "noopener,noreferrer");
+        }
+
+        setSent(true);
+        try {
+          const map = JSON.parse(localStorage.getItem("wa_sent_flags") || "{}");
+          map[nisn] = true;
+          localStorage.setItem("wa_sent_flags", JSON.stringify(map));
+        } catch {}
+      } catch (e) {
+        console.error("Open WhatsApp link failed:", e);
+      }
+    };
 
     if (loading) return <span className="text-slate-500">Memuat…</span>;
     if (!hasPhone) {
@@ -443,27 +465,27 @@ const handleSend = () => {
 
     return (
       <div className="flex items-center gap-2">
-    <button
-      onClick={handleSend}
-      className="rounded-lg bg-emerald-600 px-3 py-1.5 text-sm font-semibold text-white hover:bg-emerald-700 w-full sm:w-auto"
-    >
-      Kirim via WhatsApp
-    </button>
+        <button
+          onClick={handleSend}
+          className="rounded-lg bg-emerald-600 px-3 py-1.5 text-sm font-semibold text-white hover:bg-emerald-700 w-full sm:w-auto"
+        >
+          Kirim via WhatsApp
+        </button>
 
-    {/* Desktop: badge "Sudah terkirim" (sudah ada) */}
-    {sent && (
-      <>
-        <span className="hidden sm:inline-flex items-center gap-1 rounded-full bg-emerald-50 px-2.5 py-1 text-xs font-medium text-emerald-700 ring-1 ring-emerald-200">
-          <CheckCircle2 size={14} /> Sudah terkirim
-        </span>
+        {/* Desktop: badge "Sudah terkirim" */}
+        {sent && (
+          <>
+            <span className="hidden sm:inline-flex items-center gap-1 rounded-full bg-emerald-50 px-2.5 py-1 text-xs font-medium text-emerald-700 ring-1 ring-emerald-200">
+              <CheckCircle2 size={14} /> Sudah terkirim
+            </span>
 
-        {/* Mobile: badge mini "Terkirim" */}
-        <span className="inline-flex sm:hidden items-center gap-1 rounded-md bg-emerald-100 px-2 py-0.5 text-[11px] font-medium text-emerald-700 ring-1 ring-emerald-200">
-          <CheckCircle2 size={12} /> Terkirim
-        </span>
-      </>
-    )}
-  </div>
+            {/* Mobile: badge mini "Terkirim" */}
+            <span className="inline-flex sm:hidden items-center gap-1 rounded-md bg-emerald-100 px-2 py-0.5 text-[11px] font-medium text-emerald-700 ring-1 ring-emerald-200">
+              <CheckCircle2 size={12} /> Terkirim
+            </span>
+          </>
+        )}
+      </div>
     );
   }
 
@@ -473,7 +495,7 @@ const handleSend = () => {
       <div className="w-full max-w-none px-4 md:px-6 lg:px-8 py-8 min-h-[calc(100vh-5rem-4rem)]">
         <div className="mb-5">
           <h1 className="text-3xl font-extrabold tracking-tight">Verifikasi Tes Akademik</h1>
-         
+
           <div className="mt-2 text-xs text-slate-600">
             Total: <b>{stats.all}</b> • Sudah dijadwalkan: <b>{stats.has}</b> • Belum:{" "}
             <b>{stats.none}</b>
@@ -778,44 +800,44 @@ const handleSend = () => {
           ) : (
             <ul className="space-y-3">
               {view.map((r) => {
-  const name =
-    r.fullName || r.namaLengkap || r.nama || r.name ||
-    r.profile?.fullName || r.profile?.name || "—";
-  const level = (r.registrationLevel || "").toString().trim() || "—"; 
-  const wsMs = toMs(r.examWindowStartAt);
-  const weMs = toMs(r.examWindowEndAt);
-  return (
-    <li
-      key={r.id}
-      className="rounded-2xl border border-slate-200 bg-white shadow-sm p-4"
-    >
-      <div className="flex items-start justify-between gap-3">
-        <div className="min-w-0">
-          <p className="text-base font-semibold text-slate-900 truncate">{name}</p>
-          {/* Tampilkan Jenjang di mobile */}
-          <p className="text-xs text-slate-500 mt-0.5">Jenjang: {level}</p>
-        </div>
-        <input
-          type="checkbox"
-          className="hidden"
-          checked={selected.has(r.id)}
-          onChange={() => toggleRow(r.id)}
-          aria-label={`pilih ${r.id}`}
-        />
-      </div>
+                const name =
+                  r.fullName || r.namaLengkap || r.nama || r.name ||
+                  r.profile?.fullName || r.profile?.name || "—";
+                const level = (r.registrationLevel || "").toString().trim() || "—"; 
+                const wsMs = toMs(r.examWindowStartAt);
+                const weMs = toMs(r.examWindowEndAt);
+                return (
+                  <li
+                    key={r.id}
+                    className="rounded-2xl border border-slate-200 bg-white shadow-sm p-4"
+                  >
+                    <div className="flex items-start justify-between gap-3">
+                      <div className="min-w-0">
+                        <p className="text-base font-semibold text-slate-900 truncate">{name}</p>
+                        {/* Tampilkan Jenjang di mobile */}
+                        <p className="text-xs text-slate-500 mt-0.5">Jenjang: {level}</p>
+                      </div>
+                      <input
+                        type="checkbox"
+                        className="hidden"
+                        checked={selected.has(r.id)}
+                        onChange={() => toggleRow(r.id)}
+                        aria-label={`pilih ${r.id}`}
+                      />
+                    </div>
 
-      <div className="mt-3">
-        <WaCell
-          nisn={r.id}
-          name={name}
-          wsMs={wsMs}
-          weMs={weMs}
-          scheduleId={r.examScheduleId || ""}
-        />
-      </div>
-    </li>
-  );
-})}
+                    <div className="mt-3">
+                      <WaCell
+                        nisn={r.id}
+                        name={name}
+                        wsMs={wsMs}
+                        weMs={weMs}
+                        scheduleId={r.examScheduleId || ""}
+                      />
+                    </div>
+                  </li>
+                );
+              })}
 
             </ul>
           )}
