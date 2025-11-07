@@ -12,6 +12,9 @@ import {
   doc,
   Timestamp,
   limit,
+  // === [ADD] sinkron status terkirim lintas akun ===
+  updateDoc,
+  serverTimestamp,
 } from "firebase/firestore";
 import { db } from "@/lib/firebase";
 import { CheckSquare, Square, Search, UsersRound, CheckCircle2 } from "lucide-react";
@@ -303,6 +306,7 @@ export default function VerifikasiUjian() {
     const [localWs, setLocalWs] = useState(wsMs || 0);
     const [localWe, setLocalWe] = useState(weMs || 0);
 
+    // Baca flag lokal (legacy) — tetap dipertahankan
     useEffect(() => {
       try {
         const map = JSON.parse(localStorage.getItem("wa_sent_flags") || "{}");
@@ -325,6 +329,9 @@ export default function VerifikasiUjian() {
             const chosen = wa || telp || "";
             setPhoneRaw(chosen);
             setHasPhone(!!chosen);
+
+            // === [ADD] sinkron global: jika waNotified true → tampil "Terkirim" ke semua akun ===
+            if (d.waNotified === true) setSent(true);
           } else {
             setPhoneRaw("");
             setHasPhone(false);
@@ -356,8 +363,8 @@ export default function VerifikasiUjian() {
       };
     }, [nisn, scheduleId, wsMs, weMs]);
 
-    // === Revisi: Buka pilihan aplikasi WA di mobile (tanpa ke web) ===
-    const handleSend = () => {
+    // === Mobile intent WA (tanpa web) + sinkron flag global ===
+    const handleSend = async () => {
       if (!hasPhone) return;
       const phone = normalizePhoneID(phoneRaw);
       if (!phone) return;
@@ -409,40 +416,32 @@ export default function VerifikasiUjian() {
       try { ua = navigator?.userAgent || ""; } catch {}
       const isMobile = /Android|iPhone|iPad|iPod|webOS|BlackBerry|IEMobile|Windows Phone/i.test(ua);
 
-      // Tautan khusus
       const waWeb = `https://web.whatsapp.com/send?phone=${phone}&text=${encodeURIComponent(pesan)}`;
       const waScheme = `whatsapp://send?phone=${phone}&text=${encodeURIComponent(pesan)}`;
       const waBizScheme = `whatsapp-business://send?phone=${phone}&text=${encodeURIComponent(pesan)}`;
-
-      // Android Chrome "intent://" — memunculkan pilihan aplikasi yang kompatibel (WA / WA Business) tanpa ke web
-      const waIntent = `intent://send/?phone=${phone}&text=${encodeURIComponent(
-        pesan
-      )}#Intent;scheme=whatsapp;end`;
+      const waIntent = `intent://send/?phone=${phone}&text=${encodeURIComponent(pesan)}#Intent;scheme=whatsapp;end`;
 
       try {
         if (isMobile) {
-          // 1) Coba intent chooser (Android Chrome)
-          try {
-            window.location.href = waIntent;
-            // Jika tidak didukung (iOS/Safari), lanjut ke skema universal.
-          } catch {}
-
-          // 2) Coba skema WA standar (banyak perangkat akan menawarkan pilih WA/WA Business bila keduanya terpasang)
-          setTimeout(() => {
-            try { window.location.href = waScheme; } catch {}
-          }, 200);
-
-          // 3) Coba WhatsApp Business secara eksplisit (jika pengguna ingin WA Business)
-          setTimeout(() => {
-            try { window.location.href = waBizScheme; } catch {}
-          }, 450);
-
-          // Catatan: Tidak ada fallback ke wa.me di mobile sesuai permintaan agar tidak lewat web.
+          try { window.location.href = waIntent; } catch {}
+          setTimeout(() => { try { window.location.href = waScheme; } catch {} }, 200);
+          setTimeout(() => { try { window.location.href = waBizScheme; } catch {} }, 450);
         } else {
-          // Desktop tetap WA Web
           window.open(waWeb, "_blank", "noopener,noreferrer");
         }
 
+        // === [ADD] tandai global di Firestore agar terlihat lintas akun ===
+        try {
+          await updateDoc(doc(db, "ppdb", String(nisn)), {
+            waNotified: true,
+            waNotifiedAt: serverTimestamp(),
+          });
+        } catch (e) {
+          // Jika doc belum ada/permission issue, diamkan agar tidak mengganggu alur kirim WA
+          console.warn("Gagal update flag waNotified:", e);
+        }
+
+        // Legacy lokal — tetap diset untuk responsif segera
         setSent(true);
         try {
           const map = JSON.parse(localStorage.getItem("wa_sent_flags") || "{}");
@@ -472,14 +471,11 @@ export default function VerifikasiUjian() {
           Kirim via WhatsApp
         </button>
 
-        {/* Desktop: badge "Sudah terkirim" */}
         {sent && (
           <>
             <span className="hidden sm:inline-flex items-center gap-1 rounded-full bg-emerald-50 px-2.5 py-1 text-xs font-medium text-emerald-700 ring-1 ring-emerald-200">
               <CheckCircle2 size={14} /> Sudah terkirim
             </span>
-
-            {/* Mobile: badge mini "Terkirim" */}
             <span className="inline-flex sm:hidden items-center gap-1 rounded-md bg-emerald-100 px-2 py-0.5 text-[11px] font-medium text-emerald-700 ring-1 ring-emerald-200">
               <CheckCircle2 size={12} /> Terkirim
             </span>
@@ -496,7 +492,7 @@ export default function VerifikasiUjian() {
         <div className="mb-5">
           <h1 className="text-3xl font-extrabold tracking-tight">Verifikasi Tes Akademik</h1>
 
-          <div className="mt-2 text-xs text-slate-600">
+        <div className="mt-2 text-xs text-slate-600">
             Total: <b>{stats.all}</b> • Sudah dijadwalkan: <b>{stats.has}</b> • Belum:{" "}
             <b>{stats.none}</b>
           </div>
