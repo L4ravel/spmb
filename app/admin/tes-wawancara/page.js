@@ -79,16 +79,20 @@ export default function TesWawancaraPage() {
   const [saving, setSaving] = useState(false);
   const [tableQuery, setTableQuery] = useState("");
   const [exporting, setExporting] = useState(false);
+  const [globalResults, setGlobalResults] = useState(null); // null = pakai paging normal
+const [qBusy, setQBusy] = useState(false); // indikator loading pencarian global
 
   const viewItems = useMemo(() => {
-    const q = tableQuery.trim().toLowerCase();
-    if (!q) return items;
-    return items.filter((r) => {
-      const nisn = String(r.nisn || "").toLowerCase();
-      const name = String(r.name || "").toLowerCase();
-      return nisn.includes(q) || name.includes(q);
-    });
-  }, [items, tableQuery]);
+  const base = globalResults ?? items; // jika ada hasil global, pakai itu
+  const q = tableQuery.trim().toLowerCase();
+  if (!q) return base;
+  // jika globalResults ada, base sudah difilter; tetap aman untuk includes ringan
+  return base.filter((r) => {
+    const nisn = String(r.nisn || "").toLowerCase();
+    const name = String(r.name || "").toLowerCase();
+    return nisn.includes(q) || name.includes(q);
+  });
+}, [items, globalResults, tableQuery]);
 
   const useScoresSource = statusFilter === "SELESAI" || sortMode === "NILAI_TERTINGGI";
   const isLoggedIn = Boolean(graderId);
@@ -344,12 +348,90 @@ export default function TesWawancaraPage() {
     }
   }
 
+  async function runGlobalSearch(qStr) {
+  const q = (qStr || "").trim().toLowerCase();
+  if (!q) { setGlobalResults(null); return; }
+
+  setQBusy(true);
+  try {
+    const all = [];
+    const colRef = collection(db, USERS_COLLECTION);
+    const clauses = [where("role", "==", "siswa"), where("registrationPaymentStatus", "==", "verified")];
+    if (levelFilter !== "ALL") clauses.push(where("registrationLevel", "==", levelFilter));
+
+    let qRef = query(colRef, ...clauses, orderBy("username", "asc"), limit(EXPORT_BATCH));
+    // loop pagination
+    while (true) {
+      const snap = await getDocs(qRef);
+      if (snap.empty) break;
+
+      // filter nama/nisn di batch ini lebih dulu (hemat join skor)
+      const batchUsers = snap.docs.map((d) => ({ id: d.id, ...(d.data() || {}) }));
+      const matched = batchUsers.filter((u) => {
+        const nisn = String(u?.username || u?.nisn || u?.id || "").toLowerCase();
+        const name = String(u?.fullName || u?.fullname || u?.displayName || u?.name || "").toLowerCase();
+        return nisn.includes(q) || name.includes(q);
+      });
+
+      // join skor hanya untuk yang match
+      for (let i = 0; i < matched.length; i++) {
+        const u = matched[i];
+        const nisn = String(u?.username || u?.nisn || u?.id || "");
+        let sc = null;
+        try {
+          const scDoc = await getDoc(doc(db, SCORE_COLL, String(nisn)));
+          sc = scDoc.exists() ? scDoc.data() : null;
+        } catch {}
+        all.push({
+          no: all.length + 1,
+          nisn,
+          name: String(u?.fullName || u?.fullname || u?.displayName || u?.name || "Tanpa Nama"),
+          level: u?.registrationLevel || "-",
+          examiner: sc?.examinerName || "-",
+          score: sc ? sc.total100 : null,
+          done: !!sc,
+          user: u,
+        });
+      }
+
+      if (snap.size < EXPORT_BATCH) break;
+      const last = snap.docs[snap.docs.length - 1];
+      qRef = query(colRef, ...clauses, orderBy("username", "asc"), startAfter(last), limit(EXPORT_BATCH));
+    }
+
+    // batasi tampilan besar agar tetap ringan; data export tetap tersedia dari tombol export
+    setGlobalResults(all.slice(0, 2000)); 
+  } catch (e) {
+    console.error("global search error:", e?.message);
+    setGlobalResults([]); // tampilkan kosong daripada nge-freeze
+  } finally {
+    setQBusy(false);
+  }
+}
+
   // load awal + reset saat filter berubah
   useEffect(() => {
     setAnchors([]);
     fetchPage(0);
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [levelFilter, statusFilter, sortMode]);
+
+  useEffect(() => {
+  const q = tableQuery.trim();
+  // jika kosong -> kembali ke mode paging biasa
+  if (!q) {
+    setGlobalResults(null);
+    return;
+  }
+  // minimal 2 huruf untuk menahan noise
+  if (q.length < 2) return;
+
+  const t = setTimeout(() => {
+    runGlobalSearch(q);
+  }, 300);
+  return () => clearTimeout(t);
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+}, [tableQuery, levelFilter]); // hormati filter jenjang saat cari global
 
   function onPrev() {
     if (pageIndex === 0 || loading) return;
@@ -953,36 +1035,43 @@ export default function TesWawancaraPage() {
 
                 {/* Paket Switcher: biru, netral */}
                 <div className="flex items-center gap-1">
-                  <button
-                    onClick={() => onChangePaket("p1")}
-                    className={`rounded-lg px-3 py-1.5 text-xs font-medium ${
-                      activePaket === "p1"
-                        ? "bg-violet-600 text-white"
-                        : "bg-slate-100 text-slate-800"
-                    }`}
-                    title="Gunakan Paket 1"
-                  >
-                    Paket 1
-                  </button>
-                  <button
-                    onClick={() => onChangePaket("p2")}
-                    className={`rounded-lg px-3 py-1.5 text-xs font-medium ${
-                      activePaket === "p2"
-                        ? "bg-violet-600 text-white"
-                        : "bg-slate-100 text-slate-800"
-                    }`}
-                    title="Gunakan Paket 2"
-                  >
-                    Paket 2
-                  </button>
+  <button
+    onClick={() => onChangePaket("p1")}
+    className={`rounded-lg px-3 py-1.5 text-xs font-medium ${
+      activePaket === "p1" ? "bg-violet-600 text-white" : "bg-slate-100 text-slate-800"
+    }`}
+    title="Gunakan Paket 1"
+  >
+    Paket 1
+  </button>
+  <button
+    onClick={() => onChangePaket("p2")}
+    className={`rounded-lg px-3 py-1.5 text-xs font-medium ${
+      activePaket === "p2" ? "bg-violet-600 text-white" : "bg-slate-100 text-slate-800"
+    }`}
+    title="Gunakan Paket 2"
+  >
+    Paket 2
+  </button>
 
-                  <button
-                    onClick={() => setOpen(false)}
-                    className="ml-2 rounded border border-slate-300 px-3 py-1.5 text-xs text-slate-700"
-                  >
-                    Tutup
-                  </button>
-                </div>
+  {/* Tombol Tutup (tetap) */}
+  <button
+    onClick={() => setOpen(false)}
+    className="ml-2 rounded border border-slate-300 px-3 py-1.5 text-xs text-slate-700"
+  >
+    Tutup
+  </button>
+
+  {/* === Tambahan khusus MOBILE: Simpan di sebelah Tutup === */}
+  <button
+    onClick={submitTest}
+    disabled={saving}
+    className="sm:hidden ml-1 rounded bg-emerald-600 px-3 py-1.5 text-xs font-semibold text-white disabled:opacity-50 hover:bg-emerald-700 active:scale-95"
+    title="Selesai & Simpan"
+  >
+    {saving ? "Menyimpan…" : "Simpan"}
+  </button>
+</div>
               </div>
 
               <div className="px-5 py-4 max-h-[calc(100dvh-8rem)] sm:max-h-none overflow-y-auto">
