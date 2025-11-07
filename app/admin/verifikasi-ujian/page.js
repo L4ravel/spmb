@@ -450,18 +450,27 @@ export default function VerifikasiUjian() {
 
     return (
       <div className="flex items-center gap-2">
-        <button
-          onClick={handleSend}
-          className="rounded-lg bg-emerald-600 px-3 py-1.5 text-sm font-semibold text-white hover:bg-emerald-700 w-full sm:w-auto"
-        >
-          Kirim via WhatsApp
-        </button>
-        {sent && (
-          <span className="hidden sm:inline-flex items-center gap-1 rounded-full bg-emerald-50 px-2.5 py-1 text-xs font-medium text-emerald-700 ring-1 ring-emerald-200">
-            <CheckCircle2 size={14} /> Sudah terkirim
-          </span>
-        )}
-      </div>
+    <button
+      onClick={handleSend}
+      className="rounded-lg bg-emerald-600 px-3 py-1.5 text-sm font-semibold text-white hover:bg-emerald-700 w-full sm:w-auto"
+    >
+      Kirim via WhatsApp
+    </button>
+
+    {/* Desktop: badge "Sudah terkirim" (sudah ada) */}
+    {sent && (
+      <>
+        <span className="hidden sm:inline-flex items-center gap-1 rounded-full bg-emerald-50 px-2.5 py-1 text-xs font-medium text-emerald-700 ring-1 ring-emerald-200">
+          <CheckCircle2 size={14} /> Sudah terkirim
+        </span>
+
+        {/* Mobile: badge mini "Terkirim" */}
+        <span className="inline-flex sm:hidden items-center gap-1 rounded-md bg-emerald-100 px-2 py-0.5 text-[11px] font-medium text-emerald-700 ring-1 ring-emerald-200">
+          <CheckCircle2 size={12} /> Terkirim
+        </span>
+      </>
+    )}
+  </div>
     );
   }
 
@@ -776,41 +785,45 @@ export default function VerifikasiUjian() {
           ) : (
             <ul className="space-y-3">
               {view.map((r) => {
-                const name =
-                  r.fullName || r.namaLengkap || r.nama || r.name ||
-                  r.profile?.fullName || r.profile?.name || "—";
-                const wsMs = toMs(r.examWindowStartAt);
-                const weMs = toMs(r.examWindowEndAt);
-                return (
-                  <li
-                    key={r.id}
-                    className="rounded-2xl border border-slate-200 bg-white shadow-sm p-4"
-                  >
-                    <div className="flex items-start justify-between gap-3">
-                      <div className="min-w-0">
-                        <p className="text-base font-semibold text-slate-900 truncate">{name}</p>
-                      </div>
-                      <input
-                        type="checkbox"
-                        className="hidden"
-                        checked={selected.has(r.id)}
-                        onChange={() => toggleRow(r.id)}
-                        aria-label={`pilih ${r.id}`}
-                      />
-                    </div>
+  const name =
+    r.fullName || r.namaLengkap || r.nama || r.name ||
+    r.profile?.fullName || r.profile?.name || "—";
+  const level = (r.registrationLevel || "").toString().trim() || "—"; // <— tambahkan baris ini
+  const wsMs = toMs(r.examWindowStartAt);
+  const weMs = toMs(r.examWindowEndAt);
+  return (
+    <li
+      key={r.id}
+      className="rounded-2xl border border-slate-200 bg-white shadow-sm p-4"
+    >
+      <div className="flex items-start justify-between gap-3">
+        <div className="min-w-0">
+          <p className="text-base font-semibold text-slate-900 truncate">{name}</p>
+          {/* Tampilkan Jenjang di mobile */}
+          <p className="text-xs text-slate-500 mt-0.5">Jenjang: {level}</p>
+        </div>
+        <input
+          type="checkbox"
+          className="hidden"
+          checked={selected.has(r.id)}
+          onChange={() => toggleRow(r.id)}
+          aria-label={`pilih ${r.id}`}
+        />
+      </div>
 
-                    <div className="mt-3">
-                      <WaCell
-                        nisn={r.id}
-                        name={name}
-                        wsMs={wsMs}
-                        weMs={weMs}
-                        scheduleId={r.examScheduleId || ""}
-                      />
-                    </div>
-                  </li>
-                );
-              })}
+      <div className="mt-3">
+        <WaCell
+          nisn={r.id}
+          name={name}
+          wsMs={wsMs}
+          weMs={weMs}
+          scheduleId={r.examScheduleId || ""}
+        />
+      </div>
+    </li>
+  );
+})}
+
             </ul>
           )}
         </div>
