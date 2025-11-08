@@ -32,12 +32,14 @@ const getName = (u) =>
 const getLevel = (u) => u?.registrationLevel || "-";
 const sortLevels = (arr) => ["ALL", ...arr.filter(x => x !== "ALL").sort((a,b)=>String(a).localeCompare(String(b)))];
 
-// === [NEW] helper rata-rata dari nilai yang ada ===
-function avgScore(...vals) {
-  const s = vals.filter(v => v != null);
-  if (s.length === 0) return null;
-  const sum = s.reduce((a,b)=>a+Number(b),0);
-  return Math.round((sum / s.length) * 10) / 10; // 1 desimal
+// === Rata-rata ketat: (akademik + tahfidz + wawancara) / 3; kosong dihitung 0 ===
+function strictAvg(a, b, c) {
+  const toNum = (v) => {
+    const n = Number(v);
+    return Number.isFinite(n) ? n : 0;
+  };
+  const sum = toNum(a) + toNum(b) + toNum(c);
+  return Math.round((sum / 3) * 10) / 10; // 1 desimal
 }
 
 const RecBadge = ({ rec }) => {
@@ -59,7 +61,6 @@ export default function HasilFinalPage() {
   /* ------ Filter ------ */
   const [levelFilter, setLevelFilter] = useState("ALL");
   const [statusFilter, setStatusFilter] = useState("ALL"); // ALL | LENGKAP
-  // Peringkat saja; arah: DESC (top→bottom) | ASC (bottom→top)
   const [rankDirection, setRankDirection] = useState("DESC");
   const [levels, setLevels] = useState(["ALL"]);
 
@@ -78,7 +79,7 @@ export default function HasilFinalPage() {
   /* ------ Download Excel ------ */
   const [downloading, setDownloading] = useState(false);
 
-  /* ===== Ambil daftar jenjang (longgar) ===== */
+  /* ===== Ambil daftar jenjang ===== */
   useEffect(() => {
     (async () => {
       const setLv = new Set(["ALL"]);
@@ -167,15 +168,15 @@ export default function HasilFinalPage() {
           const tahfidz = tData?.score ?? null;
           const tahfidzExaminer = tData?.examinerName || tData?.penguji || null;
           const tahfidzRecommendation = tData?.recommendation || null;
-          const memorizedCount = tData?.memorizedCount ?? null; // JUMLAH HAFALAN (Juz)
+          const memorizedCount = tData?.memorizedCount ?? null;
 
           // Wawancara
           const wData = ivDoc.exists() ? ivDoc.data() : null;
           const wawancara = wData?.total100 ?? null;
           const wawancaraExaminer = wData?.examinerName || null;
 
-          // === [CHANGED] total jadi rata-rata dari nilai yang tersedia ===
-          const total = avgScore(akademik, tahfidz, wawancara);
+          // === total jadi rata-rata ketat (dibagi 3) ===
+          const total = strictAvg(akademik, tahfidz, wawancara);
           const complete = akademik != null && tahfidz != null && wawancara != null;
 
           return {
@@ -210,11 +211,10 @@ export default function HasilFinalPage() {
         return rankDirection === "DESC" ? diff : -diff;
       });
 
-      // >>> Perubahan di sini: rank dibalik saat ASC <<<
       const totalCount = sorted.length;
       const ranked = sorted.map((r, idx) => ({
         ...r,
-        rank: rankDirection === "DESC" ? (idx + 1) : (totalCount - idx), // contoh: 100,99,98 saat ASC
+        rank: rankDirection === "DESC" ? (idx + 1) : (totalCount - idx),
       }));
 
       setRows(ranked);
@@ -238,7 +238,6 @@ export default function HasilFinalPage() {
     }
   }
 
-  // reload saat filter/arah berubah
   useEffect(() => {
     setAnchors([]); fetchPage(0);
     // eslint-disable-next-line react-hooks/exhaustive-deps
@@ -247,7 +246,7 @@ export default function HasilFinalPage() {
   const onPrev = () => { if (pageIndex > 0 && !loading) fetchPage(pageIndex - 1); };
   const onNext = () => { if (hasNext && !loading) fetchPage(pageIndex + 1); };
 
-  /* ===== Download Excel: ambil SEMUA data by batch + urut peringkat (rank dibalik saat ASC) ===== */
+  /* ===== Download Excel (pakai strictAvg juga) ===== */
   const handleDownloadExcel = async () => {
     setDownloading(true);
     try {
@@ -269,7 +268,7 @@ export default function HasilFinalPage() {
         qRef = query(colRef, ...baseClauses, orderBy(documentId()), startAfter(last), limit(EXPORT_BATCH));
       }
 
-      // 2) Join nilai + Wali WA dari ppdb/{nisn}.waliWa
+      // 2) Join nilai + Wali WA
       const allData = await Promise.all(
         users.map(async (u) => {
           const nisn = getIdOr(u) || u.id;
@@ -279,7 +278,6 @@ export default function HasilFinalPage() {
             getDoc(doc(db, "ppdb", String(nisn))),
           ]);
 
-          // Akademik
           let akademik = null;
           if (typeof u.examScorePercent === "number") akademik = u.examScorePercent;
           else if (typeof u.examScoreBenar === "number" && typeof u.examScoreTotal === "number") {
@@ -301,8 +299,8 @@ export default function HasilFinalPage() {
 
           const waliWa = pData?.waliWa ?? "";
 
-          // === [CHANGED] total jadi rata-rata ===
-          const total = avgScore(akademik, tahfidz, wawancara);
+          // === total rata-rata ketat ===
+          const total = strictAvg(akademik, tahfidz, wawancara);
           const complete = akademik != null && tahfidz != null && wawancara != null;
 
           return {
@@ -407,7 +405,6 @@ export default function HasilFinalPage() {
                 <option value="LENGKAP">Sudah lengkap (3 nilai)</option>
               </select>
 
-              {/* Arah peringkat */}
               <select value={rankDirection} onChange={(e)=>setRankDirection(e.target.value)}
                 className="rounded-xl border border-slate-300 px-3 py-2.5 text-sm focus:outline-none focus:ring-2 focus:ring-slate-100"
                 title="Arah peringkat">
@@ -422,7 +419,6 @@ export default function HasilFinalPage() {
             </div>
           </div>
 
-          {/* Download button: HIJAU */}
           <div className="flex items-center justify-end">
             <button
               onClick={handleDownloadExcel}
@@ -434,7 +430,7 @@ export default function HasilFinalPage() {
           </div>
         </div>
 
-        {/* Tabel profesional & modern */}
+        {/* Tabel */}
         <div className="mt-5 overflow-hidden rounded-2xl border border-slate-200 bg-white shadow-xl shadow-slate-100/70">
           <div className="overflow-x-auto">
             <table className="min-w-[1280px] w-full text-sm">
@@ -450,7 +446,7 @@ export default function HasilFinalPage() {
                     ["Jumlah Hafalan (Juz)","text-right"],
                     ["Rekomendasi Tahfidz","text-left"],
                     ["Wawancara","text-right"],
-                    ["Rata rata","text-right"],
+                    ["Rata-rata","text-right"],
                     ["Peringkat","text-center"],
                     ["Aksi","text-left w-28"],
                   ].map(([label, extra])=>(
@@ -489,7 +485,6 @@ export default function HasilFinalPage() {
                     <td className="px-4 py-3 text-right font-semibold tabular-nums">{r.total?.toFixed?.(1) ?? r.total}</td>
                     <td className="px-4 py-3 text-center">{r.rank}</td>
                     <td className="px-4 py-3">
-                      {/* Tombol DETAIL: HIJAU */}
                       <button
                         onClick={()=>{ setDetail(r); setOpen(true); }}
                         className="rounded-xl bg-emerald-600 px-3 py-1.5 text-xs font-semibold text-white hover:bg-emerald-700 active:scale-95 shadow-sm shadow-emerald-200 transition-all"
