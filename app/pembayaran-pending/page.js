@@ -356,23 +356,26 @@ function PembayaranPendingInner() {
           }
 
           // Jika diverifikasi → update cookie & redirect (sekali saja)
-          const status = String(data?.registrationPaymentStatus || "").toLowerCase();
-          const isVerified = status === "verified" || data?.verifiedPayment === true || data?.accountEnabled === true;
+          const status = String(data?.registrationPaymentStatus || "").trim().toLowerCase();
 
-          if (isVerified && !redirectedRef.current) {
-            redirectedRef.current = true;
-            const sess = readSessionCookie() || {};
-            const nextSess = {
-              ...sess,
-              id: sess?.id || username,
-              username: sess?.username || username,
-              verifiedPayment: true,
-              accountEnabled: data?.accountEnabled === true ? true : (sess?.accountEnabled || false),
-              registrationPaymentStatus: "verified",
-            };
-            writeSessionCookie(nextSess, 7);
-            router.replace("/portal");
-          }
+if (status === "verified" && !redirectedRef.current) {
+  redirectedRef.current = true;
+
+  // update session cookie dulu supaya middleware/portal langsung kenal
+  const sess = readSessionCookie() || {};
+  const nextSess = {
+    ...sess,
+    id: sess?.id || username,
+    username: sess?.username || username,
+    registrationPaymentStatus: "verified",
+    verifiedPayment: true,
+    accountEnabled: true,
+  };
+  writeSessionCookie(nextSess, 7);
+
+  // hindari race dengan render
+  Promise.resolve().then(() => router.replace("/portal"));
+}
 
           setLoading(false);
         });
