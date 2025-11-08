@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useState, Suspense } from "react";
+import { useEffect, useState, useRef, Suspense } from "react";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
 import Header from "@/app/components/Header";
@@ -15,6 +15,7 @@ import {
   query,
   where,
   limit,
+  onSnapshot, // ⬅️ REALTIME LISTENER
 } from "firebase/firestore";
 import {
   ref as sRef,
@@ -112,15 +113,12 @@ function PreviewModal({ open, src, onClose }) {
   );
 }
 
-/* ================= Modal Tutorial (fixed size) ================= */
-/* ===== Modal Tutorial (fixed size + copy rekening: tampil boleh spasi, copy rapat, berwarna) ===== */
+/* ================= Modal Tutorial ================= */
 function TutorialModal({ open, onClose, jumlah, rekening }) {
   const [copied, setCopied] = useState(false);
   useBodyScrollLock(open);
 
-  // 1) untuk disalin: hanya digit
   const cleanNumber = String(rekening?.number || "").replace(/\D/g, "");
-  // 2) untuk tampilan: pakai string asli (biar ada spasi), fallback ke clean
   const visibleText = String(rekening?.number || cleanNumber);
 
   useEffect(() => {
@@ -139,7 +137,7 @@ function TutorialModal({ open, onClose, jumlah, rekening }) {
   const copyRekening = async () => {
     try {
       if (!cleanNumber) return;
-      await navigator.clipboard.writeText(cleanNumber); // selalu rapat
+      await navigator.clipboard.writeText(cleanNumber);
       setCopied(true);
     } catch {}
   };
@@ -149,21 +147,17 @@ function TutorialModal({ open, onClose, jumlah, rekening }) {
   return (
     <div className="fixed inset-0 z-[1000] flex items-center justify-center p-4" role="dialog" aria-modal="true">
       <div className="absolute inset-0 bg-black/50" onClick={onClose} />
-      {/* FIXED SIZE SHELL */}
       <div className="relative z-[1001] w-[92vw] max-w-[640px] md:w-[640px] h-[72vh] md:h-[520px] rounded-3xl bg-white/90 backdrop-blur-sm shadow-xl overflow-hidden animate-fade-in-up flex flex-col">
-        {/* Header */}
         <div className="px-5 py-4 border-b border-slate-200 flex items-center justify-between shrink-0">
           <h3 className="text-base font-bold text-slate-900">Tutorial Pembayaran</h3>
           <button onClick={onClose} className="text-slate-500 hover:text-slate-700" aria-label="Tutup">✕</button>
         </div>
 
-        {/* Body */}
         <div className="p-5 flex-1 overflow-y-auto">
           <ol className="list-decimal pl-5 space-y-3 text-sm text-slate-700">
             <li>Buka aplikasi <b>m-banking/ ATM/ BSI/ ke-Alfamart/ Indomaret terdekat</b>.</li>
             <li>
               Transfer ke rekening: <b>{rekening?.bank}</b> a.n. <b>{rekening?.owner}</b> —{" "}
-              {/* Tombol copy berwarna */}
               <button
                 type="button"
                 onClick={copyRekening}
@@ -174,7 +168,6 @@ function TutorialModal({ open, onClose, jumlah, rekening }) {
                 title="Klik untuk menyalin nomor rekening"
                 aria-label={`Salin nomor rekening ${cleanNumber}`}
               >
-                {/* Ikon copy (ikut warna teks) */}
                 <svg xmlns="http://www.w3.org/2000/svg" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" className="shrink-0">
                   <rect x="9" y="9" width="13" height="13" rx="2" ry="2" strokeWidth="2"></rect>
                   <path d="M5 15H4a2 2 0 0 1-2-2V4a2 2 0 0 1 2-2h9a2 2 0 0 1 2 2v1" strokeWidth="2"></path>
@@ -199,7 +192,6 @@ function TutorialModal({ open, onClose, jumlah, rekening }) {
           </div>
         </div>
 
-        {/* Footer */}
         <div className="px-5 py-3 border-t border-slate-200 flex justify-end shrink-0">
           <button onClick={onClose} className="rounded-md bg-slate-100 hover:bg-slate-200 text-slate-800 px-3 py-1.5 text-sm font-semibold">
             Mengerti
@@ -210,8 +202,7 @@ function TutorialModal({ open, onClose, jumlah, rekening }) {
   );
 }
 
-
-/* ================= Modal Tentang Akun (fixed size & identik) ================= */
+/* ================= Modal Tentang Akun ================= */
 function AccountInfoModal({ open, onClose }) {
   useBodyScrollLock(open);
   useEffect(() => {
@@ -226,35 +217,29 @@ function AccountInfoModal({ open, onClose }) {
   return (
     <div className="fixed inset-0 z-[1000] flex items-center justify-center p-4" role="dialog" aria-modal="true">
       <div className="absolute inset-0 bg-black/50" onClick={onClose} />
-      {/* FIXED SIZE SHELL (sama persis dengan TutorialModal) */}
       <div className="relative z-[1001] w-[92vw] max-w-[640px] md:w-[640px] h-[72vh] md:h-[520px] rounded-3xl bg-white/90 backdrop-blur-sm shadow-xl overflow-hidden animate-fade-in-up flex flex-col">
-        {/* Header */}
         <div className="px-5 py-4 border-b border-slate-200 flex items-center justify-between shrink-0">
           <h3 className="text-base font-bold text-slate-900">Kegunaan Akun</h3>
           <button onClick={onClose} className="text-slate-500 hover:text-slate-700">✕</button>
         </div>
 
-        {/* Body (scroll jika konten panjang) */}
         <div className="p-5 flex-1 overflow-y-auto">
-  <p className="text-sm text-slate-700">
-    Akun ini digunakan untuk mengikuti <b>tes akademik online</b> <i>(kecuali jenjang TK, SD dan PPS ULA)</i>.
-  </p>
+          <p className="text-sm text-slate-700">
+            Akun ini digunakan untuk mengikuti <b>tes akademik online</b> <i>(kecuali jenjang TK, SD dan PPS ULA)</i>.
+          </p>
 
-  <p className="mt-2 text-sm text-slate-700">
-    Selain itu, akun calon peserta didik dipergunakan untuk melihat <b>informasi kelulusan</b>,
-    melakukan <b>daftar ulang</b>, serta <b>bergabung ke grup WhatsApp</b> resmi.
-  </p>
+          <p className="mt-2 text-sm text-slate-700">
+            Selain itu, akun calon peserta didik dipergunakan untuk melihat <b>informasi kelulusan</b>,
+            melakukan <b>daftar ulang</b>, serta <b>bergabung ke grup WhatsApp</b> resmi.
+          </p>
 
-  <ul className="mt-3 list-disc pl-5 space-y-1 text-sm text-slate-700">
-    <li>Harap menjaga kerahasiaan <b>username</b> dan <b>password</b>.</li>
-    <li>Pastikan nomor WhatsApp aktif agar jadwal ujian dan informasi terkirim tepat waktu.</li>
-    <li>Apabila mengalami kendala akses, silakan menghubungi panitia melalui WhatsApp pada bagian bantuan.</li>
-  </ul>
-</div>
+          <ul className="mt-3 list-disc pl-5 space-y-1 text-sm text-slate-700">
+            <li>Harap menjaga kerahasiaan <b>username</b> dan <b>password</b>.</li>
+            <li>Pastikan nomor WhatsApp aktif agar jadwal ujian dan informasi terkirim tepat waktu.</li>
+            <li>Apabila mengalami kendala akses, silakan menghubungi panitia melalui WhatsApp pada bagian bantuan.</li>
+          </ul>
+        </div>
 
-
-
-        {/* Footer */}
         <div className="px-5 py-3 border-t border-slate-200 flex justify-end shrink-0">
           <button onClick={onClose} className="rounded-md bg-slate-100 hover:bg-slate-200 text-slate-800 px-3 py-1.5 text-sm font-semibold">
             Mengerti
@@ -289,10 +274,15 @@ function PembayaranPendingInner() {
   const [tutorialOpen, setTutorialOpen] = useState(false);
   const [accountOpen, setAccountOpen] = useState(false);
 
-  /* ==== INIT ==== */
+  // === Flags untuk mencegah double-load & double-redirect
+  const feesLoadedRef = useRef(false);
+  const redirectedRef = useRef(false);
+
+  /* ==== INIT + REALTIME LISTENER ==== */
   useEffect(() => {
-    void (async () => {
-      // ambil user
+    let unsub = null;
+    (async () => {
+      // ambil user lokal
       let parsed = null;
       try { parsed = JSON.parse(localStorage.getItem("appUser") || "null"); } catch {}
       if (!parsed?.id && !parsed?.username) {
@@ -303,76 +293,98 @@ function PembayaranPendingInner() {
       setUser({ id: username, username });
 
       try {
-        // dokumen user
-        const snap = await getDoc(doc(db, "users_app", username));
-        if (!snap.exists()) {
-          setErr("Akun tidak ditemukan. Hubungi panitia.");
-          setLoading(false);
-          return;
-        }
-        const data = snap.data();
-        setUDoc({ id: snap.id, ...data });
+        const userRef = doc(db, "users_app", username);
 
-        // fee by level
-        const level = data?.registrationLevel;
-        if (level) {
-          const feesRef = collection(db, "fees");
-          const qFees = query(feesRef, where("label", "==", String(level)), limit(1));
-          const feeQSnap = await getDocs(qFees);
-          if (!feeQSnap.empty) {
-            const f = feeQSnap.docs[0].data();
-            setFeeInfo({
-              fee: Number(f?.fee ?? 0),
-              currency: String(f?.currency || "IDR"),
-              label: String(f?.label || level),
-            });
-          } else {
-            setFeeInfo((p) => ({ ...p, fee: 0, label: level }));
+        // ——— REALTIME: pantau perubahan dokumen user ———
+        unsub = onSnapshot(userRef, async (snap) => {
+          if (!snap.exists()) {
+            setErr("Akun tidak ditemukan. Hubungi panitia.");
+            setUDoc(null);
+            setLoading(false);
+            return;
           }
 
-          // WA group/contact
-          try {
-            const waRef = collection(db, "wa_groups");
-            const qWa = query(waRef, where("label", "==", String(level)), limit(1));
-            const waSnap = await getDocs(qWa);
-            if (!waSnap.empty) {
-              const w = waSnap.docs[0].data() || {};
-              const finalLink = w?.privateLink || toWaChatLink(w?.private || "");
-              setWaPrivateLink(finalLink || "");
-              setWaLabel(String(w?.label || level));
-            } else {
-              setWaPrivateLink("");
-              setWaLabel(String(level || ""));
+          const data = snap.data() || {};
+          setUDoc({ id: snap.id, ...data });
+
+          // Muat fee & WA Group sekali ketika level tersedia
+          if (!feesLoadedRef.current && data?.registrationLevel) {
+            feesLoadedRef.current = true;
+            try {
+              // fees
+              const feeQ = query(
+                collection(db, "fees"),
+                where("label", "==", String(data.registrationLevel)),
+                limit(1)
+              );
+              const feeSnap = await getDocs(feeQ);
+              if (!feeSnap.empty) {
+                const f = feeSnap.docs[0].data();
+                setFeeInfo({
+                  fee: Number(f?.fee ?? 0),
+                  currency: String(f?.currency || "IDR"),
+                  label: String(f?.label || data.registrationLevel),
+                });
+              } else {
+                setFeeInfo((p) => ({ ...p, fee: 0, label: data.registrationLevel }));
+              }
+
+              // wa groups
+              try {
+                const waQ = query(
+                  collection(db, "wa_groups"),
+                  where("label", "==", String(data.registrationLevel)),
+                  limit(1)
+                );
+                const waSnap = await getDocs(waQ);
+                if (!waSnap.empty) {
+                  const w = waSnap.docs[0].data() || {};
+                  const finalLink = w?.privateLink || toWaChatLink(w?.private || "");
+                  setWaPrivateLink(finalLink || "");
+                  setWaLabel(String(w?.label || data.registrationLevel));
+                } else {
+                  setWaPrivateLink("");
+                  setWaLabel(String(data.registrationLevel || ""));
+                }
+              } catch {
+                setWaPrivateLink("");
+                setWaLabel(String(data.registrationLevel || ""));
+              }
+            } catch {
+              setErr("Gagal memuat data akun/biaya.");
             }
-          } catch {
-            setWaPrivateLink("");
-            setWaLabel(String(level || ""));
           }
-        }
 
-        // jika sudah verif → portal
-        const status = String(data?.registrationPaymentStatus || "").toLowerCase();
-        const isVerified = status === "verified";
-        if (isVerified) {
-          const sess = readSessionCookie() || {};
-          const nextSess = {
-            ...sess,
-            id: sess?.id || username,
-            username: sess?.username || username,
-            verifiedPayment: true,
-            accountEnabled: data?.accountEnabled === true ? true : (sess?.accountEnabled || false),
-            registrationPaymentStatus: "verified",
-          };
-          writeSessionCookie(nextSess, 7);
-          router.replace("/portal");
-          return;
-        }
+          // Jika diverifikasi → update cookie & redirect (sekali saja)
+          const status = String(data?.registrationPaymentStatus || "").toLowerCase();
+          const isVerified = status === "verified" || data?.verifiedPayment === true || data?.accountEnabled === true;
+
+          if (isVerified && !redirectedRef.current) {
+            redirectedRef.current = true;
+            const sess = readSessionCookie() || {};
+            const nextSess = {
+              ...sess,
+              id: sess?.id || username,
+              username: sess?.username || username,
+              verifiedPayment: true,
+              accountEnabled: data?.accountEnabled === true ? true : (sess?.accountEnabled || false),
+              registrationPaymentStatus: "verified",
+            };
+            writeSessionCookie(nextSess, 7);
+            router.replace("/portal");
+          }
+
+          setLoading(false);
+        });
       } catch {
         setErr("Gagal memuat data akun/biaya.");
-      } finally {
         setLoading(false);
       }
     })();
+
+    return () => {
+      try { unsub && unsub(); } catch {}
+    };
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
@@ -457,62 +469,57 @@ function PembayaranPendingInner() {
   }
 
   function UploadButton({ disabled }) {
-  const uploaded = !!uDoc?.registrationPaymentProof;
-  const isDisabled = disabled || busy || uploaded;
+    const uploaded = !!uDoc?.registrationPaymentProof;
+    const isDisabled = disabled || busy || uploaded;
 
-  return (
-    <label
-      className={cx(
-        "inline-flex items-center justify-center gap-2 rounded-lg border px-4 py-2.5 text-sm h-10 w-full sm:w-auto",
-        isDisabled ? "opacity-80 pointer-events-none" : "hover:bg-white",
-        uploaded
-          ? "border-emerald-300 bg-emerald-50 text-emerald-700"
-          : "border-slate-300 bg-white text-black"
-      )}
-      title={uploaded ? "Bukti sudah diunggah" : "Unggah bukti pembayaran"}
-    >
-      <input
-        type="file"
-        accept="image/*,application/pdf"
-        className="hidden"
-        onChange={(e) => handleUpload(e.target.files?.[0])}
-        disabled={isDisabled}
-      />
+    return (
+      <label
+        className={cx(
+          "inline-flex items-center justify-center gap-2 rounded-lg border px-4 py-2.5 text-sm h-10 w-full sm:w-auto",
+          isDisabled ? "opacity-80 pointer-events-none" : "hover:bg-white",
+          uploaded
+            ? "border-emerald-300 bg-emerald-50 text-emerald-700"
+            : "border-slate-300 bg-white text-black"
+        )}
+        title={uploaded ? "Bukti sudah diunggah" : "Unggah bukti pembayaran"}
+      >
+        <input
+          type="file"
+          accept="image/*,application/pdf"
+          className="hidden"
+          onChange={(e) => handleUpload(e.target.files?.[0])}
+          disabled={isDisabled}
+        />
 
-      {/* Ikon status */}
-      {busy ? (
-        // spinner sederhana
-        <svg xmlns="http://www.w3.org/2000/svg" width="16" height="16"
-             viewBox="0 0 24 24" className="animate-spin">
-          <circle cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="2" fill="none" opacity="0.2"/>
-          <path d="M22 12a10 10 0 0 0-10-10" stroke="currentColor" strokeWidth="2" fill="none"/>
-        </svg>
-      ) : uploaded ? (
-        // centang sukses
-        <svg xmlns="http://www.w3.org/2000/svg" width="16" height="16"
-             viewBox="0 0 24 24" fill="none" stroke="currentColor">
-          <path d="M20 6L9 17l-5-5" strokeWidth="2" />
-        </svg>
-      ) : (
-        // ikon upload
-        <svg xmlns="http://www.w3.org/2000/svg" width="16" height="16"
-             viewBox="0 0 24 24" fill="none" stroke="currentColor">
-          <path d="M12 3v12m0-12l-4 4m4-4l4 4M3 21h18" strokeWidth="2"/>
-        </svg>
-      )}
+        {/* Ikon status */}
+        {busy ? (
+          <svg xmlns="http://www.w3.org/2000/svg" width="16" height="16"
+              viewBox="0 0 24 24" className="animate-spin">
+            <circle cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="2" fill="none" opacity="0.2"/>
+            <path d="M22 12a10 10 0 0 0-10-10" stroke="currentColor" strokeWidth="2" fill="none"/>
+          </svg>
+        ) : uploaded ? (
+          <svg xmlns="http://www.w3.org/2000/svg" width="16" height="16"
+              viewBox="0 0 24 24" fill="none" stroke="currentColor">
+            <path d="M20 6L9 17l-5-5" strokeWidth="2" />
+          </svg>
+        ) : (
+          <svg xmlns="http://www.w3.org/2000/svg" width="16" height="16"
+              viewBox="0 0 24 24" fill="none" stroke="currentColor">
+            <path d="M12 3v12m0-12l-4 4m4-4l4 4M3 21h18" strokeWidth="2"/>
+          </svg>
+        )}
 
-      {/* Label dinamis */}
-      <span aria-live="polite">
-        {busy
-          ? `Mengunggah… ${progress}%`
-          : uploaded
-          ? "Bukti telah diunggah"
-          : "Upload Bukti"}
-      </span>
-    </label>
-  );
-}
-
+        <span aria-live="polite">
+          {busy
+            ? `Mengunggah… ${progress}%`
+            : uploaded
+            ? "Bukti telah diunggah"
+            : "Upload Bukti"}
+        </span>
+      </label>
+    );
+  }
 
   function openPreview() {
     if (!uDoc?.registrationPaymentProof) return;
@@ -534,14 +541,14 @@ function PembayaranPendingInner() {
   const rekeningView = {
     bank: "Bank Syariah Indonesia",
     owner: "Spmb Pas",
-    number: "111 115 7778", 
+    number: "111 115 7778",
   };
 
   const helpLink = waPrivateLink || "https://wa.me/6287720242025";
 
   return (
     <div className="min-h-screen bg-white relative overflow-hidden">
-      {/* Decorative background (oranye) */}
+      {/* Decorative background */}
       <div className="absolute inset-0 overflow-hidden pointer-events-none">
         <div className="absolute top-20 -left-20 w-72 h-72 bg-orange-100/30 rounded-full blur-3xl animate-float" />
         <div className="absolute bottom-20 -right-20 w-96 h-96 bg-orange-100/20 rounded-full blur-3xl animate-float-delayed" />
@@ -565,10 +572,9 @@ function PembayaranPendingInner() {
             </p>
           </div>
 
-          {/* Divider halus */}
           <div className="mx-6 my-6 border-t border-slate-200" />
 
-          {/* BAR ATAS: 2 tombol kanan (Tentang Akun di kiri) */}
+          {/* BAR ATAS: 2 tombol kanan */}
           <div className="px-6 pb-2 flex items-center justify-end md:justify-center gap-2 text-black">
             <button
               type="button"
@@ -617,11 +623,11 @@ function PembayaranPendingInner() {
 
           {/* Pesan + Bantuan WA */}
           <div className="px-6 pb-6">
-  {err && (
-    <div className="mb-3 text-sm text-red-700 bg-red-50 border border-red-200 rounded-lg px-3 py-2">
-      {err}
-    </div>
-  )}
+            {err && (
+              <div className="mb-3 text-sm text-red-700 bg-red-50 border border-red-200 rounded-lg px-3 py-2">
+                {err}
+              </div>
+            )}
 
             <div className="rounded-lg bg-slate-50 border border-slate-200 px-4 py-3 text-center">
               <div className="mt-0">
