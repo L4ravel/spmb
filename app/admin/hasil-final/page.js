@@ -32,6 +32,14 @@ const getName = (u) =>
 const getLevel = (u) => u?.registrationLevel || "-";
 const sortLevels = (arr) => ["ALL", ...arr.filter(x => x !== "ALL").sort((a,b)=>String(a).localeCompare(String(b)))];
 
+// === [NEW] helper rata-rata dari nilai yang ada ===
+function avgScore(...vals) {
+  const s = vals.filter(v => v != null);
+  if (s.length === 0) return null;
+  const sum = s.reduce((a,b)=>a+Number(b),0);
+  return Math.round((sum / s.length) * 10) / 10; // 1 desimal
+}
+
 const RecBadge = ({ rec }) => {
   const R = String(rec || "").toUpperCase();
   const cls =
@@ -166,7 +174,8 @@ export default function HasilFinalPage() {
           const wawancara = wData?.total100 ?? null;
           const wawancaraExaminer = wData?.examinerName || null;
 
-          const total = (akademik ?? 0) + (tahfidz ?? 0) + (wawancara ?? 0);
+          // === [CHANGED] total jadi rata-rata dari nilai yang tersedia ===
+          const total = avgScore(akademik, tahfidz, wawancara);
           const complete = akademik != null && tahfidz != null && wawancara != null;
 
           return {
@@ -193,7 +202,7 @@ export default function HasilFinalPage() {
       // Urut peringkat
       const sorted = filtered.sort((a, b) => {
         const diff =
-          (b.total - a.total) ||
+          ((b.total ?? -1) - (a.total ?? -1)) ||
           ((b.wawancara ?? -1) - (a.wawancara ?? -1)) ||
           ((b.tahfidz ?? -1) - (a.tahfidz ?? -1)) ||
           ((b.akademik ?? -1) - (a.akademik ?? -1)) ||
@@ -260,13 +269,14 @@ export default function HasilFinalPage() {
         qRef = query(colRef, ...baseClauses, orderBy(documentId()), startAfter(last), limit(EXPORT_BATCH));
       }
 
-      // 2) Join nilai tahfidz & wawancara setiap NISN
+      // 2) Join nilai + Wali WA dari ppdb/{nisn}.waliWa
       const allData = await Promise.all(
         users.map(async (u) => {
           const nisn = getIdOr(u) || u.id;
-          const [tahfDoc, ivDoc] = await Promise.all([
+          const [tahfDoc, ivDoc, ppdbDoc] = await Promise.all([
             getDoc(doc(db, TAHFIDZ_COLL, String(nisn))),
             getDoc(doc(db, INTERVIEW_COLL, String(nisn))),
+            getDoc(doc(db, "ppdb", String(nisn))),
           ]);
 
           // Akademik
@@ -279,6 +289,7 @@ export default function HasilFinalPage() {
 
           const tData = tahfDoc.exists() ? tahfDoc.data() : null;
           const wData = ivDoc.exists() ? ivDoc.data() : null;
+          const pData = ppdbDoc.exists() ? ppdbDoc.data() : null;
 
           const tahfidz = tData?.score ?? null;
           const memorizedCount = tData?.memorizedCount ?? null;
@@ -288,7 +299,10 @@ export default function HasilFinalPage() {
           const wawancara = wData?.total100 ?? null;
           const wawancaraExaminer = wData?.examinerName || null;
 
-          const total = (akademik ?? 0) + (tahfidz ?? 0) + (wawancara ?? 0);
+          const waliWa = pData?.waliWa ?? "";
+
+          // === [CHANGED] total jadi rata-rata ===
+          const total = avgScore(akademik, tahfidz, wawancara);
           const complete = akademik != null && tahfidz != null && wawancara != null;
 
           return {
@@ -302,17 +316,18 @@ export default function HasilFinalPage() {
             tahfidzRecommendation,
             wawancara,
             wawancaraExaminer,
+            waliWa,
             total,
             complete,
           };
         })
       );
 
-      // 3) Filter + urut peringkat, lalu hitung rank dibalik saat ASC
+      // 3) Filter + urut peringkat
       let filtered = statusFilter === "LENGKAP" ? allData.filter((r) => r.complete) : allData;
       filtered.sort((a, b) => {
         const diff =
-          (b.total - a.total) ||
+          ((b.total ?? -1) - (a.total ?? -1)) ||
           ((b.wawancara ?? -1) - (a.wawancara ?? -1)) ||
           ((b.tahfidz ?? -1) - (a.tahfidz ?? -1)) ||
           ((b.akademik ?? -1) - (a.akademik ?? -1)) ||
@@ -323,7 +338,7 @@ export default function HasilFinalPage() {
       const totalCount = filtered.length;
       const ranked = filtered.map((r, idx) => ({
         ...r,
-        rank: rankDirection === "DESC" ? (idx + 1) : (totalCount - idx), // contoh: 100,99,98 saat ASC
+        rank: rankDirection === "DESC" ? (idx + 1) : (totalCount - idx),
       }));
 
       // 4) Bentuk sheet
@@ -340,7 +355,8 @@ export default function HasilFinalPage() {
         "Penguji Al Qur'an": r.tahfidzExaminer ?? "-",
         "Wawancara": r.wawancara ?? "-",
         "Penguji Wawancara": r.wawancaraExaminer ?? "-",
-        "Total": r.total?.toFixed?.(1) ?? r.total,
+        "Wali WA": r.waliWa || "-",
+        "Total (Rata-rata)": r.total?.toFixed?.(1) ?? r.total,
         "Peringkat": r.rank,
         "Status": r.complete ? "Lengkap" : "Belum Lengkap",
       }));
@@ -348,7 +364,7 @@ export default function HasilFinalPage() {
       const wb = XLSX.utils.book_new();
       XLSX.utils.book_append_sheet(wb, ws, "Hasil Final");
       ws["!cols"] = [
-        {wch:5},{wch:16},{wch:28},{wch:10},{wch:10},{wch:12},{wch:20},{wch:22},{wch:14},{wch:14},{wch:12},{wch:10},{wch:14}
+        {wch:5},{wch:16},{wch:28},{wch:10},{wch:10},{wch:12},{wch:20},{wch:22},{wch:14},{wch:14},{wch:16},{wch:18},{wch:14},{wch:14}
       ];
 
       const ts = new Date().toISOString().split("T")[0];
@@ -434,7 +450,7 @@ export default function HasilFinalPage() {
                     ["Jumlah Hafalan (Juz)","text-right"],
                     ["Rekomendasi Tahfidz","text-left"],
                     ["Wawancara","text-right"],
-                    ["Total","text-right"],
+                    ["Rata rata","text-right"],
                     ["Peringkat","text-center"],
                     ["Aksi","text-left w-28"],
                   ].map(([label, extra])=>(
@@ -456,7 +472,7 @@ export default function HasilFinalPage() {
                   </tr>
                 )}
 
-                {!loading && rows.map((r) => (
+                {!loading && rows.length > 0 && rows.map((r) => (
                   <tr
                     key={`${r.nisn}-${r.no}`}
                     className="border-b border-slate-100 odd:bg-white even:bg-slate-50/40 hover:bg-slate-50/80 transition-colors"
@@ -571,7 +587,9 @@ export default function HasilFinalPage() {
 
                   <section className="rounded-xl border border-slate-200 p-4">
                     <div className="font-semibold mb-1">Total</div>
-                    <div className="text-slate-700"><b>{detail.total?.toFixed?.(1) ?? detail.total}</b> / 300</div>
+                    <div className="text-slate-700">
+                      <b>{detail.total?.toFixed?.(1) ?? detail.total}</b> / 100
+                    </div>
                   </section>
                 </div>
               </div>
