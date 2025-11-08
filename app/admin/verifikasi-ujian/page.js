@@ -160,7 +160,7 @@ export default function VerifikasiUjian() {
     return { has, none, all: rows.length };
   }, [rows]);
 
-  /* ===== View ===== */
+  /* ===== View (termasuk filter Gelombang) ===== */
   const view = useMemo(() => {
     let base = rows;
     if (filterScheduleId !== "ALL") base = base.filter((r) => r.examScheduleId === filterScheduleId);
@@ -437,11 +437,10 @@ export default function VerifikasiUjian() {
             waNotifiedAt: serverTimestamp(),
           });
         } catch (e) {
-          // Jika doc belum ada/permission issue, diamkan agar tidak mengganggu alur kirim WA
           console.warn("Gagal update flag waNotified:", e);
         }
 
-        // Legacy lokal — tetap diset untuk responsif segera
+        // Legacy lokal
         setSent(true);
         try {
           const map = JSON.parse(localStorage.getItem("wa_sent_flags") || "{}");
@@ -485,6 +484,114 @@ export default function VerifikasiUjian() {
     );
   }
 
+  /* ===== [ADD] — Download sesuai filter Gelombang ===== */
+  async function downloadByGelombang() {
+    try {
+      // Ambil basis data dari "view" (sudah terfilter gelombang + level + status + search)
+      // tetapi requirement utamanya: sesuai filter gelombang yang dipilih.
+      const base = view;
+
+      if (!base.length) {
+        alert("Tidak ada data untuk diunduh pada filter saat ini.");
+        return;
+      }
+
+      // Helper baca nomor WA dari koleksi ppdb/{nisn}
+      async function getWa(nisn) {
+        try {
+          const snap = await getDoc(doc(db, "ppdb", String(nisn)));
+          if (!snap.exists()) return "";
+          const d = snap.data() || {};
+          const chosen = (d.waliWa || d.waliTelp || d.waliTel || "").toString().trim();
+          return normalizePhoneID(chosen);
+        } catch {
+          return "";
+        }
+      }
+
+      // Siapkan rows
+      const rows = [];
+      for (let i = 0; i < base.length; i++) {
+        const r = base[i];
+        const name =
+          r.fullName || r.namaLengkap || r.nama || r.name ||
+          r.profile?.fullName || r.profile?.name || "—";
+        const jenjang = (r.registrationLevel || "").toString().trim() || "—";
+        const nisn = String(r.id || "");
+        const wa = await getWa(nisn);
+
+        rows.push({
+          no: i + 1,
+          name,
+          jenjang,
+          username: nisn,
+          password: nisn,
+          wa,
+        });
+      }
+
+      // Render ke HTML table (xls download)
+      const esc = (s) =>
+        String(s ?? "")
+          .replace(/&/g, "&amp;")
+          .replace(/</g, "&lt;")
+          .replace(/>/g, "&gt;");
+      const header = ["No", "Nama", "Jenjang", "Username", "Password", "Nomor WA"];
+      const head = `<tr>${header
+        .map((h) => `<th style="background:#f1f5f9;text-align:left">${esc(h)}</th>`)
+        .join("")}</tr>`;
+      const body = rows
+        .map((r) => {
+          const tds = [
+            `<td>${esc(r.no)}</td>`,
+            `<td>${esc(r.name)}</td>`,
+            `<td>${esc(r.jenjang)}</td>`,
+            `<td style="mso-number-format:'\\@'">${esc(r.username)}</td>`,
+            `<td style="mso-number-format:'\\@'">${esc(r.password)}</td>`,
+            `<td style="mso-number-format:'\\@'">${esc(r.wa)}</td>`,
+          ];
+          return `<tr>${tds.join("")}</tr>`;
+        })
+        .join("");
+
+      const gel =
+        filterScheduleId === "ALL"
+          ? "SEMUA-GELOMBANG"
+          : `GELOMBANG-${String(filterScheduleId).replace(/\s+/g, "_")}`;
+
+      const html = `
+<!DOCTYPE html>
+<html xmlns:o="urn:schemas-microsoft-com:office:office"
+      xmlns:x="urn:schemas-microsoft-com:office:excel"
+      xmlns="http://www.w3.org/TR/REC-html40">
+<head><meta charset="utf-8" /></head>
+<body>
+  <table border="1" cellspacing="0" cellpadding="4" style="border-collapse:collapse;font-family:Calibri,Arial,sans-serif;font-size:11pt">
+    <caption style="caption-side:top;margin-bottom:8px;font-weight:bold">
+      Daftar Peserta — ${esc(gel)}
+    </caption>
+    ${head}
+    ${body}
+  </table>
+</body>
+</html>`.trim();
+
+      const blob = new Blob([html], { type: "application/vnd.ms-excel;charset=utf-8" });
+      const url = URL.createObjectURL(blob);
+      const a = document.createElement("a");
+      const stamp = new Date().toISOString().slice(0, 19).replace(/[:T]/g, "-");
+      a.href = url;
+      a.download = `peserta-${gel}-${stamp}.xls`;
+      document.body.appendChild(a);
+      a.click();
+      a.remove();
+      URL.revokeObjectURL(url);
+    } catch (e) {
+      console.error(e);
+      alert("Gagal membuat file unduhan.");
+    }
+  }
+
   /* =============== UI =============== */
   return (
     <div className="bg-white font-sans antialiased text-slate-900">
@@ -492,7 +599,7 @@ export default function VerifikasiUjian() {
         <div className="mb-5">
           <h1 className="text-3xl font-extrabold tracking-tight">Verifikasi Tes Akademik</h1>
 
-        <div className="mt-2 text-xs text-slate-600">
+          <div className="mt-2 text-xs text-slate-600">
             Total: <b>{stats.all}</b> • Sudah dijadwalkan: <b>{stats.has}</b> • Belum:{" "}
             <b>{stats.none}</b>
           </div>
@@ -584,7 +691,7 @@ export default function VerifikasiUjian() {
               </div>
             </div>
 
-            {/* RIGHT (DESKTOP DEFAULT – TAK DIUBAH) */}
+            {/* RIGHT (DESKTOP DEFAULT) */}
             <div className="hidden sm:flex flex-wrap items-center gap-2 md:gap-3">
               <div className="flex items-center gap-2">
                 <label className="text-sm font-semibold text-slate-800">Jadwal Target</label>
@@ -641,9 +748,18 @@ export default function VerifikasiUjian() {
               >
                 {saving ? "Memproses…" : "Assign ke Jadwal"}
               </button>
+
+              {/* === [ADD] Tombol Download sesuai filter Gelombang === */}
+              <button
+                onClick={downloadByGelombang}
+                className="rounded-lg border border-emerald-600 px-4 py-2 text-base font-semibold text-emerald-700 hover:bg-emerald-50"
+                title="Unduh daftar sesuai filter gelombang"
+              >
+                ⬇️ Download (Gelombang)
+              </button>
             </div>
 
-            {/* RIGHT (MOBILE-ONLY, rapi & tulisan info di bawah) */}
+            {/* RIGHT (MOBILE) */}
             <div className="sm:hidden space-y-2">
               <div>
                 <label className="block text-sm font-semibold text-slate-800 mb-1">
@@ -703,12 +819,21 @@ export default function VerifikasiUjian() {
                   {saving ? "Memproses…" : "Assign ke Jadwal"}
                 </button>
               </div>
+
+              {/* === [ADD] Tombol Download (mobile) === */}
+              <button
+                onClick={downloadByGelombang}
+                className="w-full rounded-lg border border-emerald-600 px-4 py-2 text-sm font-semibold text-emerald-700 hover:bg-emerald-50"
+                title="Unduh daftar sesuai filter gelombang"
+              >
+                ⬇️ Download (Gelombang)
+              </button>
             </div>
             {/* END RIGHT (MOBILE) */}
           </div>
         </div>
 
-        {/* ===================== DESKTOP TABLE (TIDAK DIUBAH) ===================== */}
+        {/* ===================== DESKTOP TABLE ===================== */}
         <div className="overflow-x-auto rounded-2xl border border-slate-200 bg-white shadow hidden sm:block">
           <table className="min-w-full text-base">
             <thead className="bg-slate-50 text-slate-800">
@@ -783,7 +908,7 @@ export default function VerifikasiUjian() {
           </table>
         </div>
 
-        {/* ===================== MOBILE LIST (NAMA + KIRIM WA SAJA) ===================== */}
+        {/* ===================== MOBILE LIST ===================== */}
         <div className="sm:hidden">
           {loading ? (
             <div className="rounded-2xl border border-slate-200 bg-white shadow p-4 text-center text-slate-600">
@@ -810,7 +935,6 @@ export default function VerifikasiUjian() {
                     <div className="flex items-start justify-between gap-3">
                       <div className="min-w-0">
                         <p className="text-base font-semibold text-slate-900 truncate">{name}</p>
-                        {/* Tampilkan Jenjang di mobile */}
                         <p className="text-xs text-slate-500 mt-0.5">Jenjang: {level}</p>
                       </div>
                       <input
