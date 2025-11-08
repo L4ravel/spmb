@@ -581,7 +581,7 @@ export default function HasilFinalPage() {
                   </section>
 
                   <section className="rounded-xl border border-slate-200 p-4">
-                    <div className="font-semibold mb-1">Total</div>
+                    <div className="font-semibold mb-1">Rata-rata</div>
                     <div className="text-slate-700">
                       <b>{detail.total?.toFixed?.(1) ?? detail.total}</b> / 100
                     </div>
