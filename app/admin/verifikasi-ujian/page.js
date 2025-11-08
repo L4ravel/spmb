@@ -388,7 +388,7 @@ export default function VerifikasiUjian() {
         "Undangan Pelaksanaan Ujian SPMB:",
         jadwal ? `Hari/Tanggal : ${jadwal.hari}, ${jadwal.tanggal}` : "Hari/Tanggal : -",
         jadwal ? `Waktu        : ${jadwal.waktu}` : "Waktu        : -",
-        "Tempat       : Pondok As-Sunnah",
+        "Tempat       : Ponpes Assunnah",
         "",
         "Akses Akun Peserta:",
         `Username    : ${username}`,
