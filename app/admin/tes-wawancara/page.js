@@ -80,19 +80,19 @@ export default function TesWawancaraPage() {
   const [tableQuery, setTableQuery] = useState("");
   const [exporting, setExporting] = useState(false);
   const [globalResults, setGlobalResults] = useState(null); // null = pakai paging normal
-const [qBusy, setQBusy] = useState(false); // indikator loading pencarian global
+  const [qBusy, setQBusy] = useState(false); // indikator loading pencarian global
 
   const viewItems = useMemo(() => {
-  const base = globalResults ?? items; // jika ada hasil global, pakai itu
-  const q = tableQuery.trim().toLowerCase();
-  if (!q) return base;
-  // jika globalResults ada, base sudah difilter; tetap aman untuk includes ringan
-  return base.filter((r) => {
-    const nisn = String(r.nisn || "").toLowerCase();
-    const name = String(r.name || "").toLowerCase();
-    return nisn.includes(q) || name.includes(q);
-  });
-}, [items, globalResults, tableQuery]);
+    const base = globalResults ?? items; // jika ada hasil global, pakai itu
+    const q = tableQuery.trim().toLowerCase();
+    if (!q) return base;
+    // jika globalResults ada, base sudah difilter; tetap aman untuk includes ringan
+    return base.filter((r) => {
+      const nisn = String(r.nisn || "").toLowerCase();
+      const name = String(r.name || "").toLowerCase();
+      return nisn.includes(q) || name.includes(q);
+    });
+  }, [items, globalResults, tableQuery]);
 
   const useScoresSource = statusFilter === "SELESAI" || sortMode === "NILAI_TERTINGGI";
   const isLoggedIn = Boolean(graderId);
@@ -349,65 +349,65 @@ const [qBusy, setQBusy] = useState(false); // indikator loading pencarian global
   }
 
   async function runGlobalSearch(qStr) {
-  const q = (qStr || "").trim().toLowerCase();
-  if (!q) { setGlobalResults(null); return; }
+    const q = (qStr || "").trim().toLowerCase();
+    if (!q) { setGlobalResults(null); return; }
 
-  setQBusy(true);
-  try {
-    const all = [];
-    const colRef = collection(db, USERS_COLLECTION);
-    const clauses = [where("role", "==", "siswa"), where("registrationPaymentStatus", "==", "verified")];
-    if (levelFilter !== "ALL") clauses.push(where("registrationLevel", "==", levelFilter));
+    setQBusy(true);
+    try {
+      const all = [];
+      const colRef = collection(db, USERS_COLLECTION);
+      const clauses = [where("role", "==", "siswa"), where("registrationPaymentStatus", "==", "verified")];
+      if (levelFilter !== "ALL") clauses.push(where("registrationLevel", "==", levelFilter));
 
-    let qRef = query(colRef, ...clauses, orderBy("username", "asc"), limit(EXPORT_BATCH));
-    // loop pagination
-    while (true) {
-      const snap = await getDocs(qRef);
-      if (snap.empty) break;
+      let qRef = query(colRef, ...clauses, orderBy("username", "asc"), limit(EXPORT_BATCH));
+      // loop pagination
+      while (true) {
+        const snap = await getDocs(qRef);
+        if (snap.empty) break;
 
-      // filter nama/nisn di batch ini lebih dulu (hemat join skor)
-      const batchUsers = snap.docs.map((d) => ({ id: d.id, ...(d.data() || {}) }));
-      const matched = batchUsers.filter((u) => {
-        const nisn = String(u?.username || u?.nisn || u?.id || "").toLowerCase();
-        const name = String(u?.fullName || u?.fullname || u?.displayName || u?.name || "").toLowerCase();
-        return nisn.includes(q) || name.includes(q);
-      });
-
-      // join skor hanya untuk yang match
-      for (let i = 0; i < matched.length; i++) {
-        const u = matched[i];
-        const nisn = String(u?.username || u?.nisn || u?.id || "");
-        let sc = null;
-        try {
-          const scDoc = await getDoc(doc(db, SCORE_COLL, String(nisn)));
-          sc = scDoc.exists() ? scDoc.data() : null;
-        } catch {}
-        all.push({
-          no: all.length + 1,
-          nisn,
-          name: String(u?.fullName || u?.fullname || u?.displayName || u?.name || "Tanpa Nama"),
-          level: u?.registrationLevel || "-",
-          examiner: sc?.examinerName || "-",
-          score: sc ? sc.total100 : null,
-          done: !!sc,
-          user: u,
+        // filter nama/nisn di batch ini lebih dulu (hemat join skor)
+        const batchUsers = snap.docs.map((d) => ({ id: d.id, ...(d.data() || {}) }));
+        const matched = batchUsers.filter((u) => {
+          const nisn = String(u?.username || u?.nisn || u?.id || "").toLowerCase();
+          const name = String(u?.fullName || u?.fullname || u?.displayName || u?.name || "").toLowerCase();
+          return nisn.includes(q) || name.includes(q);
         });
+
+        // join skor hanya untuk yang match
+        for (let i = 0; i < matched.length; i++) {
+          const u = matched[i];
+          const nisn = String(u?.username || u?.nisn || u?.id || "");
+          let sc = null;
+          try {
+            const scDoc = await getDoc(doc(db, SCORE_COLL, String(nisn)));
+            sc = scDoc.exists() ? scDoc.data() : null;
+          } catch {}
+          all.push({
+            no: all.length + 1,
+            nisn,
+            name: String(u?.fullName || u?.fullname || u?.displayName || u?.name || "Tanpa Nama"),
+            level: u?.registrationLevel || "-",
+            examiner: sc?.examinerName || "-",
+            score: sc ? sc.total100 : null,
+            done: !!sc,
+            user: u,
+          });
+        }
+
+        if (snap.size < EXPORT_BATCH) break;
+        const last = snap.docs[snap.docs.length - 1];
+        qRef = query(colRef, ...clauses, orderBy("username", "asc"), startAfter(last), limit(EXPORT_BATCH));
       }
 
-      if (snap.size < EXPORT_BATCH) break;
-      const last = snap.docs[snap.docs.length - 1];
-      qRef = query(colRef, ...clauses, orderBy("username", "asc"), startAfter(last), limit(EXPORT_BATCH));
+      // batasi tampilan besar agar tetap ringan; data export tetap tersedia dari tombol export
+      setGlobalResults(all.slice(0, 2000)); 
+    } catch (e) {
+      console.error("global search error:", e?.message);
+      setGlobalResults([]); // tampilkan kosong daripada nge-freeze
+    } finally {
+      setQBusy(false);
     }
-
-    // batasi tampilan besar agar tetap ringan; data export tetap tersedia dari tombol export
-    setGlobalResults(all.slice(0, 2000)); 
-  } catch (e) {
-    console.error("global search error:", e?.message);
-    setGlobalResults([]); // tampilkan kosong daripada nge-freeze
-  } finally {
-    setQBusy(false);
   }
-}
 
   // load awal + reset saat filter berubah
   useEffect(() => {
@@ -417,21 +417,21 @@ const [qBusy, setQBusy] = useState(false); // indikator loading pencarian global
   }, [levelFilter, statusFilter, sortMode]);
 
   useEffect(() => {
-  const q = tableQuery.trim();
-  // jika kosong -> kembali ke mode paging biasa
-  if (!q) {
-    setGlobalResults(null);
-    return;
-  }
-  // minimal 2 huruf untuk menahan noise
-  if (q.length < 2) return;
+    const q = tableQuery.trim();
+    // jika kosong -> kembali ke mode paging biasa
+    if (!q) {
+      setGlobalResults(null);
+      return;
+    }
+    // minimal 2 huruf untuk menahan noise
+    if (q.length < 2) return;
 
-  const t = setTimeout(() => {
-    runGlobalSearch(q);
-  }, 300);
-  return () => clearTimeout(t);
-  // eslint-disable-next-line react-hooks/exhaustive-deps
-}, [tableQuery, levelFilter]); // hormati filter jenjang saat cari global
+    const t = setTimeout(() => {
+      runGlobalSearch(q);
+    }, 300);
+    return () => clearTimeout(t);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [tableQuery, levelFilter]); // hormati filter jenjang saat cari global
 
   function onPrev() {
     if (pageIndex === 0 || loading) return;
@@ -440,6 +440,15 @@ const [qBusy, setQBusy] = useState(false); // indikator loading pencarian global
   function onNext() {
     if (!hasNext || loading) return;
     fetchPage(pageIndex + 1);
+  }
+  
+  async function fetchUserByNisn(nisn) {
+    try {
+      const s = await getDoc(doc(db, USERS_COLLECTION, String(nisn)));
+      return s.exists() ? { id: s.id, ...(s.data() || {}) } : null;
+    } catch {
+      return null;
+    }
   }
 
   /* ======= Loader pertanyaan per paket ======= */
@@ -457,16 +466,52 @@ const [qBusy, setQBusy] = useState(false); // indikator loading pencarian global
     }
   }
 
-  /* ======= Mulai tes (open modal) ======= */
-  function startTestFromRow(row) {
-    if (row.done) return;
-    setCurrentStudent(row.user);
-    setAnswers({ student: {}, parent: {} });
-    // default Paket 1 setiap mulai (agar konsisten), tapi hormati preferensi terakhir user
-    const defaultP = (typeof window !== "undefined" && localStorage.getItem("interview_active_paket")) || "p1";
-    const valid = defaultP === "p2" ? "p2" : "p1";
-    setActivePaket(valid);
-    loadQuestions(valid);
+  /* ======= Mulai tes (open modal) — PREFILL jawaban tersimpan ======= */
+  async function startTestFromRow(row) {
+    // Pastikan kita punya objek user (baris dari sumber 'scores' tidak punya r.user)
+    let userObj = row.user;
+    if (!userObj) {
+      userObj = await fetchUserByNisn(row.nisn);
+      if (!userObj) {
+        alert("Data siswa tidak ditemukan.");
+        return;
+      }
+    }
+    setCurrentStudent(userObj);
+
+    // Ambil skor tersimpan dari cache; kalau belum ada, fetch 1x
+    const nisn = getNisn(userObj);
+    let saved = scores[nisn];
+    if (!saved) {
+      try {
+        const snap = await getDoc(doc(db, SCORE_COLL, String(nisn)));
+        saved = snap.exists() ? snap.data() : null;
+        if (saved) setScores((prev) => ({ ...prev, [nisn]: saved }));
+      } catch {}
+    }
+
+    // Tentukan paket awal:
+    // - Jika ada paket tersimpan: pakai itu
+    // - Jika tidak ada: pakai preferensi localStorage (default p1)
+    let defaultP =
+      (typeof window !== "undefined" && localStorage.getItem("interview_active_paket")) || "p1";
+    const initialPaket =
+      saved?.paket === "p1" || saved?.paket === "p2" ? saved.paket : defaultP === "p2" ? "p2" : "p1";
+
+    setActivePaket(initialPaket);
+    await loadQuestions(initialPaket);
+
+    // Prefill jawaban jika ada tersimpan
+    if (saved?.answers && typeof saved.answers === "object") {
+      setAnswers({
+        student: { ...(saved.answers.student || {}) },
+        parent: { ...(saved.answers.parent || {}) },
+      });
+    } else {
+      // Jika belum pernah isi -> kosong
+      setAnswers({ student: {}, parent: {} });
+    }
+
     setOpen(true);
   }
 
@@ -475,7 +520,7 @@ const [qBusy, setQBusy] = useState(false); // indikator loading pencarian global
     if (p !== "p1" && p !== "p2") return;
     setActivePaket(p);
     if (typeof window !== "undefined") localStorage.setItem("interview_active_paket", p);
-    // reset jawaban ketika ganti paket agar tidak tercampur
+    // Saat ganti paket, kosongkan jawaban agar tidak tercampur (kita simpan satu paket pada summary)
     setAnswers({ student: {}, parent: {} });
     await loadQuestions(p);
   }
@@ -895,19 +940,16 @@ const [qBusy, setQBusy] = useState(false); // indikator loading pencarian global
                     </div>
                   </div>
                   <div className="shrink-0">
-                    {r.done ? (
-                      <span className="inline-flex items-center rounded-xl bg-slate-200 px-3 py-1.5 text-xs font-medium text-slate-700">
-                        Tes selesai
-                      </span>
-                    ) : (
-                      <button
-                        onClick={() => startTestFromRow(r)}
-                        className="rounded-xl bg-blue-600 px-4 py-2 text-sm font-semibold text-white hover:bg-blue-700 active:scale-95 shadow-lg shadow-blue-200 transition-all"
-                      >
-                        Mulai Tes
-                      </button>
-                    )}
+                    <button
+                      onClick={() => startTestFromRow(r)}
+                      className={`rounded-xl px-4 py-2 text-sm font-semibold text-white active:scale-95 shadow-lg transition-all
+      ${r.done ? "bg-violet-600 hover:bg-violet-700 shadow-violet-200" : "bg-blue-600 hover:bg-blue-700 shadow-blue-200"}`}
+                      title={r.done ? "Ulangi Tes" : "Mulai Tes"}
+                    >
+                      {r.done ? "Ulangi Tes" : "Mulai Tes"}
+                    </button>
                   </div>
+
                 </div>
 
                 <div className="grid grid-cols-2 gap-2 text-sm">
@@ -962,18 +1004,14 @@ const [qBusy, setQBusy] = useState(false); // indikator loading pencarian global
                         </td>
                         <td className="px-4 py-4">{r.examiner ?? "-"}</td>
                         <td className="px-4 py-4">
-                          {r.done ? (
-                            <span className="inline-flex items-center rounded-xl bg-slate-200 px-3 py-1.5 text-xs text-slate-700">
-                              Tes selesai
-                            </span>
-                          ) : (
-                            <button
-                              onClick={() => startTestFromRow(r)}
-                              className="rounded-xl bg-green-600 px-4 py-2 text-sm font-semibold text-white hover:bg-green-700 active:scale-95 shadow-lg shadow-blue-200 transition-all"
-                            >
-                              Mulai Tes
-                            </button>
-                          )}
+                          <button
+                            onClick={() => startTestFromRow(r)}
+                            className={`rounded-xl px-4 py-2 text-sm font-semibold text-white active:scale-95 shadow-lg transition-all
+      ${r.done ? "bg-violet-600 hover:bg-violet-700 shadow-violet-200" : "bg-green-600 hover:bg-green-700 shadow-blue-200"}`}
+                            title={r.done ? "Ulangi Tes" : "Mulai Tes"}
+                          >
+                            {r.done ? "Ulangi Tes" : "Mulai Tes"}
+                          </button>
                         </td>
                         <td className="px-4 py-4 font-semibold">{r.score != null ? r.score : "-"}</td>
                       </tr>
@@ -1035,46 +1073,46 @@ const [qBusy, setQBusy] = useState(false); // indikator loading pencarian global
 
                 {/* Paket Switcher: biru, netral */}
                 <div className="flex items-center gap-1">
-  <button
-    onClick={() => onChangePaket("p1")}
-    className={`rounded-lg px-3 py-1.5 text-xs font-medium ${
-      activePaket === "p1" ? "bg-violet-600 text-white" : "bg-slate-100 text-slate-800"
-    }`}
-    title="Gunakan Paket 1"
-  >
-    Paket 1
-  </button>
-  <button
-    onClick={() => onChangePaket("p2")}
-    className={`rounded-lg px-3 py-1.5 text-xs font-medium ${
-      activePaket === "p2" ? "bg-violet-600 text-white" : "bg-slate-100 text-slate-800"
-    }`}
-    title="Gunakan Paket 2"
-  >
-    Paket 2
-  </button>
+                  <button
+                    onClick={() => onChangePaket("p1")}
+                    className={`rounded-lg px-3 py-1.5 text-xs font-medium ${
+                      activePaket === "p1" ? "bg-violet-600 text-white" : "bg-slate-100 text-slate-800"
+                    }`}
+                    title="Gunakan Paket 1"
+                  >
+                    Paket 1
+                  </button>
+                  <button
+                    onClick={() => onChangePaket("p2")}
+                    className={`rounded-lg px-3 py-1.5 text-xs font-medium ${
+                      activePaket === "p2" ? "bg-violet-600 text-white" : "bg-slate-100 text-slate-800"
+                    }`}
+                    title="Gunakan Paket 2"
+                  >
+                    Paket 2
+                  </button>
 
-  {/* Tombol Tutup (tetap) */}
-  <button
-    onClick={() => setOpen(false)}
-    className="ml-2 rounded border border-slate-300 px-3 py-1.5 text-xs text-slate-700"
-  >
-    Tutup
-  </button>
+                  {/* Tombol Tutup (tetap) */}
+                  <button
+                    onClick={() => setOpen(false)}
+                    className="ml-2 rounded border border-slate-300 px-3 py-1.5 text-xs text-slate-700"
+                  >
+                    Tutup
+                  </button>
 
-  {/* === Tambahan khusus MOBILE: Simpan di sebelah Tutup === */}
-  <button
-    onClick={submitTest}
-    disabled={saving}
-    className="sm:hidden ml-1 rounded bg-emerald-600 px-3 py-1.5 text-xs font-semibold text-white disabled:opacity-50 hover:bg-emerald-700 active:scale-95"
-    title="Selesai & Simpan"
-  >
-    {saving ? "Menyimpan…" : "Simpan"}
-  </button>
-</div>
+                  {/* === Tambahan khusus MOBILE: Simpan di sebelah Tutup === */}
+                  <button
+                    onClick={submitTest}
+                    disabled={saving}
+                    className="sm:hidden ml-1 rounded bg-emerald-600 px-3 py-1.5 text-xs font-semibold text-white disabled:opacity-50 hover:bg-emerald-700 active:scale-95"
+                    title="Selesai & Simpan"
+                  >
+                    {saving ? "Menyimpan…" : "Simpan"}
+                  </button>
+                </div>
               </div>
 
-              <div className="px-5 py-4 max-h-[calc(100dvh-8rem)] sm:max-h-none overflow-y-auto">
+              <div className="px-5 py-4 max-h[calc(100dvh-8rem)] sm:max-h-none overflow-y-auto">
                 <div className="mb-3 text-xs text-slate-600">
                   Paket aktif: <span className="font-semibold">{activePaket === "p1" ? "Paket 1" : "Paket 2"}</span>
                 </div>
