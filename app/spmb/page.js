@@ -20,6 +20,11 @@ import UploudDokumen from "./uploud_dokumen";
 const digits = (s) => String(s ?? "").replace(/\D+/g, "");
 const required = (v) => String(v ?? "").trim().length > 0;
 const isAlive = (s) => s === "hidup";
+// === Batas nomor telepon ===
+const PHONE_FIELDS = new Set([
+  "waliWa", "waliTelp", "ayahWa", "ayahTelp", "ibuWa", "ibuTelp", "waliHP"
+]);
+const clampPhoneDigits = (v) => digits(v).slice(0, 13);
 
 /** Early: TK, SD, dan PPS Ula (Putra/Putri). */
 function normalizeJenjang(s) {
@@ -124,7 +129,13 @@ export default function PPDBPage() {
     }
   }, []);
 
-  const handle = (e) => { const { name, value } = e.target; setForm((s) => ({ ...s, [name]: value })); };
+  const handle = (e) => {
+  const { name, value } = e.target;
+  let v = value;
+  // Jika field nomor → keep digits saja & batasi 13
+  if (PHONE_FIELDS.has(name)) v = clampPhoneDigits(value);
+  setForm((s) => ({ ...s, [name]: v }));
+};
   const handleFormKeyDown = (e) => {
     if (e.key === "Enter") {
       const tag = e.target?.tagName?.toLowerCase();
@@ -228,6 +239,12 @@ export default function PPDBPage() {
     // 5) Kontak wali
     if (!required(form.waliWa)) miss.push({ name: "waliWa", label: "(masukkan nomor wali)" });
     if (!required(form.waliTelp)) miss.push({ name: "waliTelp", label: "(masukkan nomor wali)" });
+    if (digitsOnly(form.waliWa).length > 13) {
+  miss.push({ name: "waliWa", label: "Nomor maksimal 13 digit", anchor: "waliWa" });
+}
+if (digitsOnly(form.waliTelp).length > 13) {
+  miss.push({ name: "waliTelp", label: "Nomor maksimal 13 digit", anchor: "waliTelp" });
+}
 
     // 6) Upload dokumen
     const okFiles = filesRef.current?.isComplete?.();
@@ -702,12 +719,24 @@ export default function PPDBPage() {
             {/* 7. Masukkan Nomor Wali */}
             <Section title="Masukkan Nomor Wali" desc="Isi nomor HP/WA wali untuk keperluan kontak.">
               <Field label="Nomor Wali (WA)" required>
-                <Input name="waliWa" value={form.waliWa} onChange={handle}
-                  error={getErr("waliWa")} />
+               <Input
+  name="waliWa"
+  value={form.waliWa}
+  onChange={handle}
+  inputMode="numeric"
+  maxLength={13}
+  error={getErr("waliWa")}
+/>
               </Field>
               <Field label="Nomor Wali (Non-WA)" required>
-                <Input name="waliTelp" value={form.waliTelp} onChange={handle}
-                  error={getErr("waliTelp")} />
+<Input
+  name="waliTelp"
+  value={form.waliTelp}
+  onChange={handle}
+  inputMode="numeric"
+  maxLength={13}
+  error={getErr("waliTelp")}
+/>
               </Field>
             </Section>
 
