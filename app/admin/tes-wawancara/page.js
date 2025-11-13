@@ -952,7 +952,7 @@ export default function TesWawancaraPage() {
 
                 </div>
 
-                <div className="grid grid-cols-2 gap-2 text-sm">
+                <div className="grid grid-cols-2 gap-2 text-sm text-black">
                   <div className="text-slate-500">Penguji</div>
                   <div className="text-right">{r.examiner ?? "-"}</div>
                   <div className="text-slate-500">Nilai</div>
@@ -1112,7 +1112,7 @@ export default function TesWawancaraPage() {
                 </div>
               </div>
 
-              <div className="px-5 py-4 max-h[calc(100dvh-8rem)] sm:max-h-none overflow-y-auto">
+              <div className="px-5 py-4 max-h-[calc(100dvh-8rem)] sm:max-h-none overflow-y-auto">
                 <div className="mb-3 text-xs text-slate-600">
                   Paket aktif: <span className="font-semibold">{activePaket === "p1" ? "Paket 1" : "Paket 2"}</span>
                 </div>
