@@ -74,36 +74,64 @@ export function KonfirmasiWaButton({
         : `https://api.whatsapp.com/send?text=${encodedMsg}`)
     : '#';
 
+  const handleRefresh = () => {
+    if (typeof window !== 'undefined') {
+      window.location.reload();
+    }
+  };
+
   if (enabled) {
     return (
-      <a
-        href={waHref}
-        target="_blank"
-        rel="noreferrer"
-        className={cx(
-          'inline-flex items-center justify-center gap-2 rounded-lg bg-emerald-600 hover:bg-emerald-700 text-white px-4 py-2.5 text-sm font-semibold h-10',
-          'w-full sm:w-auto',
-          className
-        )}
-        title={`Konfirmasi ke admin${waLabel ? ` (${waLabel})` : ''}`}
-      >
-        Konfirmasi via WA
-      </a>
+      <div className="flex flex-col sm:flex-row sm:items-center gap-2 w-full sm:w-auto">
+        <a
+          href={waHref}
+          target="_blank"
+          rel="noreferrer"
+          className={cx(
+            'inline-flex items-center justify-center gap-2 rounded-lg bg-emerald-600 hover:bg-emerald-700 text-white px-4 py-2.5 text-sm font-semibold h-10',
+            'w-full sm:w-auto',
+            className
+          )}
+          title={`Konfirmasi ke admin${waLabel ? ` (${waLabel})` : ''}`}
+        >
+          Konfirmasi via WA
+        </a>
+
+        <button
+          type="button"
+          onClick={handleRefresh}
+          className="inline-flex items-center justify-center gap-2 rounded-lg bg-slate-100 hover:bg-slate-200 text-slate-700 border border-slate-300 px-4 py-2.5 text-sm font-semibold h-10 w-full sm:w-auto"
+          title="Lanjutkan ke portal (refresh halaman setelah pembayaran)"
+        >
+          Lanjutkan
+        </button>
+      </div>
     );
   }
 
   return (
-    <button
-      type="button"
-      disabled
-      className={cx(
-        'inline-flex items-center justify-center gap-2 rounded-lg bg-emerald-600 text-white/80 px-4 py-2.5 text-sm font-semibold h-10 opacity-60 cursor-not-allowed',
-        'w-full sm:w-auto',
-        className
-      )}
-      title="Unggah bukti dulu untuk mengaktifkan konfirmasi WA."
-    >
-      Konfirmasi via WA
-    </button>
+    <div className="flex flex-col sm:flex-row sm:items-center gap-2 w-full sm:w-auto">
+      <button
+        type="button"
+        disabled
+        className={cx(
+          'inline-flex items-center justify-center gap-2 rounded-lg bg-emerald-600 text-white/80 px-4 py-2.5 text-sm font-semibold h-10 opacity-60 cursor-not-allowed',
+          'w-full sm:w-auto',
+          className
+        )}
+        title="Unggah bukti dulu untuk mengaktifkan konfirmasi WA."
+      >
+        Konfirmasi via WA
+      </button>
+
+      <button
+  type="button"
+  onClick={handleRefresh}
+  className="inline-flex items-center justify-center gap-2 rounded-lg bg-blue-600 hover:bg-blue-700 text-white px-4 py-2.5 text-sm font-semibold h-10 w-full sm:w-auto"
+  title="Lanjutkan (refresh halaman)"
+>
+  Lanjutkan
+</button>
+    </div>
   );
 }
