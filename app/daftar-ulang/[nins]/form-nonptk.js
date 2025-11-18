@@ -14,6 +14,8 @@ import {
   limit,
   getDocs,
   orderBy,
+  setDoc, // (biarkan import ini walau tidak dipakai, agar tidak mengubah struktur lain)
+  deleteDoc,
 } from "firebase/firestore";
 import {
   User2,
@@ -33,6 +35,10 @@ import {
   Info,
   X,
   AlertCircle,
+  Users,
+  Save,
+  Plus,
+  Trash2,
 } from "lucide-react";
 import UploadBukti from "./uploud-bukti";
 
@@ -118,7 +124,8 @@ function normalizeStatus(p) {
       "").toString();
 
   const s = raw.trim().toUpperCase();
-  if (["APPROVED", "VERIFIED", "ACCEPTED", "OK", "CONFIRMED"].includes(s)) return "approved";
+  if (["APPROVED", "VERIFIED", "ACCEPTED", "OK", "CONFIRMED"].includes(s))
+    return "approved";
   if (["REJECTED", "DENIED", "DECLINED"].includes(s)) return "rejected";
   return "pending";
 }
@@ -126,28 +133,26 @@ function isApproved(p) {
   return normalizeStatus(p) === "approved";
 }
 
-/* ---------------------- Modal: Pemberitahuan Anak PTK (Versi Simpel & Responsif) ---------------------- */
+/* ---------------------- Modal: Pemberitahuan Anak PTK ---------------------- */
 function PTKNoticeModal({ open, onClose, info = {} }) {
   const router = useRouter();
   const [navigating, setNavigating] = useState(false);
 
-  // kunci scroll saat modal terbuka
   useEffect(() => {
     document.body.style.overflow = open ? "hidden" : "unset";
-    return () => { document.body.style.overflow = "unset"; };
+    return () => {
+      document.body.style.overflow = "unset";
+    };
   }, [open]);
 
-  // ❗️JANGAN panggil onClose di sini—biarkan modal tetap tampil hingga route berubah
   const handleNavigate = () => {
     if (navigating) return;
     setNavigating(true);
-    // tetap tampil, lalu pindah halaman (target sesuai filenya: "/portal")
     router.push("/portal");
   };
 
   if (!open) return null;
 
-  // normalisasi status
   const s = String(info.status || "").toLowerCase();
   const status =
     s.includes("approve") || s.includes("verify") || s === "approved"
@@ -158,20 +163,34 @@ function PTKNoticeModal({ open, onClose, info = {} }) {
 
   const statusView =
     status === "approved"
-      ? { icon: <CheckCircle2 className="h-4 w-4 text-emerald-600 shrink-0 mt-0.5" />, text: "Status: Disetujui", cls: "text-emerald-700" }
+      ? {
+          icon: (
+            <CheckCircle2 className="h-4 w-4 text-emerald-600 shrink-0 mt-0.5" />
+          ),
+          text: "Status: Disetujui",
+          cls: "text-emerald-700",
+        }
       : status === "pending"
-      ? { icon: <AlertCircle className="h-4 w-4 text-amber-600 shrink-0 mt-0.5" />, text: "Status: Menunggu Konfirmasi", cls: "text-amber-700" }
-      : { icon: <X className="h-4 w-4 text-red-600 shrink-0 mt-0.5" />, text: "Status: Ditolak/Non-PTK", cls: "text-red-700" };
+      ? {
+          icon: (
+            <AlertCircle className="h-4 w-4 text-amber-600 shrink-0 mt-0.5" />
+          ),
+          text: "Status: Menunggu Konfirmasi",
+          cls: "text-amber-700",
+        }
+      : {
+          icon: <X className="h-4 w-4 text-red-600 shrink-0 mt-0.5" />,
+          text: "Status: Ditolak/Non-PTK",
+          cls: "text-red-700",
+        };
 
   return (
     <div className="fixed inset-0 z-[99999]">
-      {/* backdrop: gelap + blur; klik backdrop → langsung navigate (modal tetap sampai unmount) */}
       <div
         className="absolute inset-0 bg-slate-950/90 backdrop-blur-sm"
         onClick={handleNavigate}
         aria-hidden="true"
       />
-      {/* card */}
       <div className="absolute inset-0 flex items-center justify-center p-4">
         <div
           className="w-full max-w-md rounded-2xl bg-white shadow-2xl border border-slate-200"
@@ -179,17 +198,18 @@ function PTKNoticeModal({ open, onClose, info = {} }) {
           aria-modal="true"
           aria-labelledby="ptk-title"
         >
-          {/* header */}
           <div className="flex items-center justify-between px-5 py-4 border-b border-slate-200">
             <div className="inline-flex items-center gap-2">
               <div className="inline-flex h-9 w-9 items-center justify-center rounded-lg bg-amber-100">
                 <AlertCircle className="h-5 w-5 text-amber-700" />
               </div>
-              <h3 id="ptk-title" className="text-base md:text-lg font-bold text-slate-900">
+              <h3
+                id="ptk-title"
+                className="text-base md:text-lg font-bold text-slate-900"
+              >
                 Data Terdeteksi Anak PTK
               </h3>
             </div>
-            {/* X juga navigate, bukan close */}
             <button
               onClick={handleNavigate}
               aria-label="Tutup"
@@ -199,7 +219,6 @@ function PTKNoticeModal({ open, onClose, info = {} }) {
             </button>
           </div>
 
-          {/* body */}
           <div className="px-5 py-4 space-y-3">
             <div className="flex items-start gap-3 text-sm">
               <ShieldCheck className="h-5 w-5 text-amber-700 shrink-0 mt-0.5" />
@@ -211,7 +230,9 @@ function PTKNoticeModal({ open, onClose, info = {} }) {
                       Orang Tua: {info.parentName || info.parent_name}
                     </div>
                     {info.jabatan ? (
-                      <div className="text-xs mt-0.5">Jabatan: {info.jabatan}</div>
+                      <div className="text-xs mt-0.5">
+                        Jabatan: {info.jabatan}
+                      </div>
                     ) : null}
                   </div>
                 )}
@@ -221,18 +242,20 @@ function PTKNoticeModal({ open, onClose, info = {} }) {
             <div className="flex items-start gap-3 text-sm">
               <Info className="h-5 w-5 text-blue-700 shrink-0 mt-0.5" />
               <div className="text-slate-700">
-                Untuk Daftar Ulang, silakan gunakan fitur Anak PTK agar ketentuan PTK diterapkan dengan benar.
-                Jika bukan Anak PTK, mohon konfirmasi ke panitia.
+                Untuk Daftar Ulang, silakan gunakan fitur Anak PTK agar
+                ketentuan PTK diterapkan dengan benar. Jika bukan Anak PTK,
+                mohon konfirmasi ke panitia.
               </div>
             </div>
 
             <div className="flex items-start gap-2 text-xs">
               {statusView.icon}
-              <span className={`${statusView.cls} font-semibold`}>{statusView.text}</span>
+              <span className={`${statusView.cls} font-semibold`}>
+                {statusView.text}
+              </span>
             </div>
           </div>
 
-          {/* footer */}
           <div className="px-5 py-4 border-t border-slate-200 flex justify-end">
             <button
               onClick={handleNavigate}
@@ -248,10 +271,12 @@ function PTKNoticeModal({ open, onClose, info = {} }) {
   );
 }
 
-
-
 /* --------------------------- Komponen Utama --------------------------- */
-export default function FormNonPTK({ onBack, onOpenUniform, uniformFilled = false }) {
+export default function FormNonPTK({
+  onBack,
+  onOpenUniform,
+  uniformFilled = false,
+}) {
   const { nins } = useParams();
   const nisnFromUrl = Array.isArray(nins) ? nins[0] : nins;
 
@@ -265,9 +290,19 @@ export default function FormNonPTK({ onBack, onOpenUniform, uniformFilled = fals
   const [payments, setPayments] = useState([]);
   const [loadingPayments, setLoadingPayments] = useState(false);
 
-  // ▶️ Notifikasi Anak PTK
+  // PTK notice
   const [showPTKNotice, setShowPTKNotice] = useState(false);
-  const [ptkInfo, setPtkInfo] = useState({ status: "pending", parentName: "", jabatan: "" });
+  const [ptkInfo, setPtkInfo] = useState({
+    status: "pending",
+    parentName: "",
+    jabatan: "",
+  });
+
+  // 🧩 Data Saudara (opsional, MULTI)
+  const [hasSibling, setHasSibling] = useState(false);
+  const [siblings, setSiblings] = useState([]); // [{name:'', level:''}, ...]
+  const [savingSibling, setSavingSibling] = useState(false);
+  const [savedSiblingAt, setSavedSiblingAt] = useState(0);
 
   const getFirebaseDb = () => getFirestore(getFirebaseApp());
 
@@ -300,19 +335,51 @@ export default function FormNonPTK({ onBack, onOpenUniform, uniformFilled = fals
         const db = getFirebaseDb();
 
         // 1) user
-        const uRef = doc(db, "users_app", String(nisnFromUrl || "").trim());
+        const uRef = doc(
+          db,
+          "users_app",
+          String(nisnFromUrl || "").trim()
+        );
         const uSnap = await getDoc(uRef);
-        if (!uSnap.exists()) throw new Error("Data peserta tidak ditemukan.");
+        if (!uSnap.exists())
+          throw new Error("Data peserta tidak ditemukan.");
         const u = uSnap.data();
         const registrationLevel = u?.registrationLevel || "";
-        if (!registrationLevel) throw new Error("Jenjang belum terisi.");
+        if (!registrationLevel)
+          throw new Error("Jenjang belum terisi.");
+
+        // Prefill Data Saudara (multi/legacy)
+        let preSiblings = [];
+        if (Array.isArray(u?.siblings)) {
+          preSiblings = (u.siblings || [])
+            .map((s) => ({
+              name: (s?.name || s?.nama || "").toString(),
+              level: (s?.level || s?.jenjang || "").toString(),
+            }))
+            .filter((s) => s.name || s.level);
+        } else {
+          const n = (u?.siblingsCount ?? u?.jumlahSaudara ?? 0) | 0;
+          const preName = (
+            u?.saudaraNama || u?.namaSaudara || ""
+          ).toString();
+          const preLevel = (u?.saudaraJenjang || "").toString();
+          if (preName || preLevel || n > 0) {
+            preSiblings = [{ name: preName, level: preLevel }];
+          }
+        }
 
         // 2) fees (by label)
         const col = collection(db, "re_registration_fees");
-        const qy = query(col, where("label", "==", registrationLevel), limit(1));
+        const qy = query(
+          col,
+          where("label", "==", registrationLevel),
+          limit(1)
+        );
         const qSnap = await getDocs(qy);
         if (qSnap.empty)
-          throw new Error(`Data biaya untuk "${registrationLevel}" belum tersedia.`);
+          throw new Error(
+            `Data biaya untuk "${registrationLevel}" belum tersedia.`
+          );
         const feeDoc = qSnap.docs[0].data();
 
         if (!cancelled) {
@@ -323,10 +390,16 @@ export default function FormNonPTK({ onBack, onOpenUniform, uniformFilled = fals
           };
           setUser(userObj);
           setFees(feeDoc);
+
+          // set prefill sibling (multi)
+          setHasSibling(preSiblings.length > 0);
+          setSiblings(preSiblings);
+
           loadPayments(String(userObj.nisn));
         }
       } catch (e) {
-        if (!cancelled) setError(e?.message || "Terjadi kesalahan.");
+        if (!cancelled)
+          setError(e?.message || "Terjadi kesalahan.");
       } finally {
         if (!cancelled) setLoading(false);
       }
@@ -337,14 +410,20 @@ export default function FormNonPTK({ onBack, onOpenUniform, uniformFilled = fals
     };
   }, [nisnFromUrl, loadPayments]);
 
-  // 🔎 Cek status PTK → tampilkan pop-up jika APPROVED (rules mungkin melarang read; jika gagal, abaikan)
+  // 🔎 Cek status PTK untuk popup
   useEffect(() => {
     let alive = true;
     (async () => {
       try {
         if (!nisnFromUrl) return;
         const db = getFirebaseDb();
-        const ref = doc(db, "users_app", String(nisnFromUrl).trim(), "ptk_confirmation", "current");
+        const ref = doc(
+          db,
+          "users_app",
+          String(nisnFromUrl).trim(),
+          "ptk_confirmation",
+          "current"
+        );
         const snap = await getDoc(ref);
         if (!alive || !snap.exists()) return;
         const data = snap.data() || {};
@@ -358,7 +437,7 @@ export default function FormNonPTK({ onBack, onOpenUniform, uniformFilled = fals
           setShowPTKNotice(true);
         }
       } catch {
-        // abaikan bila rules block
+        // abaikan
       }
     })();
     return () => {
@@ -389,8 +468,158 @@ export default function FormNonPTK({ onBack, onOpenUniform, uniformFilled = fals
   );
 
   const sisaTagihan = useMemo(
-    () => Math.max(0, (Number(totalPembayaran) || 0) - (Number(totalTerverifikasi) || 0)),
+    () =>
+      Math.max(
+        0,
+        (Number(totalPembayaran) || 0) -
+          (Number(totalTerverifikasi) || 0)
+      ),
     [totalPembayaran, totalTerverifikasi]
+  );
+
+  // Opsi jenjang saudara sesuai jenjang user
+  const siblingLevelOptions = useMemo(() => {
+    const lv = (user?.registrationLevel || "").toLowerCase();
+    const isSD = lv.includes("sd");
+    const isSMP = lv.includes("smp");
+    const isSMA = lv.includes("sma");
+
+    if (isSD && !isSMP && !isSMA) {
+      return ["SD Putra", "SD Putri"];
+    }
+    return [
+      "SMP Putra",
+      "SMP Putri",
+      "SMA Putra",
+      "SMA Putri",
+    ];
+  }, [user?.registrationLevel]);
+
+  // Helpers multi-saudara
+    const addSibling = useCallback(() => {
+    setHasSibling(true);
+    setSiblings((arr) => [...arr, { name: "", level: "" }]);
+  }, []);
+
+  const updateSibling = useCallback((idx, key, val) => {
+    setSiblings((arr) => arr.map((it, i) => (i === idx ? { ...it, [key]: val } : it)));
+  }, []);
+
+  // Simpan Data Saudara (opsional, multi) — via SERVER agar tidak kena Security Rules client
+  const saveSibling = useCallback(
+    async (overrideList) => {
+      if (!user?.nisn) return;
+      try {
+        setSavingSibling(true);
+
+        const source = Array.isArray(overrideList) ? overrideList : siblings;
+
+        // Normalisasi
+        const raw = (source || []).map((s) => ({
+          name: (s?.name || s?.nama || "").toString().trim(),
+          level: (s?.level || s?.jenjang || "").toString().trim(),
+        }));
+
+        // ✅ VALIDASI: jika nama diisi tapi level kosong → blok
+        const invalid = raw.some((s) => s.name && !s.level);
+        if (invalid) {
+          alert("Jika mengisi nama saudara, jenjang saudara wajib dipilih.");
+          return;
+        }
+
+        // Buang baris kosong
+        const cleaned = raw.filter((s) => s.name || s.level);
+        const count = cleaned.length;
+
+        const res = await fetch("/api/ptk/confirm", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({
+            action: "save_siblings",
+            nisn: String(user.nisn),
+            siblings: cleaned,
+            siblingsCount: count,
+          }),
+        });
+
+        const data = await res.json().catch(() => ({}));
+        if (!res.ok) {
+          throw new Error(data?.error || "Gagal menyimpan data saudara.");
+        }
+
+        setSavedSiblingAt(Date.now());
+        if (count === 0) setHasSibling(false);
+        alert("Data saudara disimpan.");
+      } catch (e) {
+        alert(e?.message || "Gagal menyimpan data saudara.");
+      } finally {
+        setSavingSibling(false);
+      }
+    },
+    [user?.nisn, siblings]
+  );
+
+  const removeSibling = useCallback(
+    async (idx) => {
+      if (!user?.nisn) return;
+
+      const ok = window.confirm(
+        "Yakin ingin menghapus data saudara ini? Perubahan akan langsung disimpan."
+      );
+      if (!ok) return;
+
+      // buat list baru tanpa saudara yang dihapus
+      const newList = siblings.filter((_, i) => i !== idx);
+      setSiblings(newList);
+
+      // langsung simpan ke server, tanpa perlu tekan tombol 'Simpan'
+      await saveSibling(newList);
+    },
+    [user?.nisn, siblings, saveSibling]
+  );
+
+
+  // Batalkan / hapus bukti pembayaran
+  const cancelPayment = useCallback(
+    async (payment) => {
+      if (!user?.nisn) return;
+      if (!payment?.id) return;
+
+      if (isApproved(payment)) {
+        alert(
+          "Bukti pembayaran yang sudah disetujui admin tidak bisa dibatalkan."
+        );
+        return;
+      }
+
+      const ok = window.confirm(
+        "Yakin ingin membatalkan bukti pembayaran ini? Bukti akan dihapus dan perlu upload ulang jika ingin mengganti."
+      );
+      if (!ok) return;
+
+      try {
+        const db = getFirebaseDb();
+        await deleteDoc(
+          doc(
+            db,
+            "users_app",
+            String(user.nisn),
+            "payments",
+            payment.id
+          )
+        );
+        setPayments((prev) =>
+          prev.filter((p) => p.id !== payment.id)
+        );
+        alert("Bukti pembayaran telah dibatalkan.");
+      } catch (e) {
+        alert(
+          e?.message ||
+            "Gagal membatalkan bukti pembayaran."
+        );
+      }
+    },
+    [user?.nisn]
   );
 
   return (
@@ -400,7 +629,9 @@ export default function FormNonPTK({ onBack, onOpenUniform, uniformFilled = fals
           <div
             className={[
               "mt-1 md:mt-1 rounded-2xl border border-slate-200 bg-white p-4 md:p-8 shadow-xl transition-all duration-700",
-              !loading && !error ? "opacity-100 translate-y-0" : "opacity-0 -translate-y-3",
+              !loading && !error
+                ? "opacity-100 translate-y-0"
+                : "opacity-0 -translate-y-3",
             ].join(" ")}
           >
             {/* Header */}
@@ -432,12 +663,18 @@ export default function FormNonPTK({ onBack, onOpenUniform, uniformFilled = fals
                   Kembali
                 </button>
 
-                {["SMP Putra", "SMA Putra", "SMP Putri", "SMA Putri"].includes(
-                  user?.registrationLevel || ""
-                ) ? (
+                {[
+                  "SMP Putra",
+                  "SMA Putra",
+                  "SMP Putri",
+                  "SMA Putri",
+                ].includes(user?.registrationLevel || "") ? (
                   <button
                     type="button"
-                    onClick={() => onOpenUniform && onOpenUniform(user?.registrationLevel)}
+                    onClick={() =>
+                      onOpenUniform &&
+                      onOpenUniform(user?.registrationLevel)
+                    }
                     className={[
                       "w-full inline-flex items-center justify-center gap-2 rounded-lg border px-3 py-3 text-sm font-semibold shadow-sm transition-all",
                       uniformFilled
@@ -445,8 +682,14 @@ export default function FormNonPTK({ onBack, onOpenUniform, uniformFilled = fals
                         : "bg-slate-900 hover:bg-black text-white border-slate-900",
                     ].join(" ")}
                   >
-                    {uniformFilled ? <CheckCircle2 className="h-4 w-4" /> : <Shirt className="h-4 w-4" />}
-                    {uniformFilled ? "Ukuran Baju: Sudah diisi" : "Isi Ukuran Baju"}
+                    {uniformFilled ? (
+                      <CheckCircle2 className="h-4 w-4" />
+                    ) : (
+                      <Shirt className="h-4 w-4" />
+                    )}
+                    {uniformFilled
+                      ? "Ukuran Baju: Sudah diisi"
+                      : "Isi Ukuran Baju"}
                   </button>
                 ) : (
                   <button
@@ -473,18 +716,203 @@ export default function FormNonPTK({ onBack, onOpenUniform, uniformFilled = fals
             ) : (
               <>
                 <div className="grid grid-cols-1 md:grid-cols-3 gap-1 md:gap-4 mb-6">
-                  <Field icon={IdCard} label="NISN" value={user?.nisn} />
-                  <Field icon={User2} label="Nama Lengkap" value={user?.fullName} />
-                  <Field icon={GraduationCap} label="Jenjang" value={user?.registrationLevel} />
+                  <Field
+                    icon={IdCard}
+                    label="NISN"
+                    value={user?.nisn}
+                  />
+                  <Field
+                    icon={User2}
+                    label="Nama Lengkap"
+                    value={user?.fullName}
+                  />
+                  <Field
+                    icon={GraduationCap}
+                    label="Jenjang"
+                    value={user?.registrationLevel}
+                  />
                 </div>
 
+                {/* ===== Data Saudara (Opsional, MULTI) ===== */}
+                <div className="rounded-xl border border-slate-200 bg-white p-4 md:p-5 mb-6">
+                  <div className="flex items-center justify-between gap-2">
+                    <div className="inline-flex items-center gap-2 text-slate-900">
+                      <div className="inline-flex h-9 w-9 items-center justify-center rounded-lg bg-slate-100 border border-slate-200">
+                        <Users className="h-5 w-5 text-slate-700" />
+                      </div>
+                      <div>
+                        <div className="text-sm font-semibold">
+                          Data Saudara (opsional)
+                        </div>
+                        <div className="text-xs text-slate-600">
+                          Jika memiliki saudara di yayasan, isi nama &
+                          pilih jenjangnya.
+                        </div>
+                      </div>
+                    </div>
+                    <div className="inline-flex items-center gap-2">
+                      <label className="text-xs text-slate-700">
+                        Punya saudara?
+                      </label>
+                      <input
+                        type="checkbox"
+                        checked={hasSibling}
+                        onChange={(e) => {
+                          const checked = e.target.checked;
+                          setHasSibling(checked);
+                          if (
+                            checked &&
+                            siblings.length === 0
+                          ) {
+                            setSiblings([
+                              { name: "", level: "" },
+                            ]);
+                          }
+                          if (!checked) {
+                            setSiblings([]);
+                          }
+                        }}
+                        className="h-4 w-4 accent-violet-600"
+                      />
+                    </div>
+                  </div>
+
+                  {hasSibling ? (
+                    <div className="mt-4 space-y-3">
+                      {siblings.map((s, idx) => (
+                        <div
+                          key={idx}
+                          className="grid grid-cols-1 md:grid-cols-7 gap-3 items-end"
+                        >
+                          <div className="md:col-span-4">
+                            <label className="block text-xs font-medium text-slate-700 mb-1">
+                              Nama Saudara #{idx + 1}
+                            </label>
+                            <input
+                              type="text"
+                              value={s.name}
+                              onChange={(e) =>
+                                updateSibling(
+                                  idx,
+                                  "name",
+                                  e.target.value
+                                )
+                              }
+                              placeholder="Tulis nama saudara"
+                              className="w-full rounded-lg border border-slate-300 bg-white px-3 py-2 text-sm text-slate-900 placeholder:text-slate-400 focus:outline-none focus:ring-2 focus:ring-violet-300"
+                            />
+                          </div>
+                          <div className="md:col-span-3">
+                            <label className="block text-xs font-medium text-slate-700 mb-1">
+                              Jenjang Saudara #{idx + 1}
+                            </label>
+                            <select
+                              value={s.level}
+                              onChange={(e) =>
+                                updateSibling(
+                                  idx,
+                                  "level",
+                                  e.target.value
+                                )
+                              }
+                              className="w-full rounded-lg border border-slate-300 bg-white px-3 py-2 text-sm text-slate-900 focus:outline-none focus:ring-2 focus:ring-violet-300"
+                            >
+                              <option value="">
+                                Pilih jenjang
+                              </option>
+                              {siblingLevelOptions.map((opt) => (
+                                <option
+                                  key={opt}
+                                  value={opt}
+                                >
+                                  {opt}
+                                </option>
+                              ))}
+                            </select>
+                          </div>
+                          <div className="md:col-span-7 flex items-center justify-end">
+                            <button
+                              type="button"
+                              onClick={() =>
+                                removeSibling(idx)
+                              }
+                              className="inline-flex items-center gap-2 rounded-lg border border-rose-300 bg-white px-3 py-2 text-sm font-semibold text-rose-700 hover:bg-rose-50"
+                              title="Hapus baris saudara ini"
+                            >
+                              <Trash2 className="h-4 w-4" />
+                              Hapus
+                            </button>
+                          </div>
+                        </div>
+                      ))}
+
+                      <div className="flex items-center justify-between">
+                        <button
+                          type="button"
+                          onClick={addSibling}
+                          className="inline-flex items-center gap-2 rounded-lg border border-slate-300 bg-white px-3 py-2 text-sm font-semibold text-slate-800 hover:bg-slate-50"
+                        >
+                          <Plus className="h-4 w-4" />
+                          Tambah Saudara
+                        </button>
+
+                        <button
+                          type="button"
+                          onClick={saveSibling}
+                          disabled={savingSibling}
+                          className="inline-flex items-center gap-2 rounded-lg border border-emerald-600 bg-emerald-600 px-4 py-2 text-sm font-semibold text-white hover:bg-emerald-700 disabled:opacity-60"
+                        >
+                          {savingSibling ? (
+                            <Save className="h-4 w-4 animate-pulse" />
+                          ) : (
+                            <Save className="h-4 w-4" />
+                          )}
+                          {savingSibling
+                            ? "Menyimpan…"
+                            : "Simpan Data Saudara"}
+                        </button>
+                      </div>
+
+                      {!!savedSiblingAt && (
+                        <div className="text-[11px] text-emerald-800">
+                          Data saudara terakhir disimpan:{" "}
+                          {new Date(
+                            savedSiblingAt
+                          ).toLocaleString("id-ID")}
+                        </div>
+                      )}
+
+                      <p className="text-[11px] text-slate-500">
+                        Opsi jenjang mengikuti jenjang Anda: SD →
+                        hanya SD; SMP/SMA → SMP &amp; SMA.
+                      </p>
+                    </div>
+                  ) : (
+                    <div className="mt-3 text-xs text-slate-600">
+                      Centang “Punya saudara?” bila ingin mengisi
+                      data saudara.
+                    </div>
+                  )}
+                </div>
+                {/* ===== /Data Saudara ===== */}
+
                 <div className="grid grid-cols-1 md:grid-cols-2 gap-3 md:gap-4">
-                  <Stat icon={Wallet} label="SPP (per bulan)" value={fmtIDR(fees?.spp ?? 0)} />
-                  <Stat icon={Banknote} label="Total Uang Pangkal" value={fmtIDR(totalUangPangkal)} />
+                  <Stat
+                    icon={Wallet}
+                    label="SPP (per bulan)"
+                    value={fmtIDR(fees?.spp ?? 0)}
+                  />
+                  <Stat
+                    icon={Banknote}
+                    label="Total Uang Pangkal"
+                    value={fmtIDR(totalUangPangkal)}
+                  />
                 </div>
 
                 <div className="mt-3 rounded-xl border-2 border-slate-300 bg-white px-4 py-3 flex items-center justify-between">
-                  <span className="text-sm font-semibold text-slate-700">Total Tagihan</span>
+                  <span className="text-sm font-semibold text-slate-700">
+                    Total Tagihan
+                  </span>
                   <span className="text-xl md:text-2xl font-extrabold tracking-tight text-slate-900">
                     {fmtIDR(totalPembayaran)}
                   </span>
@@ -501,7 +929,9 @@ export default function FormNonPTK({ onBack, onOpenUniform, uniformFilled = fals
                     </span>
                   </div>
                   <div className="rounded-xl border border-slate-300 bg-white px-4 py-3 flex items-center justify-between">
-                    <span className="text-sm font-semibold text-slate-700">Sisa yang Harus Dibayar</span>
+                    <span className="text-sm font-semibold text-slate-700">
+                      Sisa yang Harus Dibayar
+                    </span>
                     <span className="text-lg md:text-xl font-extrabold tracking-tight text-slate-900">
                       {fmtIDR(sisaTagihan)}
                     </span>
@@ -509,15 +939,19 @@ export default function FormNonPTK({ onBack, onOpenUniform, uniformFilled = fals
                 </div>
 
                 <p className="mt-1 text-[11px] text-slate-500">
-                  Nominal yang mengurangi tagihan hanyalah pembayaran yang sudah <b>dikofirmasi admin</b>.
-                  Bukti berstatus <i>Menunggu Konfirmasi</i> belum mengurangi tagihan.
+                  Nominal yang mengurangi tagihan hanyalah
+                  pembayaran yang sudah <b>dikofirmasi admin</b>.
+                  Bukti berstatus{" "}
+                  <i>Menunggu Konfirmasi</i> belum mengurangi
+                  tagihan.
                 </p>
 
                 {/* BUKTI */}
                 <div className="mt-2 md:mt-2 rounded-xl border border-slate-200 bg-white p-3 md:p-4">
                   <div className="flex items-center justify-between gap-3">
                     <div className="text-sm text-slate-700">
-                      Bukti Pembayaran (bisa beberapa kali transfer)
+                      Bukti Pembayaran (bisa beberapa kali
+                      transfer)
                     </div>
                     <button
                       type="button"
@@ -531,9 +965,13 @@ export default function FormNonPTK({ onBack, onOpenUniform, uniformFilled = fals
 
                   <div className="mt-1">
                     {loadingPayments ? (
-                      <div className="text-sm text-slate-500">Memuat bukti…</div>
+                      <div className="text-sm text-slate-500">
+                        Memuat bukti…
+                      </div>
                     ) : payments.length === 0 ? (
-                      <div className="text-sm text-slate-500">Belum ada bukti tersimpan.</div>
+                      <div className="text-sm text-slate-500">
+                        Belum ada bukti tersimpan.
+                      </div>
                     ) : (
                       <ul className="space-y-2">
                         {payments.map((p) => {
@@ -550,6 +988,7 @@ export default function FormNonPTK({ onBack, onOpenUniform, uniformFilled = fals
                               : status === "rejected"
                               ? "Ditolak"
                               : "Menunggu Konfirmasi";
+                          const approved = isApproved(p);
 
                           return (
                             <li
@@ -564,33 +1003,59 @@ export default function FormNonPTK({ onBack, onOpenUniform, uniformFilled = fals
                                   <div className="text-sm font-medium text-slate-900 break-all">
                                     {p.fileName || "bukti.pdf"}
                                   </div>
-                                  <span className={`text-[10px] px-2 py-0.5 rounded-full border ${badge}`}>
+                                  <span
+                                    className={`text-[10px] px-2 py-0.5 rounded-full border ${badge}`}
+                                  >
                                     {label}
                                   </span>
                                 </div>
                                 <div className="text-xs text-slate-600">
                                   Jumlah:{" "}
                                   <span className="font-semibold">
-                                    {fmtIDR(Number(p.amount || 0))}
+                                    {fmtIDR(
+                                      Number(p.amount || 0)
+                                    )}
                                   </span>
                                   {p.note ? (
                                     <>
                                       {" "}
-/* NOTE: keep spacing to avoid tailwind purge issues */                                      • <span className="italic">{p.note}</span>
+                                      •{" "}
+                                      <span className="italic">
+                                        {p.note}
+                                      </span>
                                     </>
                                   ) : null}
                                 </div>
                               </div>
-                              {p.downloadURL ? (
-                                <a
-                                  href={p.downloadURL}
-                                  target="_blank"
-                                  rel="noreferrer"
-                                  className="inline-flex items-center gap-1 text-xs font-medium text-slate-700 hover:text-slate-900"
+                              <div className="flex flex-col items-end gap-1">
+                                {p.downloadURL ? (
+                                  <a
+                                    href={p.downloadURL}
+                                    target="_blank"
+                                    rel="noreferrer"
+                                    className="inline-flex items-center gap-1 text-xs font-medium text-slate-700 hover:text-slate-900"
+                                  >
+                                    Lihat{" "}
+                                    <ExternalLink className="h-3.5 w-3.5" />
+                                  </a>
+                                ) : null}
+                                {/* <button
+                                  type="button"
+                                  onClick={() =>
+                                    cancelPayment(p)
+                                  }
+                                  disabled={approved}
+                                  className="inline-flex items-center gap-1 rounded-lg border border-rose-300 bg-white px-2.5 py-1 text-[11px] font-semibold text-rose-700 hover:bg-rose-50 disabled:opacity-40 disabled:cursor-not-allowed"
+                                  title={
+                                    approved
+                                      ? "Bukti yang sudah disetujui admin tidak bisa dibatalkan"
+                                      : "Batalkan / hapus bukti ini"
+                                  }
                                 >
-                                  Lihat <ExternalLink className="h-3.5 w-3.5" />
-                                </a>
-                              ) : null}
+                                  <Trash2 className="h-3.5 w-3.5" />
+                                  Batalkan
+                                </button> */}
+                              </div>
                             </li>
                           );
                         })}
@@ -609,7 +1074,9 @@ export default function FormNonPTK({ onBack, onOpenUniform, uniformFilled = fals
       <UploadBukti
         open={uploadOpen}
         onClose={() => setUploadOpen(false)}
-        onUploaded={() => user?.nisn && loadPayments(String(user.nisn))}
+        onUploaded={() =>
+          user?.nisn && loadPayments(String(user.nisn))
+        }
         nisn={String(user?.nisn || "")}
       />
 
