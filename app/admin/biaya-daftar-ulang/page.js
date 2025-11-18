@@ -91,9 +91,10 @@ export default function PageBiayaDaftarUlang() {
         `Jenjang tidak valid. Gunakan salah satu dari: ${Array.from(VALID_JENJANG).join(", ")}`
       );
     }
-    if (safeNum(spp) <= 0) {
-      return alert("SPP harus lebih dari 0.");
-    }
+    const sppNum = safeNum(spp);
+if (spp === "" || Number.isNaN(sppNum) || sppNum < 0) {
+  return alert("SPP tidak boleh kosong atau negatif.");
+}
 
     setSaving(true);
     try {

@@ -17,6 +17,11 @@ import {
   limit as qLimit,
   addDoc,
   serverTimestamp,
+  // >>> tambahan untuk hapus massal
+  deleteDoc,
+  doc,
+  startAfter,
+  documentId,
 } from "firebase/firestore";
 import { getStorage } from "firebase/storage";
 
@@ -43,6 +48,77 @@ function uniqById(arr) {
   const m = new Map();
   for (const r of arr) m.set(r.id || r._id, r);
   return Array.from(m.values());
+}
+
+/* ========= Hapus massal by Paket + Jenjang ========= */
+async function deleteSoalByLevelAndPaket({ paketId, tingkatLabel }) {
+  if (!paketId) throw new Error("Paket tidak boleh kosong.");
+  if (!tingkatLabel || tingkatLabel === "ALL")
+    throw new Error("Pilih jenjang spesifik terlebih dahulu.");
+
+  const base = collection(db, "soal");
+  const safe = toSafeUpperSnake(tingkatLabel);
+
+  const ids = [];
+
+  async function collect(qRef) {
+    let snap = await getDocs(qRef);
+    for (const d of snap.docs) ids.push(d.id);
+    // paginasi sampai habis
+    while (snap.size === 500) {
+      const last = snap.docs[snap.docs.length - 1];
+      snap = await getDocs(
+        query(qRef, startAfter(last)) // mempertahankan orderBy yang sama
+      );
+      for (const d of snap.docs) ids.push(d.id);
+    }
+  }
+
+  // cocokkan tiga varian field + paket
+  await collect(
+    query(
+      base,
+      where("paketId", "==", paketId),
+      where("tingkat", "==", safe),
+      orderBy(documentId()),
+      qLimit(500)
+    )
+  );
+  await collect(
+    query(
+      base,
+      where("paketId", "==", paketId),
+      where("tingkatRaw", "==", tingkatLabel),
+      orderBy(documentId()),
+      qLimit(500)
+    )
+  );
+  await collect(
+    query(
+      base,
+      where("paketId", "==", paketId),
+      where("jenjang", "==", tingkatLabel),
+      orderBy(documentId()),
+      qLimit(500)
+    )
+  );
+
+  if (!ids.length) return { deleted: 0 };
+
+  if (
+    !confirm(
+      `Yakin hapus ${ids.length} soal untuk paket "${paketId}" pada jenjang "${tingkatLabel}"?`
+    )
+  ) {
+    return { deleted: 0, cancelled: true };
+  }
+
+  let deleted = 0;
+  for (const id of ids) {
+    await deleteDoc(doc(db, "soal", id));
+    deleted++;
+  }
+  return { deleted };
 }
 
 /* ========= Table Component ========= */
@@ -92,10 +168,13 @@ function SoalTable({ rows = [], loading, onRefresh, onOpen, offset = 0 }) {
           <tbody>
             {rows.map((r, idx) => {
               const opsiLen = r?.opsi?.length ?? 0;
-              const benar = typeof r?.jawabanIndex === "number" ? r?.opsi?.[r.jawabanIndex] : "-";
-              const hasImage = !!(r?.imageUrl ?? r?.image ?? r?.imgUrl ?? r?.gambarUrl ?? r?.gambar);
+              const benar =
+                typeof r?.jawabanIndex === "number" ? r?.opsi?.[r.jawabanIndex] : "-";
+              const hasImage = !!(
+                r?.imageUrl ?? r?.image ?? r?.imgUrl ?? r?.gambarUrl ?? r?.gambar
+              );
               const label = r?.tingkatRaw || r?.jenjang || "-";
-              const kode  = r?.tingkat || toSafeUpperSnake(label);
+              const kode = r?.tingkat || toSafeUpperSnake(label);
 
               return (
                 <tr
@@ -103,7 +182,9 @@ function SoalTable({ rows = [], loading, onRefresh, onOpen, offset = 0 }) {
                   className="border-b border-violet-100 hover:bg-violet-50/50 transition-colors cursor-pointer"
                   onClick={() => onOpen?.(r)}
                 >
-                  <td className="px-4 py-3 text-sm text-slate-700">{offset + idx + 1}</td>
+                  <td className="px-4 py-3 text-sm text-slate-700">
+                    {offset + idx + 1}
+                  </td>
                   <td className="px-4 py-3">
                     <div className="text-sm font-semibold text-slate-900 line-clamp-2 max-w-md">
                       {r?.pertanyaan || `Soal #${offset + idx + 1}`}
@@ -156,7 +237,13 @@ function SoalTable({ rows = [], loading, onRefresh, onOpen, offset = 0 }) {
                       className="inline-flex items-center gap-1 rounded-lg bg-violet-100 px-3 py-1.5 text-xs font-semibold text-violet-700 hover:bg-violet-200 transition-colors"
                     >
                       Buka
-                      <svg viewBox="0 0 24 24" className="h-3 w-3" fill="none" stroke="currentColor" strokeWidth="2">
+                      <svg
+                        viewBox="0 0 24 24"
+                        className="h-3 w-3"
+                        fill="none"
+                        stroke="currentColor"
+                        strokeWidth="2"
+                      >
                         <path d="M5 12h14M13 5l7 7-7 7" />
                       </svg>
                     </button>
@@ -191,6 +278,9 @@ export default function SoalAkademikBuilderPage() {
   // === State fitur copy massal tingkat → tingkat ===
   const [copyToLabel, setCopyToLabel] = useState("");
   const [copyLoading, setCopyLoading] = useState(false);
+
+  // === Hapus massal jenjang ===
+  const [deleting, setDeleting] = useState(false);
 
   // === Pagination (50 per halaman) ===
   const pageSize = 50;
@@ -229,7 +319,7 @@ export default function SoalAkademikBuilderPage() {
     setLoading(true);
     try {
       const id = (nextPaketId ?? "").trim();
-      const raw = (nextTingkatRaw ?? "ALL");
+      const raw = nextTingkatRaw ?? "ALL";
       const safe = raw === "ALL" ? "ALL" : toSafeUpperSnake(raw);
 
       const base = collection(db, "soal");
@@ -281,16 +371,18 @@ export default function SoalAkademikBuilderPage() {
 
   /* ====== Copy massal tingkat → tingkat (paket sama) ====== */
   async function copySoalBetweenLevels({
-    fromLabel,   // mis. "SMA Putra"
-    toLabel,     // mis. "SMA Putri"
-    usePaketId,  // paket aktif
+    fromLabel, // mis. "SMA Putra"
+    toLabel, // mis. "SMA Putri"
+    usePaketId, // paket aktif
   }) {
-    if (!fromLabel || fromLabel === "ALL") throw new Error("Pilih tingkat sumber yang spesifik.");
-    if (!toLabel || toLabel === fromLabel) throw new Error("Tingkat tujuan harus berbeda.");
+    if (!fromLabel || fromLabel === "ALL")
+      throw new Error("Pilih tingkat sumber yang spesifik.");
+    if (!toLabel || toLabel === fromLabel)
+      throw new Error("Tingkat tujuan harus berbeda.");
 
     const base = collection(db, "soal");
     const safeFrom = toSafeUpperSnake(fromLabel);
-    const safeTo   = toSafeUpperSnake(toLabel);
+    const safeTo = toSafeUpperSnake(toLabel);
 
     // Ambil sumber: dukung tingkat, tingkatRaw, dan jenjang (kompat)
     const clauses = [];
@@ -324,7 +416,7 @@ export default function SoalAkademikBuilderPage() {
 
     const sourceRows = new Map();
     for (const d of snapMain.docs) sourceRows.set(d.id, { id: d.id, ...d.data() });
-    for (const d of snapRaw.docs)  sourceRows.set(d.id, { id: d.id, ...d.data() });
+    for (const d of snapRaw.docs) sourceRows.set(d.id, { id: d.id, ...d.data() });
     for (const d of snapJenjang.docs) sourceRows.set(d.id, { id: d.id, ...d.data() });
     const sources = Array.from(sourceRows.values());
 
@@ -350,15 +442,18 @@ export default function SoalAkademikBuilderPage() {
 
       const payload = {
         paketId: (usePaketId || s?.paketId || "").toString().trim(),
-        mapel: (s?.mapel || "Umum"),
+        mapel: s?.mapel || "Umum",
         tingkat: safeTo,
         tingkatRaw: toLabel,
         pertanyaan: qText,
         opsi: Array.isArray(s?.opsi) ? s.opsi.slice() : [],
-        opsiImages: Array.isArray(s?.opsiImages) ? s.opsiImages.slice(0, (s?.opsi?.length || 0)) : [],
+        opsiImages: Array.isArray(s?.opsiImages)
+          ? s.opsiImages.slice(0, s?.opsi?.length || 0)
+          : [],
         jawabanIndex: typeof s?.jawabanIndex === "number" ? s.jawabanIndex : 0,
         aktif: true,
-        imageUrl: (s?.imageUrl || s?.image || s?.imgUrl || s?.gambarUrl || s?.gambar || ""),
+        imageUrl:
+          s?.imageUrl || s?.image || s?.imgUrl || s?.gambarUrl || s?.gambar || "",
         createdAt: serverTimestamp(),
         updatedAt: serverTimestamp(),
       };
@@ -370,15 +465,26 @@ export default function SoalAkademikBuilderPage() {
   }
 
   /* ===== Effects ===== */
-  useEffect(() => { loadLevels(); }, []);
-  useEffect(() => { loadList(); }, []);
-  useEffect(() => { loadList(paketId, tingkatFilterRaw); }, [paketId, tingkatFilterRaw]);
+  useEffect(() => {
+    loadLevels();
+  }, []);
+  useEffect(() => {
+    loadList();
+  }, []);
+  useEffect(() => {
+    loadList(paketId, tingkatFilterRaw);
+  }, [paketId, tingkatFilterRaw]);
 
   /* ===== Render ===== */
   return (
     <div className="min-h-screen bg-white text-slate-900 flex flex-col">
       {/* HERO */}
-      <HeroSection onAdd={() => { setSelected(null); setOpen(true); }} />
+      <HeroSection
+        onAdd={() => {
+          setSelected(null);
+          setOpen(true);
+        }}
+      />
 
       {/* Toolbar Paket + Filter + Toggle View */}
       <div className="w-full max-w-none px-4 md:px-6 lg:px-8 mt-6">
@@ -393,7 +499,10 @@ export default function SoalAkademikBuilderPage() {
                 className="bg-transparent outline-none text-sm px-1 w-40"
                 placeholder="paket-1"
               />
-              <button onClick={() => loadList()} className="text-sm text-violet-700 hover:text-violet-800">
+              <button
+                onClick={() => loadList()}
+                className="text-sm text-violet-700 hover:text-violet-800"
+              >
                 Reload
               </button>
             </div>
@@ -410,10 +519,14 @@ export default function SoalAkademikBuilderPage() {
               >
                 <option value="ALL">Semua</option>
                 {tingkatOptions.map((j) => (
-                  <option key={j} value={j}>{j}</option>
+                  <option key={j} value={j}>
+                    {j}
+                  </option>
                 ))}
               </select>
-              {tingkatErr && <span className="text-xs text-amber-600">{tingkatErr}</span>}
+              {tingkatErr && (
+                <span className="text-xs text-amber-600">{tingkatErr}</span>
+              )}
             </div>
 
             {/* Copy massal: dari tingkatFilterRaw → copyToLabel */}
@@ -429,12 +542,22 @@ export default function SoalAkademikBuilderPage() {
                 <option value="">Pilih…</option>
                 {tingkatOptions
                   .filter((j) => j !== tingkatFilterRaw)
-                  .map((j) => <option key={j} value={j}>{j}</option>)}
+                  .map((j) => (
+                    <option key={j} value={j}>
+                      {j}
+                    </option>
+                  ))}
               </select>
               <button
                 onClick={async () => {
-                  if (!tingkatFilterRaw || tingkatFilterRaw === "ALL") { alert("Pilih tingkat sumber dulu."); return; }
-                  if (!copyToLabel) { alert("Pilih tingkat tujuan."); return; }
+                  if (!tingkatFilterRaw || tingkatFilterRaw === "ALL") {
+                    alert("Pilih tingkat sumber dulu.");
+                    return;
+                  }
+                  if (!copyToLabel) {
+                    alert("Pilih tingkat tujuan.");
+                    return;
+                  }
                   setCopyLoading(true);
                   try {
                     const res = await copySoalBetweenLevels({
@@ -442,7 +565,9 @@ export default function SoalAkademikBuilderPage() {
                       toLabel: copyToLabel,
                       usePaketId: paketId,
                     });
-                    alert(`Selesai. Sumber: ${res.totalSource}, dibuat baru: ${res.created}.`);
+                    alert(
+                      `Selesai. Sumber: ${res.totalSource}, dibuat baru: ${res.created}.`
+                    );
                     // tampilkan tujuan setelah copy
                     await loadList(paketId, copyToLabel);
                     setTingkatFilterRaw(copyToLabel);
@@ -459,6 +584,41 @@ export default function SoalAkademikBuilderPage() {
                 {copyLoading ? "Menyalin…" : "Copy Soal"}
               </button>
             </div>
+
+            {/* Hapus massal per jenjang */}
+            <div className="flex items-center gap-2 bg-white rounded-full border border-rose-200 px-3 py-2 w-fit shadow-sm">
+              <button
+                onClick={async () => {
+                  if (!paketId?.trim()) {
+                    alert("Isi paket terlebih dahulu.");
+                    return;
+                  }
+                  if (!tingkatFilterRaw || tingkatFilterRaw === "ALL") {
+                    alert("Pilih jenjang yang ingin dihapus.");
+                    return;
+                  }
+                  setDeleting(true);
+                  try {
+                    const res = await deleteSoalByLevelAndPaket({
+                      paketId: paketId.trim(),
+                      tingkatLabel: tingkatFilterRaw,
+                    });
+                    if (res?.cancelled) return;
+                    alert(`Terhapus: ${res.deleted} soal.`);
+                    await loadList(paketId, tingkatFilterRaw);
+                  } catch (e) {
+                    alert(String(e.message || e));
+                  } finally {
+                    setDeleting(false);
+                  }
+                }}
+                disabled={deleting || tingkatFilterRaw === "ALL"}
+                className="text-sm font-semibold text-white bg-rose-600 hover:bg-rose-700 px-3 py-1.5 rounded-full disabled:opacity-50"
+                title="Hapus semua soal pada jenjang terpilih untuk paket aktif"
+              >
+                {deleting ? "Menghapus…" : "Hapus Soal (Jenjang)"}
+              </button>
+            </div>
           </div>
 
           {/* Toggle View Buttons */}
@@ -469,7 +629,7 @@ export default function SoalAkademikBuilderPage() {
                 "px-3 py-2 text-sm font-semibold transition-colors",
                 viewMode === "grid"
                   ? "bg-violet-600 text-white"
-                  : "bg-white text-slate-800 hover:bg-violet-50"
+                  : "bg-white text-slate-800 hover:bg-violet-50",
               ].join(" ")}
               title="Tampilan Grid"
             >
@@ -481,7 +641,7 @@ export default function SoalAkademikBuilderPage() {
                 "px-3 py-2 text-sm font-semibold transition-colors border-l border-violet-200",
                 viewMode === "table"
                   ? "bg-violet-600 text-white"
-                  : "bg-white text-slate-800 hover:bg-violet-50"
+                  : "bg-white text-slate-800 hover:bg-violet-50",
               ].join(" ")}
               title="Tampilan Tabel"
             >
@@ -498,14 +658,20 @@ export default function SoalAkademikBuilderPage() {
             rows={pageRows}
             loading={loading}
             onRefresh={loadList}
-            onOpen={(row) => { setSelected(row); setOpen(true); }}
+            onOpen={(row) => {
+              setSelected(row);
+              setOpen(true);
+            }}
           />
         ) : (
           <SoalTable
             rows={pageRows}
             loading={loading}
             onRefresh={loadList}
-            onOpen={(row) => { setSelected(row); setOpen(true); }}
+            onOpen={(row) => {
+              setSelected(row);
+              setOpen(true);
+            }}
             offset={pageStart}
           />
         )}
@@ -514,9 +680,7 @@ export default function SoalAkademikBuilderPage() {
         <div className="mt-4 flex flex-col sm:flex-row items-center justify-between gap-3">
           <div className="text-sm text-slate-600">
             Menampilkan{" "}
-            <span className="font-semibold text-violet-700">
-              {pageRows.length}
-            </span>{" "}
+            <span className="font-semibold text-violet-700">{pageRows.length}</span>{" "}
             dari <span className="font-semibold">{items.length}</span> soal • Halaman{" "}
             <span className="font-semibold">{page + 1}</span> / {totalPages}
           </div>
@@ -533,24 +697,28 @@ export default function SoalAkademikBuilderPage() {
 
             {/* nomor halaman ringkas */}
             <div className="flex items-center gap-1">
-              {Array.from({ length: totalPages }).slice(Math.max(0, page - 2), Math.min(totalPages, page + 3)).map((_, i, arr) => {
-                const start = Math.max(0, page - 2);
-                const n = start + i;
-                const active = n === page;
-                return (
-                  <button
-                    key={n}
-                    onClick={() => setPage(n)}
-                    className={[
-                      "h-8 w-8 rounded-md text-sm font-semibold",
-                      active ? "bg-violet-600 text-white" : "border border-slate-300 hover:bg-slate-50"
-                    ].join(" ")}
-                    aria-label={`Halaman ${n + 1}`}
-                  >
-                    {n + 1}
-                  </button>
-                );
-              })}
+              {Array.from({ length: totalPages })
+                .slice(Math.max(0, page - 2), Math.min(totalPages, page + 3))
+                .map((_, i, arr) => {
+                  const start = Math.max(0, page - 2);
+                  const n = start + i;
+                  const active = n === page;
+                  return (
+                    <button
+                      key={n}
+                      onClick={() => setPage(n)}
+                      className={[
+                        "h-8 w-8 rounded-md text-sm font-semibold",
+                        active
+                          ? "bg-violet-600 text-white"
+                          : "border border-slate-300 hover:bg-slate-50",
+                      ].join(" ")}
+                      aria-label={`Halaman ${n + 1}`}
+                    >
+                      {n + 1}
+                    </button>
+                  );
+                })}
             </div>
 
             <button
@@ -568,10 +736,17 @@ export default function SoalAkademikBuilderPage() {
       {/* Modal (builder) */}
       <SoalModal
         open={open}
-        onClose={() => { setOpen(false); setSelected(null); }}
+        onClose={() => {
+          setOpen(false);
+          setSelected(null);
+        }}
         defaultPaketId={paketId}
         initialData={selected}
-        onSaved={() => { setOpen(false); setSelected(null); loadList(); }}
+        onSaved={() => {
+          setOpen(false);
+          setSelected(null);
+          loadList();
+        }}
       />
     </div>
   );

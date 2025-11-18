@@ -50,7 +50,11 @@ const PAGE_SIZES = [10, 25, 50];
 function fmtIDR(n) {
   const v = Number(n || 0);
   if (!Number.isFinite(v)) return "-";
-  return v.toLocaleString("id-ID", { style: "currency", currency: "IDR", maximumFractionDigits: 0 });
+  return v.toLocaleString("id-ID", {
+    style: "currency",
+    currency: "IDR",
+    maximumFractionDigits: 0,
+  });
 }
 
 /* ===== Normalizer status (panel kanan & kiri Non-PTK) ===== */
@@ -64,7 +68,8 @@ function normalizeStatus(pLike) {
         (pLike?.approved ? "APPROVED" : "") ??
         "") + "";
     const s = raw.trim().toUpperCase();
-    if (["APPROVED", "VERIFIED", "ACCEPTED", "OK", "CONFIRMED"].includes(s)) return "approved";
+    if (["APPROVED", "VERIFIED", "ACCEPTED", "OK", "CONFIRMED"].includes(s))
+      return "approved";
     if (["REJECTED", "DENIED", "DECLINED"].includes(s)) return "rejected";
     return "pending";
   } catch {
@@ -76,7 +81,10 @@ function normalizeStatus(pLike) {
 function ImageModal({ imageUrl, onClose }) {
   if (!imageUrl) return null;
   return (
-    <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/80 p-4" onClick={onClose}>
+    <div
+      className="fixed inset-0 z-50 flex items-center justify-center bg-black/80 p-4"
+      onClick={onClose}
+    >
       <div className="relative max-w-4xl max-h-[90vh] w-full">
         <button
           onClick={onClose}
@@ -162,7 +170,11 @@ function PaymentsVerificationPanel({ db, selectedNisn, headerSuffix = "" }) {
             );
           }
         } else {
-          qref = query(collectionGroup(db, "payments"), orderBy("createdAt", "desc"), limit(pageSize + 1));
+          qref = query(
+            collectionGroup(db, "payments"),
+            orderBy("createdAt", "desc"),
+            limit(pageSize + 1)
+          );
           if (mode === "next" && currentCursor) {
             qref = query(
               collectionGroup(db, "payments"),
@@ -192,7 +204,7 @@ function PaymentsVerificationPanel({ db, selectedNisn, headerSuffix = "" }) {
 
   useEffect(() => {
     loadPage("first", null);
-  }, [pageSize, selectedKey, statusFilter]);
+  }, [pageSize, selectedKey, statusFilter, loadPage]);
 
   const act = async (row, action /* 'approve' | 'reject' */) => {
     try {
@@ -218,10 +230,18 @@ function PaymentsVerificationPanel({ db, selectedNisn, headerSuffix = "" }) {
       <div className="rounded-2xl border border-slate-200 bg-white shadow-sm overflow-hidden">
         <div className="px-4 py-3 border-b border-slate-200 flex items-center justify-between">
           <div className="text-sm font-semibold text-slate-900">
-            Persetujuan Pembayaran {headerSuffix} {selectedKey ? `(NISN: ${selectedKey})` : ""}
+            Persetujuan Pembayaran {headerSuffix}{" "}
+            {selectedKey ? `(NISN: ${selectedKey})` : ""}
             {" · "}
             <span className="font-normal text-slate-700">
-              Filter: {statusFilter === "pending" ? "Pending" : statusFilter === "approved" ? "Disetujui" : statusFilter === "rejected" ? "Ditolak" : "Semua"}
+              Filter:{" "}
+              {statusFilter === "pending"
+                ? "Pending"
+                : statusFilter === "approved"
+                ? "Disetujui"
+                : statusFilter === "rejected"
+                ? "Ditolak"
+                : "Semua"}
             </span>
           </div>
           <div className="flex items-center gap-2">
@@ -238,7 +258,9 @@ function PaymentsVerificationPanel({ db, selectedNisn, headerSuffix = "" }) {
                   onClick={() => setStatusFilter(it.key)}
                   className={[
                     "px-2.5 py-1.5 text-xs font-semibold",
-                    statusFilter === it.key ? "bg-slate-900 text-white" : "bg-white text-slate-800 hover:bg-slate-50",
+                    statusFilter === it.key
+                      ? "bg-slate-900 text-white"
+                      : "bg-white text-slate-800 hover:bg-slate-50",
                   ].join(" ")}
                 >
                   {it.label}
@@ -273,7 +295,9 @@ function PaymentsVerificationPanel({ db, selectedNisn, headerSuffix = "" }) {
               <Loader2 className="h-4 w-4 animate-spin" /> Memuat data…
             </div>
           ) : rows.length === 0 ? (
-            <div className="p-4 text-sm text-slate-700">Tidak ada data untuk filter ini.</div>
+            <div className="p-4 text-sm text-slate-700">
+              Tidak ada data untuk filter ini.
+            </div>
           ) : (
             rows.map((r) => {
               const s = normalizeStatus(r);
@@ -282,15 +306,22 @@ function PaymentsVerificationPanel({ db, selectedNisn, headerSuffix = "" }) {
                 <div key={`${r.nisn}-${r.id}`} className="p-4 flex flex-col gap-2">
                   <div className="flex items-center justify-between">
                     <div className="text-sm font-semibold text-slate-900">
-                      {r.student?.name || "-"} <span className="text-slate-500 font-normal">({r.nisn})</span>
+                      {r.student?.name || "-"}{" "}
+                      <span className="text-slate-500 font-normal">
+                        ({r.nisn})
+                      </span>
                     </div>
-                    <div className="text-xs text-slate-600">{r.student?.level || "-"}</div>
+                    <div className="text-xs text-slate-600">
+                      {r.student?.level || "-"}
+                    </div>
                   </div>
 
                   <div className="flex items-center justify-between text-sm">
                     <div className="text-slate-700">
                       Jumlah: <b>{fmtIDR(r.amount)}</b>
-                      {r.note ? <span className="text-slate-500"> · {r.note}</span> : null}
+                      {r.note ? (
+                        <span className="text-slate-500"> · {r.note}</span>
+                      ) : null}
                     </div>
                     {r.downloadURL ? (
                       <button
@@ -352,6 +383,24 @@ function PaymentsVerificationPanel({ db, selectedNisn, headerSuffix = "" }) {
   );
 }
 
+/* ===== helper: (SEKARANG TIDAK DIPAKAI UNTUK RENDER, HANYA JIKA KAMU BUTUH NANTI) ===== */
+function hasSaudara(selected) {
+  if (!selected) return false;
+  const v =
+    selected.saudara ??
+    selected.siblings ??
+    selected.siblingsCount ??
+    selected.jumlahSaudara ??
+    selected.saudaraDiSekolah ??
+    "";
+  if (typeof v === "number") return v > 0;
+  const s = String(v || "").trim();
+  if (!s || s === "-" || s === "–") return false;
+  const n = Number(s.replace(/[^\d.-]/g, ""));
+  if (Number.isFinite(n)) return n > 0;
+  return true;
+}
+
 /* ========= HALAMAN UTAMA ========= */
 export default function AdminDaftarUlangPage() {
   const [view, setView] = useState("PTK"); // 'PTK' | 'NON_PTK'
@@ -361,10 +410,15 @@ export default function AdminDaftarUlangPage() {
   const [pageSize, setPageSize] = useState(10);
   const [jenjangFilter, setJenjangFilter] = useState("");
 
-  const [selected, setSelected] = useState(null);
+  // Pisah selected per tab agar tidak bercampur
+  const [selectedPTK, setSelectedPTK] = useState(null);
+  const [selectedNonPTK, setSelectedNonPTK] = useState(null);
 
-  // NEW: toggle visibilitas panel Potongan
+  // Toggle visibilitas panel Potongan (khusus PTK)
   const [showPotongan, setShowPotongan] = useState(true);
+
+  // selected yang dipakai panel kanan mengikuti tab aktif
+  const selected = view === "PTK" ? selectedPTK : selectedNonPTK;
 
   /* Ambil distinct registrationLevel */
   useEffect(() => {
@@ -400,7 +454,12 @@ export default function AdminDaftarUlangPage() {
           after = snap.docs[snap.docs.length - 1];
           if (snap.size < batchSize) break;
         }
-        alive && setLevels(Array.from(seen).sort((a, b) => (a || "").localeCompare(b || "", "id")));
+        alive &&
+          setLevels(
+            Array.from(seen).sort((a, b) =>
+              (a || "").localeCompare(b || "", "id")
+            )
+          );
       } finally {
         alive && setLoadingLevels(false);
       }
@@ -411,18 +470,22 @@ export default function AdminDaftarUlangPage() {
   }, []);
 
   const handleAfterApprove = useCallback(() => {
-    setSelected((s) => (s ? { ...s } : s));
-  }, []);
+    if (view === "PTK") {
+      setSelectedPTK((s) => (s ? { ...s } : s));
+    } else {
+      setSelectedNonPTK((s) => (s ? { ...s } : s));
+    }
+  }, [view]);
 
   return (
     <div className="min-h-screen bg-slate-50/60 w-full">
       {/* === Judul sederhana (tanpa header/sticky) === */}
       <div className="px-4 pt-6 md:pt-8">
-        <h1 className="text-xl md:text-2xl font-bold tracking-tight text-slate-900">
+        <h1 className="text-xl md:2xl font-bold tracking-tight text-slate-900">
           Halaman verifikasi daftar ulang
         </h1>
         <p className="text-sm md:text-[15px] text-slate-700 mt-1">
-          Pilih tab di kiri: PTK / Non-PTK. 
+          Pilih tab di kiri: PTK / Non-PTK.
         </p>
       </div>
 
@@ -438,7 +501,9 @@ export default function AdminDaftarUlangPage() {
                     type="button"
                     onClick={() => setView("PTK")}
                     className={`inline-flex items-center gap-2 px-3 py-2 text-sm font-semibold ${
-                      view === "PTK" ? "bg-slate-900 text-white" : "bg-white text-slate-800 hover:bg-slate-50"
+                      view === "PTK"
+                        ? "bg-slate-900 text-white"
+                        : "bg-white text-slate-800 hover:bg-slate-50"
                     }`}
                   >
                     <Users className="h-4 w-4" />
@@ -448,7 +513,9 @@ export default function AdminDaftarUlangPage() {
                     type="button"
                     onClick={() => setView("NON_PTK")}
                     className={`inline-flex items-center gap-2 px-3 py-2 text-sm font-semibold ${
-                      view === "NON_PTK" ? "bg-slate-900 text-white" : "bg-white text-slate-800 hover:bg-slate-50"
+                      view === "NON_PTK"
+                        ? "bg-slate-900 text-white"
+                        : "bg-white text-slate-800 hover:bg-slate-50"
                     }`}
                   >
                     <UserSquare2 className="h-4 w-4" />
@@ -468,9 +535,19 @@ export default function AdminDaftarUlangPage() {
                       ? "border-slate-200 bg-white text-slate-800 hover:bg-slate-50"
                       : "border-emerald-300 bg-emerald-50 text-emerald-800 hover:bg-emerald-100"
                   }`}
-                  title={view !== "PTK" ? "Hanya untuk tab PTK" : showPotongan ? "Sembunyikan Potongan" : "Tampilkan Potongan"}
+                  title={
+                    view !== "PTK"
+                      ? "Hanya untuk tab PTK"
+                      : showPotongan
+                      ? "Sembunyikan Potongan"
+                      : "Tampilkan Potongan"
+                  }
                 >
-                  {showPotongan ? <EyeOff className="h-4 w-4" /> : <Eye className="h-4 w-4" />}
+                  {showPotongan ? (
+                    <EyeOff className="h-4 w-4" />
+                  ) : (
+                    <Eye className="h-4 w-4" />
+                  )}
                   {showPotongan ? "Sembunyikan Potongan" : "Tampilkan Potongan"}
                 </button>
               </div>
@@ -492,7 +569,9 @@ export default function AdminDaftarUlangPage() {
                       </option>
                     ))}
                   </select>
-                  {loadingLevels ? <Loader2 className="ml-2 h-4 w-4 animate-spin text-slate-500" /> : null}
+                  {loadingLevels ? (
+                    <Loader2 className="ml-2 h-4 w-4 animate-spin text-slate-500" />
+                  ) : null}
                 </div>
 
                 <div className="inline-flex items-center gap-2 rounded-xl border border-slate-200 bg-white px-3 py-2">
@@ -514,24 +593,46 @@ export default function AdminDaftarUlangPage() {
 
             {/* Panel Kiri per tab */}
             {view === "PTK" ? (
-              <PTKPanel db={db} jenjangFilter={jenjangFilter} pageSize={pageSize} onRowSelect={setSelected} />
+              <PTKPanel
+                db={db}
+                jenjangFilter={jenjangFilter}
+                pageSize={pageSize}
+                onRowSelect={setSelectedPTK}
+              />
             ) : (
-              <NonPTKPanel db={db} jenjangFilter={jenjangFilter} pageSize={pageSize} onRowSelect={setSelected} />
+              <NonPTKPanel
+                db={db}
+                jenjangFilter={jenjangFilter}
+                pageSize={pageSize}
+                onRowSelect={setSelectedNonPTK}
+              />
             )}
           </div>
         </div>
 
         {/* Kanan */}
         <div className="xl:col-span-2 space-y-6">
-          {/* Potongan hanya untuk PTK & jika toggle ON */}
+          {/* Potongan untuk PTK (pakai toggle) */}
           {view === "PTK" && showPotongan && selected ? (
-            <KonfirmasiPotonganPanel
-              db={db}
-              selected={selected}
-              onAfterApprove={handleAfterApprove}
-              onRequestHide={() => setShowPotongan(false)}
-            />
-          ) : null}
+  <KonfirmasiPotonganPanel
+    db={db}
+    selected={selected}
+    onAfterApprove={handleAfterApprove}
+    onRequestHide={() => setShowPotongan(false)}   // sudah oke
+  />
+) : null}
+
+          {/* Potongan untuk NON_PTK: selalu tampil saat ada selected; syarat saudara di-handle di potongan.js */}
+          {view === "NON_PTK" && selected ? (
+  <KonfirmasiPotonganPanel
+    db={db}
+    selected={selected}
+    mode="NON_PTK"
+    variant="NON_PTK"
+    onAfterApprove={handleAfterApprove}
+    onRequestHide={() => setSelectedNonPTK(null)}   // ⬅️ TAMBAHAN
+  />
+) : null}
 
           {/* Persetujuan pembayaran */}
           <PaymentsVerificationPanel

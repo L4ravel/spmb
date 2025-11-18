@@ -160,7 +160,8 @@ function validateRows(list) {
         message: `jenjangLabel tidak valid. Gunakan salah satu dari: ${ALL_JENJANG.join(", ")}`,
       });
     }
-    if (safeNum(r.spp) <= 0) errs.push({ row: r.__row, message: "SPP harus angka > 0." });
+   const sppVal = Number.isFinite(Number(r.spp)) ? Number(r.spp) : safeNum(r.spp);
+if (sppVal < 0) errs.push({ row: r.__row, message: "SPP harus angka ≥ 0." });
   });
   return errs;
 }
