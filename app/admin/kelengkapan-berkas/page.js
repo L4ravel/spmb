@@ -1,648 +1,795 @@
 "use client";
 
-import { useEffect, useRef, useState, useCallback, useMemo } from "react";
-
-/* ================= Firebase Client (public read) ================= */
-import { getApp, getApps, initializeApp } from "firebase/app";
+import { useEffect, useMemo, useState, useRef } from "react";
+import { initializeApp, getApp, getApps } from "firebase/app";
 import {
   getFirestore,
   collection,
   getDocs,
-  limit,
-  orderBy,
-  query,
-  startAfter,
-  where,
+  doc,
+  updateDoc,
 } from "firebase/firestore";
+import {
+  Loader2,
+  FileText,
+  Phone,
+  Search,
+  Filter,
+  ChevronLeft,
+  ChevronRight,
+  X,
+  RotateCcw,
+  RotateCw,
+  ZoomIn,
+  ZoomOut,
+  Download,
+} from "lucide-react";
+import { getStorage, ref, uploadBytes, getDownloadURL } from "firebase/storage";
 
-function getFirebaseApp() {
-  const cfg = {
-    apiKey: process.env.NEXT_PUBLIC_FIREBASE_API_KEY,
-    authDomain: process.env.NEXT_PUBLIC_FIREBASE_AUTH_DOMAIN,
-    projectId: process.env.NEXT_PUBLIC_FIREBASE_PROJECT_ID,
-    storageBucket: process.env.NEXT_PUBLIC_FIREBASE_STORAGE_BUCKET,
-    appId: process.env.NEXT_PUBLIC_FIREBASE_APP_ID,
-  };
-  return getApps().length ? getApp() : initializeApp(cfg);
-}
-
-const app = getFirebaseApp();
+/* ==== Firebase init ==== */
+const firebaseConfig = {
+  apiKey: process.env.NEXT_PUBLIC_FIREBASE_API_KEY,
+  authDomain: process.env.NEXT_PUBLIC_FIREBASE_AUTH_DOMAIN,
+  projectId: process.env.NEXT_PUBLIC_FIREBASE_PROJECT_ID,
+  storageBucket: process.env.NEXT_PUBLIC_FIREBASE_STORAGE_BUCKET,
+  messagingSenderId: process.env.NEXT_PUBLIC_FIREBASE_MESSAGING_SENDER_ID,
+  appId: process.env.NEXT_PUBLIC_FIREBASE_APP_ID,
+};
+const app = getApps().length ? getApp() : initializeApp(firebaseConfig);
 const db = getFirestore(app);
+const storage = getStorage(app);
 
-/* ================= Utils ================= */
-// jumlah berkas mengikuti keys yang ada pada filesMeta dari route
-const countFiles = (filesMeta = {}) => Object.keys(filesMeta || {}).length;
+const PAGE_SIZES = [10, 25, 50, 100, 500];
 
-const toDateStr = (ts) => {
-  try {
-    const d = ts?.toDate ? ts.toDate() : ts instanceof Date ? ts : null;
-    if (!d) return "—";
-    return new Intl.DateTimeFormat("id-ID", { dateStyle: "medium", timeStyle: "short" }).format(d);
-  } catch {
-    return "—";
+function normalizePhone(raw) {
+  let digits = String(raw || "").replace(/[^0-9]/g, "");
+  if (!digits) return "";
+  if (digits.startsWith("0")) {
+    digits = "62" + digits.slice(1);
   }
-};
-
-const classify = (meta) => {
-  const ct = (meta?.contentType || "").toLowerCase();
-  if (ct.startsWith("image/")) return "image";
-  if (ct === "application/pdf" || ct.includes("pdf")) return "pdf";
-  return "other";
-};
-
-// Label tampilan untuk tiap key dokumen
-const DOC_LABELS = {
-  ijazah: "SUKET AKTIF SEKOLAH", // permintaan khusus
-  ktpWali: "KTP WALI",
-  // tambahkan mapping lain bila perlu…
-};
-const getDocLabel = (k = "") =>
-  DOC_LABELS[k] || String(k).replace(/([a-z0-9])([A-Z])/g, "$1 $2").replace(/_/g, " ").toUpperCase();
-
-/* ================= Modal (Viewer) ================= */
-function Modal({ open, onClose, row, activeKey, setActiveKey }) {
-  const escHandler = useCallback(
-    (e) => {
-      if (e.key === "Escape") onClose?.();
-    },
-    [onClose]
-  );
-
-  useEffect(() => {
-    if (!open) return;
-    document.addEventListener("keydown", escHandler);
-    return () => document.removeEventListener("keydown", escHandler);
-  }, [open, escHandler]);
-
-  if (!open || !row) return null;
-
-  const filesMeta = row.filesMeta || {};
-  const availableKeys = Object.keys(filesMeta);
-  const currentKey = availableKeys.includes(activeKey) ? activeKey : availableKeys[0];
-  const currentMeta = currentKey ? filesMeta[currentKey] : null;
-
-  const nextKey = () => {
-    if (!availableKeys.length) return;
-    const i = availableKeys.indexOf(currentKey);
-    const ni = (i + 1) % availableKeys.length;
-    setActiveKey(availableKeys[ni]);
-  };
-  const prevKey = () => {
-    if (!availableKeys.length) return;
-    const i = availableKeys.indexOf(currentKey);
-    const pi = (i - 1 + availableKeys.length) % availableKeys.length;
-    setActiveKey(availableKeys[pi]);
-  };
-
-  return (
-    <div className="fixed inset-0 z-[60]">
-      {/* backdrop */}
-      <div className="absolute inset-0 bg-black/50" onClick={onClose} aria-hidden="true" />
-      {/* panel */}
-      <div className="absolute inset-0 flex items-center justify-center p-4 md:p-6">
-        <div className="w-full max-w-5xl rounded-2xl bg-white text-black shadow-2xl ring-1 ring-slate-200">
-          {/* header */}
-          <div className="flex items-start justify-between gap-3 p-4 md:p-5 border-b border-slate-200">
-            <div>
-              <div className="text-xs text-slate-500">Kelengkapan Dokumen • NISN</div>
-              <div className="text-lg md:text-xl font-semibold text-slate-900">
-                {row.nisn || row.id}{" "}
-                <span className="text-slate-500 font-normal">• {row.nama || row.name || "—"}</span>
-              </div>
-              <div className="text-xs text-slate-500 mt-1">
-                Dibuat: {toDateStr(row.createdAt)} • Diperbarui: {toDateStr(row.updatedAt)}
-              </div>
-            </div>
-            <button
-              onClick={onClose}
-              className="inline-flex items-center justify-center h-9 w-9 rounded-lg ring-1 ring-slate-200 hover:bg-slate-50"
-              aria-label="Tutup"
-              title="Tutup (Esc)"
-            >
-              ✕
-            </button>
-          </div>
-
-          {/* toolbar dok + switcher */}
-          <div className="px-4 md:px-5 pt-3 pb-2 border-b border-slate-200">
-            <div className="flex items-center gap-2 flex-wrap">
-              {availableKeys.length === 0 ? (
-                <span className="text-slate-500 text-sm">Tidak ada dokumen.</span>
-              ) : (
-                availableKeys.map((k) => {
-                  const ada = Boolean(filesMeta?.[k]?.url);
-                  const isActive = k === currentKey;
-                  return (
-                    <button
-                      key={k}
-                      disabled={!ada}
-                      onClick={() => ada && setActiveKey(k)}
-                      className={[
-                        "px-3 py-1.5 rounded-full text-xs font-medium ring-1",
-                        ada
-                          ? isActive
-                            ? "bg-violet-600 text-white ring-violet-600"
-                            : "bg-white text-violet-700 ring-violet-200 hover:bg-violet-50"
-                          : "bg-slate-100 text-slate-400 ring-slate-200 cursor-not-allowed",
-                      ].join(" ")}
-                    >
-                      {getDocLabel(k)}
-                    </button>
-                  );
-                })
-              )}
-              <div className="ml-auto flex items-center gap-2">
-                <button
-                  onClick={prevKey}
-                  disabled={availableKeys.length < 2}
-                  className="px-3 py-1.5 rounded-lg text-sm ring-1 ring-slate-200 hover:bg-slate-50 disabled:opacity-40"
-                >
-                  ◀ Prev
-                </button>
-                <button
-                  onClick={nextKey}
-                  disabled={availableKeys.length < 2}
-                  className="px-3 py-1.5 rounded-lg text-sm ring-1 ring-slate-200 hover:bg-slate-50 disabled:opacity-40"
-                >
-                  Next ▶
-                </button>
-              </div>
-            </div>
-          </div>
-
-          {/* body (scrollable) */}
-          <div className="max-h-[80vh] overflow-y-auto">
-            {/* keterangan file */}
-            <div className="px-4 md:px-5 py-3 border-b border-slate-200 text-sm">
-              {currentMeta ? (
-                <div className="text-slate-600">
-                  <div className="font-medium text-slate-900">{getDocLabel(currentKey)}</div>
-                  <div className="mt-0.5">
-                    <span className="text-xs">
-                      Tipe: {currentMeta.contentType || "—"} •{" "}
-                      Ukuran: {currentMeta.size ? `${currentMeta.size} byte` : "—"} •{" "}
-                      Diunggah: {toDateStr(currentMeta.uploadedAt)}
-                    </span>
-                  </div>
-                  <div className="mt-1">
-                    <code className="text-[12px] text-slate-500">{currentMeta.path}</code>
-                  </div>
-                </div>
-              ) : (
-                <div className="text-slate-600">Dokumen tidak tersedia.</div>
-              )}
-            </div>
-
-            {/* viewer */}
-            <div className="p-4 md:p-5">
-              {!currentMeta ? (
-                <div className="text-slate-500">Tidak ada yang ditampilkan.</div>
-              ) : classify(currentMeta) === "image" ? (
-                <div className="w-full">
-                  <img
-                    src={currentMeta.url}
-                    alt={getDocLabel(currentKey)}
-                    className="w-full h-auto rounded-lg border border-slate-200"
-                  />
-                </div>
-              ) : classify(currentMeta) === "pdf" ? (
-                <div className="w-full">
-                  <iframe
-                    src={currentMeta.url}
-                    title={getDocLabel(currentKey)}
-                    className="w-full h-[70vh] rounded-lg border border-slate-200"
-                  />
-                </div>
-              ) : (
-                <div className="text-slate-600">
-                  Format tidak didukung untuk pratinjau.{" "}
-                  <a
-                    href={currentMeta.url}
-                    target="_blank"
-                    rel="noreferrer"
-                    className="text-violet-700 underline"
-                  >
-                    Buka / Unduh berkas
-                  </a>
-                </div>
-              )}
-
-              {/* daftar semua berkas (mini list) */}
-              <div className="mt-6">
-                <div className="text-xs font-semibold text-slate-500 mb-2">Semua Berkas</div>
-                <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
-                  {availableKeys.map((k) => {
-                    const m = filesMeta?.[k];
-                    const ada = Boolean(m?.url);
-                    return (
-                      <div
-                        key={k}
-                        className={[
-                          "rounded-lg border p-3",
-                          k === currentKey ? "border-violet-300 bg-violet-50/40" : "border-slate-200 bg-white",
-                        ].join(" ")}
-                      >
-                        <div className="flex items-center justify-between">
-                          <div className="font-medium">{getDocLabel(k)}</div>
-                          <span
-                            className={
-                              "inline-flex items-center px-2.5 py-0.5 rounded-full text-[11px] font-medium ring-1 " +
-                              (ada
-                                ? "bg-green-100 text-green-700 ring-green-200"
-                                : "bg-rose-100 text-rose-700 ring-rose-200")
-                            }
-                          >
-                            {ada ? "Ada" : "Belum"}
-                          </span>
-                        </div>
-                        <div className="text-[12px] text-slate-500 mt-1 line-clamp-1">{m?.path || "-"}</div>
-                        <div className="mt-2 flex gap-2">
-                          <button
-                            disabled={!ada}
-                            onClick={() => ada && setActiveKey(k)}
-                            className={[
-                              "px-3 py-1.5 rounded-lg text-xs ring-1",
-                              ada
-                                ? "bg-white text-violet-700 ring-violet-200 hover:bg-violet-50"
-                                : "bg-slate-100 text-slate-400 ring-slate-200 cursor-not-allowed",
-                            ].join(" ")}
-                          >
-                            Lihat
-                          </button>
-                          {ada && (
-                            <a
-                              href={m.url}
-                              target="_blank"
-                              rel="noreferrer"
-                              className="px-3 py-1.5 rounded-lg text-xs ring-1 bg-white text-slate-700 ring-slate-200 hover:bg-slate-50"
-                            >
-                              Buka di Tab
-                            </a>
-                          )}
-                        </div>
-                      </div>
-                    );
-                  })}
-                </div>
-              </div>
-            </div>
-          </div>
-          {/* end body */}
-        </div>
-      </div>
-    </div>
-  );
+  return digits;
 }
 
-/* ================= Page ================= */
-export default function KelengkapanPage() {
+function cls(...parts) {
+  return parts.filter(Boolean).join(" ");
+}
+
+export default function KelengkapanBerkasPage() {
   const [rows, setRows] = useState([]);
   const [loading, setLoading] = useState(true);
-  const [error, setError] = useState("");
+  const [errorMsg, setErrorMsg] = useState("");
+
+  const [pageSize, setPageSize] = useState(50);
+  const [page, setPage] = useState(1);
+
   const [search, setSearch] = useState("");
-  const [userLevels, setUserLevels] = useState({});     
-const [loadingLevels, setLoadingLevels] = useState({});
-  const [pageSize, setPageSize] = useState(10);
-  const [hasMore, setHasMore] = useState(false);
-  const lastCursorRef = useRef(null);
-  
+  const [filterJenjang, setFilterJenjang] = useState("ALL");
 
-  // filter jenjang
-  const [levelFilter, setLevelFilter] = useState("ALL");
+  const [viewerOpen, setViewerOpen] = useState(false);
+  const [viewerNisn, setViewerNisn] = useState(null);
+  const [viewerFileKey, setViewerFileKey] = useState(null);
+  const [viewerRotation, setViewerRotation] = useState(0); // derajat rotasi
+  const [viewerZoom, setViewerZoom] = useState(1); // skala zoom
+    const [uploadBusy, setUploadBusy] = useState(false);
+  const fileInputRef = useRef(null);
 
-  // modal state
-  const [showModal, setShowModal] = useState(false);
-  const [selectedRow, setSelectedRow] = useState(null);
-  const [activeKey, setActiveKey] = useState("");
+  // Load semua dokumen ppdb sekali, lalu pagination & filter di client
+  useEffect(() => {
+    let cancelled = false;
 
-  const isDigits = (s) => /^\d+$/.test(s);
-  const getName = (r) =>
-    r.nama || r.name || r.fullname || r.profile?.fullName || r.profile?.name || "";
+    async function loadAll() {
+      setLoading(true);
+      setErrorMsg("");
+      try {
+        const snap = await getDocs(collection(db, "ppdb"));
+        if (cancelled) return;
 
-  // helper: terapkan filter jenjang di klien (hindari indeks komposit)
-  const applyLevelFilter = (docs) =>
-  levelFilter === "ALL"
-    ? docs
-    : docs.filter((d) => {
-        const nisn = d.nisn || d.id;
-        return (userLevels[nisn] || "").trim() === levelFilter;
-      });
+        const docs = [];
+        snap.forEach((docSnap) => {
+          const data = docSnap.data() || {};
+          const nisn = data.nisn || docSnap.id;
+          const jenjang = data.jenjang || "-";
+          const waliWa = data.waliWa || "";
+          const filesMeta = data.filesMeta || {};
+          const name =
+            data.namaSantri ||
+            data.namaLengkap ||
+            data.nama ||
+            data.name ||
+            "-";
 
-      const visibleRows = useMemo(
-  () => applyLevelFilter(rows),
-  [rows, levelFilter, userLevels]
-);
+          docs.push({
+            id: docSnap.id,
+            nisn,
+            jenjang,
+            waliWa,
+            filesMeta,
+            name,
+          });
+        });
 
-  const fetchUserLevel = async (nisn) => {
-  if (!nisn || userLevels[nisn] || loadingLevels[nisn]) return;
-  setLoadingLevels((m) => ({ ...m, [nisn]: true }));
-  try {
-    // 1) coba 'user_app/{nisn}'
-    let snap = await getDocs(
-      query(collection(db, "user_app"), where("__name__", "==", String(nisn)), limit(1))
-    );
-    let data = !snap.empty ? snap.docs[0].data() : null;
+        // urutkan biar stabil
+        docs.sort((a, b) => {
+          if (a.jenjang === b.jenjang) {
+            return String(a.nisn).localeCompare(String(b.nisn));
+          }
+          return String(a.jenjang).localeCompare(String(b.jenjang));
+        });
 
-    // 2) fallback: 'users_app/{nisn}'
-    if (!data) {
-      const snap2 = await getDocs(
-        query(collection(db, "users_app"), where("__name__", "==", String(nisn)), limit(1))
-      );
-      data = !snap2.empty ? snap2.docs[0].data() : null;
-    }
-
-    const lv = String(data?.registrationLevel || "").trim();
-    if (lv) setUserLevels((m) => ({ ...m, [nisn]: lv }));
-  } finally {
-    setLoadingLevels((m) => ({ ...m, [nisn]: false }));
-  }
-};
-
-  async function loadFirst() {
-    setLoading(true);
-    setError("");
-    try {
-      const col = collection(db, "ppdb");
-      const s = search.trim();
-      let docs = [];
-      let snap;
-
-      if (s && isDigits(s)) {
-        // 🔎 NISN prefix search
-        snap = await getDocs(
-          query(
-            col,
-            orderBy("nisn"),
-            where("nisn", ">=", s),
-            where("nisn", "<=", s + "\uf8ff"),
-            limit(pageSize)
-          )
-        );
-        docs = snap.docs.map((d) => ({ id: d.id, ...d.data() }));
-        docs = applyLevelFilter(docs);
-        lastCursorRef.current = snap.docs.length ? snap.docs[snap.docs.length - 1] : null;
-        setHasMore(snap.docs.length === pageSize);
-      } else if (s) {
-        // 🔎 Nama mengandung (filter klien)
-        snap = await getDocs(query(col, orderBy("createdAt", "desc"), limit(500)));
-        const all = snap.docs.map((d) => ({ id: d.id, ...d.data() }));
-        const ql = s.toLowerCase();
-        docs = all.filter((r) => getName(r).toLowerCase().includes(ql));
-        docs = applyLevelFilter(docs);
-        lastCursorRef.current = null;
-        setHasMore(false);
-      } else {
-        // default: tanpa pencarian → urut createdAt desc + paging
-        snap = await getDocs(query(col, orderBy("createdAt", "desc"), limit(pageSize)));
-        docs = snap.docs.map((d) => ({ id: d.id, ...d.data() }));
-        docs = applyLevelFilter(docs);
-        lastCursorRef.current = snap.docs.length ? snap.docs[snap.docs.length - 1] : null;
-        setHasMore(snap.docs.length === pageSize);
+        setRows(docs);
+        setPage(1);
+      } catch (e) {
+        console.error(e);
+        setErrorMsg(e?.message || "Gagal memuat data kelengkapan berkas.");
+      } finally {
+        if (!cancelled) setLoading(false);
       }
-
-      setRows(docs);
-      docs.forEach((r) => fetchUserLevel(r.nisn || r.id));
-    } catch (e) {
-      setError(e?.message || "Gagal memuat data.");
-      setRows([]);
-      lastCursorRef.current = null;
-      setHasMore(false);
-    } finally {
-      setLoading(false);
     }
-  }
 
-  async function loadMore() {
-    if (!hasMore || !lastCursorRef.current) return;
-    setLoading(true);
-    setError("");
+    loadAll();
 
-    try {
-      const col = collection(db, "ppdb");
-      const s = search.trim();
-      let snap;
+    return () => {
+      cancelled = true;
+    };
+  }, []);
 
-      if (s && isDigits(s)) {
-        // lanjutkan prefix NISN
-        snap = await getDocs(
-          query(
-            col,
-            orderBy("nisn"),
-            where("nisn", ">=", s),
-            where("nisn", "<=", s + "\uf8ff"),
-            startAfter(lastCursorRef.current),
-            limit(pageSize)
-          )
-        );
-      } else {
-        // mode nama tidak support "load more" (filter klien)
-        setLoading(false);
+  // Filter jenjang & search (nama + NISN)
+  const filteredRows = useMemo(() => {
+    let out = [...rows];
+
+    if (filterJenjang !== "ALL") {
+      out = out.filter((r) => (r.jenjang || "") === filterJenjang);
+    }
+
+    if (search.trim()) {
+      const s = search.trim().toLowerCase();
+      out = out.filter(
+        (r) =>
+          r.nisn.toLowerCase().includes(s) ||
+          (r.name || "").toLowerCase().includes(s)
+      );
+    }
+
+    return out;
+  }, [rows, filterJenjang, search]);
+
+  const totalPages = useMemo(() => {
+    if (filteredRows.length === 0) return 1;
+    return Math.max(1, Math.ceil(filteredRows.length / pageSize));
+  }, [filteredRows, pageSize]);
+
+  // Clamp page kalau filter berubah
+  useEffect(() => {
+    if (page > totalPages) {
+      setPage(totalPages);
+    }
+  }, [page, totalPages]);
+
+  const pageRows = useMemo(() => {
+    const start = (page - 1) * pageSize;
+    return filteredRows.slice(start, start + pageSize);
+  }, [filteredRows, page, pageSize]);
+
+  // Jenjang diambil dari Firestore (unique dari rows)
+  const jenjangOptions = useMemo(() => {
+    const set = new Set();
+    rows.forEach((r) => {
+      if (r.jenjang) set.add(r.jenjang);
+    });
+    return Array.from(set).sort();
+  }, [rows]);
+
+  const currentViewerRow = useMemo(
+    () => filteredRows.find((r) => r.nisn === viewerNisn) || null,
+    [filteredRows, viewerNisn]
+  );
+
+  // daftar key berkas untuk row yang sedang dibuka
+  const currentFileKeys = useMemo(() => {
+    if (!currentViewerRow) return [];
+    return Object.keys(currentViewerRow.filesMeta || {});
+  }, [currentViewerRow]);
+
+  useEffect(() => {
+    if (currentViewerRow) {
+      if (!currentFileKeys.length) {
+        setViewerFileKey(null);
         return;
       }
-
-      let docs = snap.docs.map((d) => ({ id: d.id, ...d.data() }));
-      docs = applyLevelFilter(docs);
-
-      setRows((r) => [...r, ...docs]);
-      docs.forEach((r) => fetchUserLevel(r.nisn || r.id));
-      lastCursorRef.current = snap.docs.length ? snap.docs[snap.docs.length - 1] : lastCursorRef.current;
-      setHasMore(snap.docs.length === pageSize);
-    } catch (e) {
-      setError(e?.message || "Gagal memuat data.");
-    } finally {
-      setLoading(false);
+      if (!currentFileKeys.includes(viewerFileKey)) {
+        setViewerFileKey(currentFileKeys[0]);
+      }
     }
-  }
+  }, [currentViewerRow, currentFileKeys, viewerFileKey]);
 
-  // initial + saat page size berubah
-  useEffect(() => {
-    loadFirst();
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [pageSize]);
+  const currentFileMeta =
+    currentViewerRow && viewerFileKey
+      ? currentViewerRow.filesMeta[viewerFileKey]
+      : null;
 
-  // debounce search & ganti filter jenjang
-  useEffect(() => {
-    const t = setTimeout(() => {
-      void loadFirst();
-    }, 300);
-    return () => clearTimeout(t);
-    // ikut pageSize supaya ganti page-size ikut refresh
-  }, [search, levelFilter, pageSize]);
+   const handleReplaceFile = async (event) => {
+    const file = event.target.files?.[0];
+    if (!file || !currentViewerRow || !viewerFileKey) return;
 
-  const openModal = (row) => {
-    setSelectedRow(row);
-    // set tab aktif pertama yang tersedia
-    const keys = Object.keys(row?.filesMeta || {});
-    const first = keys.find((k) => row?.filesMeta?.[k]?.url) || keys[0] || "";
-    setActiveKey(first);
-    setShowModal(true);
+    setUploadBusy(true);
+    try {
+      const nisnForPath = currentViewerRow.nisn || currentViewerRow.id;
+      const safeName = file.name.replace(/\s+/g, "_");
+      const path = `ppdb/${nisnForPath}/${viewerFileKey}-${Date.now()}-${safeName}`;
+      const storageRef = ref(storage, path);
+
+      // upload ke Storage
+      await uploadBytes(storageRef, file);
+      const url = await getDownloadURL(storageRef);
+
+      const newMeta = {
+        contentType: file.type || "application/octet-stream",
+        path,
+        size: file.size,
+        url,
+      };
+
+      // update field filesMeta.<key> di Firestore
+      await updateDoc(doc(db, "ppdb", currentViewerRow.id), {
+        [`filesMeta.${viewerFileKey}`]: newMeta,
+      });
+
+      // sinkronkan ke state lokal
+      setRows((prev) =>
+        prev.map((r) =>
+          r.id === currentViewerRow.id
+            ? {
+                ...r,
+                filesMeta: {
+                  ...r.filesMeta,
+                  [viewerFileKey]: newMeta,
+                },
+              }
+            : r
+        )
+      );
+    } catch (err) {
+      console.error("Gagal mengganti berkas:", err);
+      alert("Gagal mengganti berkas. Coba lagi.");
+    } finally {
+      setUploadBusy(false);
+      if (event.target) event.target.value = "";
+    }
   };
 
-  // kumpulkan opsi jenjang dari data yang sudah dimuat (agar selalu relevan)
-  const levelOptions = useMemo(() => {
-  const s = new Set();
-  Object.values(userLevels).forEach((lv) => {
-    const v = String(lv || "").trim();
-    if (v) s.add(v);
-  });
-  return Array.from(s).sort((a, b) => a.localeCompare(b, "id"));
-}, [userLevels]);
+
+  const onOpenViewer = (row) => {
+    setViewerNisn(row.nisn);
+    setViewerOpen(true);
+    const keys = Object.keys(row.filesMeta || {});
+    setViewerFileKey(keys[0] || null);
+    setViewerRotation(0);
+    setViewerZoom(1);
+  };
+
+  const onCloseViewer = () => {
+    setViewerOpen(false);
+    setViewerNisn(null);
+    setViewerFileKey(null);
+    setViewerRotation(0);
+    setViewerZoom(1);
+  };
+
+  // Next/Prev sekarang pindah antar BERKAS (fileMeta), bukan antar peserta
+  const goFilePrev = () => {
+    if (!currentFileKeys.length || !viewerFileKey) return;
+    const idx = currentFileKeys.indexOf(viewerFileKey);
+    if (idx <= 0) return;
+    setViewerFileKey(currentFileKeys[idx - 1]);
+    setViewerRotation(0);
+    setViewerZoom(1);
+  };
+
+  const goFileNext = () => {
+    if (!currentFileKeys.length || !viewerFileKey) return;
+    const idx = currentFileKeys.indexOf(viewerFileKey);
+    if (idx === -1 || idx >= currentFileKeys.length - 1) return;
+    setViewerFileKey(currentFileKeys[idx + 1]);
+    setViewerRotation(0);
+    setViewerZoom(1);
+  };
+
+  const zoomIn = () => {
+    setViewerZoom((z) => Math.min(3, z + 0.25)); // max 300%
+  };
+
+  const zoomOut = () => {
+    setViewerZoom((z) => Math.max(0.5, z - 0.25)); // min 50%
+  };
+
+  const openWhatsApp = (row) => {
+    if (typeof window === "undefined") return;
+    const phone = normalizePhone(row.waliWa);
+    if (!phone) {
+      alert("Nomor WhatsApp wali tidak tersedia.");
+      return;
+    }
+    const text =
+      "Bismillah.%0A%0APanitia SPMB Pondok As Sunnah Lombok mengecek kelengkapan berkas an. " +
+      encodeURIComponent(row.name || "-") +
+      "%20(NISN%20" +
+      encodeURIComponent(row.nisn) +
+      "%2C%20" +
+      encodeURIComponent(row.jenjang || "-") +
+      ").";
+    const url =
+      "https://web.whatsapp.com/send?phone=" + phone + "&text=" + text;
+    window.location.href = url;
+  };
 
   return (
-    <div className="bg-white">
-      <div className="w-full max-w-none px-4 md:px-6 lg:px-8 py-8 min-h-[calc(100vh-5rem-4rem)] text-black">
-        <h1 className="text-xl md:text-2xl font-semibold text-slate-900">Tabel Kelengkapan PPDB</h1>
-        <p className="text-sm text-slate-600 mt-1">
-          Publik • menampilkan ringkas kelengkapan berkas per <b>NISN</b>.
+    <div className="relative min-h-screen bg-slate-50/60 w-full pb-24">
+      <div className="fixed inset-0 -z-10 bg-slate-50/60" />
+
+      <div className="px-4 pt-6 md:pt-8">
+        <h1 className="text-xl md:text-2xl font-bold tracking-tight text-slate-900">
+          Kelengkapan Berkas Peserta
+        </h1>
+        <p className="mt-1 text-sm text-slate-600">
+          Cek berkas yang diunggah peserta dan hubungi wali melalui WhatsApp.
         </p>
-
-        {/* Toolbar */}
-        <div className="mt-4 flex flex-col md:flex-row md:items-end gap-3 text-black">
-          <div className="flex-1">
-            <label className="block text-xs text-slate-500 mb-1">Cari NISN / Nama</label>
-            <input
-              value={search}
-              onChange={(e) => setSearch(e.target.value)}
-              type="search"
-              autoComplete="off"
-              spellCheck={false}
-              placeholder="Cari NISN / Nama…"
-              className="w-full sm:w-80 md:w-96 lg:w-[40rem] rounded-lg border border-slate-300 px-3 py-2 text-sm text-slate-800"
-            />
-          </div>
-
-          {/* Filter Jenjang */}
-          <div>
-            <label className="block text-xs text-slate-500 mb-1">Filter Jenjang</label>
-            <select
-              value={levelFilter}
-              onChange={(e) => setLevelFilter(e.target.value)}
-              className="rounded-lg border border-slate-200 bg-white px-3 py-2 text-sm shadow-sm focus:outline-none"
-            >
-              <option value="ALL">Semua Jenjang</option>
-              {levelOptions.map((lv) => (
-                <option key={lv} value={lv}>
-                  {lv}
-                </option>
-              ))}
-            </select>
-          </div>
-
-          <div className="flex gap-2">
-            <button
-              onClick={loadFirst}
-              className="rounded-lg bg-violet-600 text-white text-sm font-medium px-4 py-2 shadow hover:bg-violet-700"
-            >
-              Tampil
-            </button>
-            <select
-              value={pageSize}
-              onChange={(e) => setPageSize(parseInt(e.target.value, 10))}
-              className="rounded-lg border border-slate-200 bg-white px-3 py-2 text-sm shadow-sm focus:outline-none"
-            >
-              <option value={10}>10</option>
-              <option value={25}>25</option>
-              <option value={50}>50</option>
-            </select>
-          </div>
-        </div>
-
-        {/* Table */}
-        <div className="mt-4 overflow-x-auto">
-          <table className="w-full text-sm border border-slate-200 border-collapse bg-white">
-            <thead className="bg-slate-50">
-              <tr className="text-left">
-                <th className="border border-slate-200 px-3 py-2 w-[60px]">No</th>
-                <th className="border border-slate-200 px-3 py-2 w-[160px]">NISN</th>
-                <th className="border border-slate-200 px-3 py-2">Nama</th>
-                <th className="border border-slate-200 px-3 py-2">Jenjang</th>
-                <th className="border border-slate-200 px-3 py-2 w-[180px]">Kelengkapan Data</th>
-              </tr>
-            </thead>
-            <tbody>
-              {loading && rows.length === 0 ? (
-                <tr>
-                  <td colSpan={5} className="px-3 py-6 text-center text-slate-500">
-                    Memuat data…
-                  </td>
-                </tr>
-              ) : error ? (
-                <tr>
-                  <td colSpan={5} className="px-3 py-4 text-rose-700 bg-rose-50">
-                    {error}
-                  </td>
-                </tr>
-              ) : rows.length === 0 ? (
-                <tr>
-                  <td colSpan={5} className="px-3 py-6 text-center text-slate-500">
-                    Tidak ada data.
-                  </td>
-                </tr>
-              ) : (
-                rows.map((r, idx) => {
-                  const no = idx + 1;
-                  const nisn = r.nisn || r.id;
-                  const nama = r.nama || r.name || r.fullname || "—";
-                  const jenjang = userLevels[nisn] || "—";
-                  const nBerkas = countFiles(r.filesMeta);
-
-                  const badgeCls =
-                    nBerkas === 0
-                      ? "bg-rose-100 text-rose-700 ring-rose-200"
-                      : nBerkas < 3
-                      ? "bg-amber-100 text-amber-800 ring-amber-200"
-                      : "bg-green-100 text-green-700 ring-green-200";
-
-                  return (
-                    <tr
-                      key={r.id}
-                      className="hover:bg-slate-50/60 cursor-pointer"
-                      onClick={() => openModal(r)}
-                      title="Klik untuk melihat detail dokumen"
-                    >
-                      <td className="border border-slate-200 px-3 py-2 text-center">{no}</td>
-                      <td className="border border-slate-200 px-3 py-2 font-medium tracking-wide">{nisn}</td>
-                      <td className="border border-slate-200 px-3 py-2">{nama}</td>
-                      <td className="border border-slate-200 px-3 py-2">{jenjang}</td>
-                      <td className="border border-slate-200 px-3 py-2">
-                        <span
-                          className={
-                            "inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-medium ring-1 " +
-                            badgeCls
-                          }
-                        >
-                          {nBerkas} berkas • Lihat
-                        </span>
-                      </td>
-                    </tr>
-                  );
-                })
-              )}
-            </tbody>
-          </table>
-        </div>
-
-        {/* Pagination */}
-        <div className="mt-4 flex items-center justify-center">
-          {hasMore && !loading ? (
-            <button
-              onClick={loadMore}
-              className="rounded-lg bg-white text-violet-700 ring-1 ring-violet-200 px-4 py-2 text-sm font-medium hover:bg-violet-50"
-            >
-              Muat lebih banyak
-            </button>
-          ) : null}
-        </div>
       </div>
 
-      {/* Modal Viewer */}
-      <Modal
-        open={showModal}
-        onClose={() => setShowModal(false)}
-        row={selectedRow}
-        activeKey={activeKey}
-        setActiveKey={setActiveKey}
-      />
+      <div className="px-4 pt-4 pb-8">
+        <div className="rounded-2xl border border-slate-200 bg-white shadow-sm overflow-hidden">
+          {/* Toolbar filter + search */}
+          <div className="px-4 py-3 border-b border-slate-100 flex flex-col gap-3 md:flex-row md:items-center md:justify-between">
+            <div className="flex items-center gap-2 text-sm text-slate-600">
+              <Filter className="w-4 h-4" />
+              <span>Filter</span>
+            </div>
+
+            <div className="flex flex-col gap-2 md:flex-row md:items-center md:gap-3">
+              <div className="flex items-center gap-2">
+                <span className="text-xs text-slate-500">Jenjang</span>
+                <select
+                  value={filterJenjang}
+                  onChange={(e) => {
+                    setFilterJenjang(e.target.value);
+                    setPage(1);
+                  }}
+                  className="rounded-lg border border-slate-300 bg-white px-2.5 py-1.5 text-xs text-slate-800 focus:outline-none focus:ring-2 focus:ring-slate-400"
+                >
+                  <option value="ALL">Semua</option>
+                  {jenjangOptions.map((j) => (
+                    <option key={j} value={j}>
+                      {j}
+                    </option>
+                  ))}
+                </select>
+              </div>
+
+              <div className="flex items-center gap-2">
+                <span className="text-xs text-slate-500">Tampil</span>
+                <select
+                  value={pageSize}
+                  onChange={(e) => {
+                    setPageSize(Number(e.target.value));
+                    setPage(1);
+                  }}
+                  className="rounded-lg border border-slate-300 bg-white px-2.5 py-1.5 text-xs text-slate-800 focus:outline-none focus:ring-2 focus:ring-slate-400"
+                >
+                  {PAGE_SIZES.map((n) => (
+                    <option key={n} value={n}>
+                      {n} baris
+                    </option>
+                  ))}
+                </select>
+              </div>
+
+              <div className="relative w-full md:w-64">
+                <Search className="absolute left-2.5 top-2.5 h-4 w-4 text-slate-400" />
+                <input
+                  type="text"
+                  value={search}
+                  onChange={(e) => {
+                    setSearch(e.target.value);
+                    setPage(1);
+                  }}
+                  placeholder="Cari NISN / nama..."
+                  className="w-full rounded-lg border border-slate-300 bg-white pl-8 pr-3 py-1.5 text-xs text-slate-900 placeholder:text-slate-400 focus:outline-none focus:ring-2 focus:ring-slate-400"
+                />
+              </div>
+            </div>
+          </div>
+
+          {/* Tabel utama */}
+          <div className="overflow-x-auto">
+            <table className="min-w-full text-sm">
+              <thead className="bg-slate-50/80">
+                <tr className="text-xs text-slate-500">
+                  <th className="px-4 py-2 text-left font-medium">No</th>
+                  <th className="px-4 py-2 text-left font-medium">NISN</th>
+                  <th className="px-4 py-2 text-left font-medium">Nama</th>
+                  <th className="px-4 py-2 text-left font-medium">Jenjang</th>
+                  <th className="px-4 py-2 text-left font-medium">Berkas</th>
+                  <th className="px-4 py-2 text-left font-medium">WhatsApp</th>
+                </tr>
+              </thead>
+              <tbody>
+                {loading ? (
+                  <tr>
+                    <td
+                      colSpan={6}
+                      className="px-4 py-10 text-center text-slate-500 text-sm"
+                    >
+                      <div className="inline-flex items-center gap-2">
+                        <Loader2 className="h-4 w-4 animate-spin" />
+                        <span>Memuat data…</span>
+                      </div>
+                    </td>
+                  </tr>
+                ) : pageRows.length === 0 ? (
+                  <tr>
+                    <td
+                      colSpan={6}
+                      className="px-4 py-6 text-center text-slate-500 text-sm"
+                    >
+                      Tidak ada data untuk filter ini.
+                    </td>
+                  </tr>
+                ) : (
+                  pageRows.map((row, idx) => (
+                    <tr
+                      key={row.id}
+                      className={cls(
+                        "border-t border-slate-100",
+                        idx % 2 === 0 ? "bg-white" : "bg-slate-50/40"
+                      )}
+                    >
+                      <td className="px-4 py-2 align-top text-xs text-slate-600">
+                        {(page - 1) * pageSize + idx + 1}
+                      </td>
+                      <td className="px-4 py-2 align-top text-xs font-mono text-slate-800">
+                        {row.nisn}
+                      </td>
+                      <td className="px-4 py-2 align-top text-xs text-slate-800">
+                        {row.name || "-"}
+                      </td>
+                      <td className="px-4 py-2 align-top text-xs text-slate-700">
+                        {row.jenjang || "-"}
+                      </td>
+                      <td className="px-4 py-2 align-top text-xs">
+                        {Object.keys(row.filesMeta || {}).length === 0 ? (
+                          <span className="inline-flex items-center rounded-full bg-slate-100 px-2.5 py-1 text-[11px] text-slate-500">
+                            Tidak ada berkas
+                          </span>
+                        ) : (
+                          <button
+                            type="button"
+                            onClick={() => onOpenViewer(row)}
+                            className="inline-flex items-center gap-1 rounded-full bg-violet-600 px-2.5 py-1 text-[11px] font-semibold text-white hover:bg-violet-700"
+                          >
+                            <FileText className="h-3.5 w-3.5" />
+                            Lihat ({Object.keys(row.filesMeta || {}).length})
+                          </button>
+                        )}
+                      </td>
+                      <td className="px-4 py-2 align-top text-xs">
+                        {row.waliWa ? (
+                          <button
+                            type="button"
+                            onClick={() => openWhatsApp(row)}
+                            className="inline-flex items-center gap-1 rounded-full border border-emerald-300 bg-emerald-50 px-2.5 py-1 text-[11px] font-semibold text-emerald-700 hover:bg-emerald-100"
+                          >
+                            <Phone className="h-3.5 w-3.5" />
+                            Hubungi
+                          </button>
+                        ) : (
+                          <span className="inline-flex items-center rounded-full bg-slate-100 px-2.5 py-1 text-[11px] text-slate-400">
+                            Tidak ada nomor
+                          </span>
+                        )}
+                      </td>
+                    </tr>
+                  ))
+                )}
+              </tbody>
+            </table>
+          </div>
+
+          {/* Pagination */}
+          <div className="px-4 py-3 border-t border-slate-100 flex flex-col gap-2 md:flex-row md:items-center md:justify-between">
+            <div className="text-[11px] text-slate-500">
+              Menampilkan{" "}
+              <span className="font-semibold">{pageRows.length}</span> dari{" "}
+              <span className="font-semibold">{filteredRows.length}</span> data ·
+              Halaman{" "}
+              <span className="font-semibold">
+                {page} / {totalPages}
+              </span>
+            </div>
+            <div className="flex items-center justify-end gap-2">
+              <button
+                type="button"
+                disabled={loading || page <= 1}
+                onClick={() => setPage((p) => Math.max(1, p - 1))}
+                className={cls(
+                  "inline-flex items-center gap-1 rounded-lg border px-2.5 py-1.5 text-[11px]",
+                  page > 1 && !loading
+                    ? "border-slate-300 bg-white text-slate-700 hover:bg-slate-50"
+                    : "border-slate-200 bg-slate-50 text-slate-400 cursor-not-allowed"
+                )}
+              >
+                <ChevronLeft className="h-3 w-3" />
+                Prev
+              </button>
+              <button
+                type="button"
+                disabled={loading || page >= totalPages}
+                onClick={() => setPage((p) => Math.min(totalPages, p + 1))}
+                className={cls(
+                  "inline-flex items-center gap-1 rounded-lg border px-2.5 py-1.5 text-[11px]",
+                  page < totalPages && !loading
+                    ? "border-slate-300 bg-white text-slate-700 hover:bg-slate-50"
+                    : "border-slate-200 bg-slate-50 text-slate-400 cursor-not-allowed"
+                )}
+              >
+                Next
+                <ChevronRight className="h-3 w-3" />
+              </button>
+            </div>
+          </div>
+        </div>
+
+        {errorMsg && <p className="mt-3 text-xs text-red-600">{errorMsg}</p>}
+      </div>
+
+      {/* Modal viewer berkas */}
+      {viewerOpen && currentViewerRow && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/60">
+          <div className="bg-white rounded-2xl shadow-2xl w-full max-w-5xl h-[90vh] flex flex-col overflow-hidden">
+            <div className="flex items-center justify-between px-5 py-3 border-b border-slate-200">
+               <input
+              ref={fileInputRef}
+              type="file"
+              accept="application/pdf,image/*"
+              className="hidden"
+              onChange={handleReplaceFile}
+            />
+              <div className="min-w-0">
+                <div className="text-xs font-mono text-slate-500">
+                  {currentViewerRow.nisn}
+                </div>
+                <div className="text-sm font-semibold text-slate-900 truncate">
+                  {currentViewerRow.name || "-"}
+                </div>
+                <div className="text-[11px] text-slate-500">
+                  Jenjang: {currentViewerRow.jenjang || "-"}
+                </div>
+              </div>
+
+              <div className="flex flex-wrap items-center gap-2 justify-end">
+                {/* Prev / Next berkas */}
+                <button
+                  type="button"
+                  onClick={goFilePrev}
+                  disabled={!currentFileKeys.length || !viewerFileKey}
+                  className={cls(
+                    "inline-flex items-center gap-1 rounded-full border px-2.5 py-1.5 text-[11px]",
+                    currentFileKeys.length > 0 &&
+                      currentFileKeys.indexOf(viewerFileKey) > 0
+                      ? "border-slate-300 bg-white text-slate-700 hover:bg-slate-50"
+                      : "border-slate-200 bg-slate-50 text-slate-400 cursor-not-allowed"
+                  )}
+                >
+                  <ChevronLeft className="h-3 w-3" />
+                  Prev Berkas
+                </button>
+
+                <button
+                  type="button"
+                  onClick={goFileNext}
+                  disabled={
+                    !currentFileKeys.length ||
+                    !viewerFileKey ||
+                    currentFileKeys.indexOf(viewerFileKey) ===
+                      currentFileKeys.length - 1
+                  }
+                  className={cls(
+                    "inline-flex items-center gap-1 rounded-full border px-2.5 py-1.5 text-[11px]",
+                    currentFileKeys.length > 0 &&
+                      viewerFileKey &&
+                      currentFileKeys.indexOf(viewerFileKey) <
+                        currentFileKeys.length - 1
+                      ? "border-slate-300 bg-white text-slate-700 hover:bg-slate-50"
+                      : "border-slate-200 bg-slate-50 text-slate-400 cursor-not-allowed"
+                  )}
+                >
+                  Next Berkas
+                  <ChevronRight className="h-3 w-3" />
+                </button>
+
+                {/* Rotasi kiri / kanan */}
+                <button
+                  type="button"
+                  onClick={() =>
+                    setViewerRotation((r) => (r - 90 + 360) % 360)
+                  }
+                  disabled={!currentFileMeta}
+                  className={cls(
+                    "inline-flex items-center gap-1 rounded-full border px-2.5 py-1.5 text-[11px]",
+                    currentFileMeta
+                      ? "border-slate-300 bg-white text-slate-700 hover:bg-slate-50"
+                      : "border-slate-200 bg-slate-50 text-slate-400 cursor-not-allowed"
+                  )}
+                >
+                  <RotateCcw className="h-3 w-3" />
+                  Rotasi Kiri
+                </button>
+
+                <button
+                  type="button"
+                  onClick={() =>
+                    setViewerRotation((r) => (r + 90) % 360)
+                  }
+                  disabled={!currentFileMeta}
+                  className={cls(
+                    "inline-flex items-center gap-1 rounded-full border px-2.5 py-1.5 text-[11px]",
+                    currentFileMeta
+                      ? "border-slate-300 bg-white text-slate-700 hover:bg-slate-50"
+                      : "border-slate-200 bg-slate-50 text-slate-400 cursor-not-allowed"
+                  )}
+                >
+                  <RotateCw className="h-3 w-3" />
+                  Rotasi Kanan
+                </button>
+
+                {/* Zoom out / in */}
+                <button
+                  type="button"
+                  onClick={zoomOut}
+                  disabled={!currentFileMeta}
+                  className={cls(
+                    "inline-flex items-center gap-1 rounded-full border px-2.5 py-1.5 text-[11px]",
+                    currentFileMeta
+                      ? "border-slate-300 bg-white text-slate-700 hover:bg-slate-50"
+                      : "border-slate-200 bg-slate-50 text-slate-400 cursor-not-allowed"
+                  )}
+                >
+                  <ZoomOut className="h-3 w-3" />
+                  Zoom Out
+                </button>
+
+                <button
+                  type="button"
+                  onClick={zoomIn}
+                  disabled={!currentFileMeta}
+                  className={cls(
+                    "inline-flex items-center gap-1 rounded-full border px-2.5 py-1.5 text-[11px]",
+                    currentFileMeta
+                      ? "border-slate-300 bg-white text-slate-700 hover:bg-slate-50"
+                      : "border-slate-200 bg-slate-50 text-slate-400 cursor-not-allowed"
+                  )}
+                >
+                  <ZoomIn className="h-3 w-3" />
+                  Zoom In
+                </button>
+
+                  {/* Ganti berkas */}
+                <button
+                  type="button"
+                  onClick={() => fileInputRef.current?.click()}
+                  disabled={!currentFileMeta || uploadBusy}
+                  className={cls(
+                    "inline-flex items-center gap-1 rounded-full border px-2.5 py-1.5 text-[11px]",
+                    currentFileMeta && !uploadBusy
+                      ? "border-amber-400 bg-amber-50 text-amber-700 hover:bg-amber-100"
+                      : "border-slate-200 bg-slate-50 text-slate-400 cursor-not-allowed"
+                  )}
+                >
+                  {uploadBusy ? (
+                    <>
+                      <Loader2 className="h-3 w-3 animate-spin" />
+                      Menyimpan...
+                    </>
+                  ) : (
+                    <>
+                      <FileText className="h-3 w-3" />
+                      Ganti Berkas
+                    </>
+                  )}
+                </button>
+
+                {/* Buka tab lain */}
+                {currentFileMeta?.url && (
+                  <a
+                    href={currentFileMeta.url}
+                    target="_blank"
+                    rel="noreferrer"
+                    className="inline-flex items-center gap-1 rounded-full border border-slate-300 bg-white px-2.5 py-1.5 text-[11px] text-slate-700 hover:bg-slate-50"
+                    title="Buka di tab lain"
+                  >
+                    <Download className="h-3 w-3" />
+                    Download
+                  </a>
+                )}
+
+                <button
+                  type="button"
+                  onClick={onCloseViewer}
+                  className="inline-flex items-center justify-center rounded-full bg-slate-100 p-1.5 text-slate-600 hover:bg-slate-200"
+                >
+                  <X className="h-4 w-4" />
+                </button>
+              </div>
+            </div>
+
+            {/* Tabs jenis berkas */}
+            <div className="flex border-b border-slate-200 overflow-x-auto px-4 py-2 gap-2">
+              {currentFileKeys.map((key) => (
+                <button
+                  key={key}
+                  type="button"
+                  onClick={() => {
+                    setViewerFileKey(key);
+                    setViewerRotation(0);
+                    setViewerZoom(1);
+                  }}
+                  className={cls(
+                    "inline-flex items-center rounded-full px-3 py-1 text-[11px] border whitespace-nowrap",
+                    viewerFileKey === key
+                      ? "bg-violet-600 border-violet-600 text-white"
+                      : "bg-slate-50 border-slate-200 text-slate-700 hover:bg-slate-100"
+                  )}
+                >
+                  {key.toUpperCase()}
+                </button>
+              ))}
+            </div>
+
+            {/* Preview berkas */}
+            <div className="flex-1 bg-slate-900/5 p-3 md:p-4 overflow-auto">
+              {currentFileMeta ? (
+                <div className="w-full h-full flex items-center justify-center">
+                  <div
+                    className="max-h-full max-w-full"
+                    style={{
+                      transform: `rotate(${viewerRotation}deg) scale(${viewerZoom})`,
+                      transformOrigin: "center center",
+                      transition: "transform 0.15s ease-out",
+                    }}
+                  >
+                    {currentFileMeta.contentType?.includes("pdf") ? (
+                      <iframe
+                        src={currentFileMeta.url}
+                        className="w-[min(900px,80vw)] h-[min(650px,80vh)] rounded-lg border border-slate-300 bg-white"
+                      />
+                    ) : currentFileMeta.contentType?.startsWith("image/") ? (
+                      <img
+                        src={currentFileMeta.url}
+                        alt={viewerFileKey || "Berkas"}
+                        className="max-h-[80vh] max-w-[80vw] rounded-lg border border-slate-300 bg-white object-contain"
+                      />
+                    ) : (
+                      <div className="w-full h-full flex items-center justify-center">
+                        <a
+                          href={currentFileMeta.url}
+                          target="_blank"
+                          rel="noreferrer"
+                          className="text-sm text-violet-700 hover:underline"
+                        >
+                          Format berkas tidak bisa dipreview. Klik untuk
+                          membuka di tab baru.
+                        </a>
+                      </div>
+                    )}
+                  </div>
+                </div>
+              ) : (
+                <div className="w-full h-full flex items-center justify-center text-sm text-slate-500">
+                  Tidak ada berkas yang dipilih.
+                </div>
+              )}
+            </div>
+          </div>
+        </div>
+      )}
     </div>
   );
 }
