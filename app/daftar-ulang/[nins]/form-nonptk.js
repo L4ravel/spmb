@@ -302,7 +302,7 @@ export default function FormNonPTK({
 
   // 🧩 Data Saudara (opsional, MULTI)
   const [hasSibling, setHasSibling] = useState(false);
-  const [siblings, setSiblings] = useState([]); // [{name:'', level:''}, ...]
+  const [siblings, setSiblings] = useState([]);
   const [savingSibling, setSavingSibling] = useState(false);
   const [savedSiblingAt, setSavedSiblingAt] = useState(0);
 
@@ -372,25 +372,31 @@ export default function FormNonPTK({
         if (!registrationLevel)
           throw new Error("Jenjang belum terisi.");
 
-        // Prefill Data Saudara (multi/legacy)
+        // Prefill Data Saudara (multi/legacy)     
         let preSiblings = [];
         if (Array.isArray(u?.siblings)) {
           preSiblings = (u.siblings || [])
             .map((s) => ({
               name: (s?.name || s?.nama || "").toString(),
               level: (s?.level || s?.jenjang || "").toString(),
+              // ambil kelas saudara jika ada (class / kelas)
+              class: (s?.class || s?.kelas || "").toString(),
             }))
-            .filter((s) => s.name || s.level);
+            .filter((s) => s.name || s.level || s.class);
         } else {
           const n = (u?.siblingsCount ?? u?.jumlahSaudara ?? 0) | 0;
           const preName = (
             u?.saudaraNama || u?.namaSaudara || ""
           ).toString();
           const preLevel = (u?.saudaraJenjang || "").toString();
-          if (preName || preLevel || n > 0) {
-            preSiblings = [{ name: preName, level: preLevel }];
+          const preClass = (u?.saudaraKelas || "").toString();
+          if (preName || preLevel || preClass || n > 0) {
+            preSiblings = [
+              { name: preName, level: preLevel, class: preClass },
+            ];
           }
         }
+
 
         // 2) fees (by label)
         const col = collection(db, "re_registration_fees");
@@ -532,10 +538,13 @@ export default function FormNonPTK({
   }, [user?.registrationLevel]);
 
   // Helpers multi-saudara
-    const addSibling = useCallback(() => {
-    setHasSibling(true);
-    setSiblings((arr) => [...arr, { name: "", level: "" }]);
-  }, []);
+   const addSibling = useCallback(() => {
+  setHasSibling(true);
+  setSiblings((arr) => [
+    ...arr,
+    { name: "", level: "", class: "" },
+  ]);
+}, []);
 
   const updateSibling = useCallback((idx, key, val) => {
     setSiblings((arr) => arr.map((it, i) => (i === idx ? { ...it, [key]: val } : it)));
@@ -552,19 +561,24 @@ export default function FormNonPTK({
 
         // Normalisasi
         const raw = (source || []).map((s) => ({
-          name: (s?.name || s?.nama || "").toString().trim(),
-          level: (s?.level || s?.jenjang || "").toString().trim(),
-        }));
+  name: (s?.name || s?.nama || "").toString().trim(),
+  level: (s?.level || s?.jenjang || "").toString().trim(),
+  class: (s?.class || s?.kelas || "").toString().trim(),
+}));
 
-        // ✅ VALIDASI: jika nama diisi tapi level kosong → blok
-        const invalid = raw.some((s) => s.name && !s.level);
-        if (invalid) {
-          alert("Jika mengisi nama saudara, jenjang saudara wajib dipilih.");
-          return;
-        }
+// ✅ VALIDASI: jika nama diisi tapi jenjang atau kelas kosong → blok
+const invalid = raw.some(
+  (s) => s.name && (!s.level || !s.class)
+);
+if (invalid) {
+  alert(
+    "Jika mengisi nama saudara, jenjang dan kelas saudara wajib dipilih."
+  );
+  return;
+}
 
-        // Buang baris kosong
-        const cleaned = raw.filter((s) => s.name || s.level);
+// Buang baris kosong
+const cleaned = raw.filter((s) => s.name || s.level || s.class);
         const count = cleaned.length;
 
         const res = await fetch("/api/ptk/confirm", {
@@ -815,72 +829,96 @@ export default function FormNonPTK({
 
                   {hasSibling ? (
                     <div className="mt-4 space-y-3">
-                      {siblings.map((s, idx) => (
-                        <div
-                          key={idx}
-                          className="grid grid-cols-1 md:grid-cols-7 gap-3 items-end"
-                        >
-                          <div className="md:col-span-4">
-                            <label className="block text-xs font-medium text-slate-700 mb-1">
-                              Nama Saudara #{idx + 1}
-                            </label>
-                            <input
-                              type="text"
-                              value={s.name}
-                              onChange={(e) =>
-                                updateSibling(
-                                  idx,
-                                  "name",
-                                  e.target.value
-                                )
-                              }
-                              placeholder="Tulis nama saudara"
-                              className="w-full rounded-lg border border-slate-300 bg-white px-3 py-2 text-sm text-slate-900 placeholder:text-slate-400 focus:outline-none focus:ring-2 focus:ring-violet-300"
-                            />
-                          </div>
-                          <div className="md:col-span-3">
-                            <label className="block text-xs font-medium text-slate-700 mb-1">
-                              Jenjang Saudara #{idx + 1}
-                            </label>
-                            <select
-                              value={s.level}
-                              onChange={(e) =>
-                                updateSibling(
-                                  idx,
-                                  "level",
-                                  e.target.value
-                                )
-                              }
-                              className="w-full rounded-lg border border-slate-300 bg-white px-3 py-2 text-sm text-slate-900 focus:outline-none focus:ring-2 focus:ring-violet-300"
-                            >
-                              <option value="">
-                                Pilih jenjang
-                              </option>
-                              {siblingLevelOptions.map((opt) => (
-                                <option
-                                  key={opt}
-                                  value={opt}
-                                >
-                                  {opt}
-                                </option>
-                              ))}
-                            </select>
-                          </div>
-                          <div className="md:col-span-7 flex items-center justify-end">
-                            <button
-                              type="button"
-                              onClick={() =>
-                                removeSibling(idx)
-                              }
-                              className="inline-flex items-center gap-2 rounded-lg border border-rose-300 bg-white px-3 py-2 text-sm font-semibold text-rose-700 hover:bg-rose-50"
-                              title="Hapus baris saudara ini"
-                            >
-                              <Trash2 className="h-4 w-4" />
-                              Hapus
-                            </button>
-                          </div>
-                        </div>
-                      ))}
+                      {siblings.map((s, idx) => {
+  const lvl = (s.level || "").toLowerCase();
+  let kelasOptions = [];
+  if (lvl.includes("sd")) {
+    // SD: 1–5
+    kelasOptions = ["1", "2", "3", "4", "5"];
+  } else if (lvl.includes("smp")) {
+    // SMP: 7–8
+    kelasOptions = ["7", "8"];
+  } else if (lvl.includes("sma")) {
+    // SMA: 10–11
+    kelasOptions = ["10", "11"];
+  }
+
+  return (
+    <div
+      key={idx}
+      className="grid grid-cols-1 md:grid-cols-9 gap-3 items-end"
+    >
+      <div className="md:col-span-4">
+        <label className="block text-xs font-medium text-slate-700 mb-1">
+          Nama Saudara #{idx + 1}
+        </label>
+        <input
+          type="text"
+          value={s.name}
+          onChange={(e) =>
+            updateSibling(idx, "name", e.target.value)
+          }
+          placeholder="Tulis nama saudara"
+          className="w-full rounded-lg border border-slate-300 bg-white px-3 py-2 text-sm text-slate-900 placeholder:text-slate-400 focus:outline-none focus:ring-2 focus:ring-violet-300"
+        />
+      </div>
+
+      <div className="md:col-span-3">
+        <label className="block text-xs font-medium text-slate-700 mb-1">
+          Jenjang Saudara #{idx + 1}
+        </label>
+        <select
+          value={s.level}
+          onChange={(e) =>
+            updateSibling(idx, "level", e.target.value)
+          }
+          className="w-full rounded-lg border border-slate-300 bg-white px-3 py-2 text-sm text-slate-900 focus:outline-none focus:ring-2 focus:ring-violet-300"
+        >
+          <option value="">Pilih jenjang</option>
+          {siblingLevelOptions.map((opt) => (
+            <option key={opt} value={opt}>
+              {opt}
+            </option>
+          ))}
+        </select>
+      </div>
+
+      <div className="md:col-span-2">
+        <label className="block text-xs font-medium text-slate-700 mb-1">
+          Kelas Saudara #{idx + 1}
+        </label>
+        <select
+          value={s.class || ""}
+          onChange={(e) =>
+            updateSibling(idx, "class", e.target.value)
+          }
+          disabled={kelasOptions.length === 0}
+          className="w-full rounded-lg border border-slate-300 bg-white px-3 py-2 text-sm text-slate-900 focus:outline-none focus:ring-2 focus:ring-violet-300 disabled:bg-slate-100 disabled:text-slate-400"
+        >
+          <option value="">Pilih kelas</option>
+          {kelasOptions.map((opt) => (
+            <option key={opt} value={opt}>
+              {opt}
+            </option>
+          ))}
+        </select>
+      </div>
+
+      <div className="md:col-span-9 flex items-center justify-end">
+        <button
+          type="button"
+          onClick={() => removeSibling(idx)}
+          className="inline-flex items-center gap-2 rounded-lg border border-rose-300 bg-white px-3 py-2 text-sm font-semibold text-rose-700 hover:bg-rose-50"
+          title="Hapus baris saudara ini"
+        >
+          <Trash2 className="h-4 w-4" />
+          Hapus
+        </button>
+      </div>
+    </div>
+  );
+})}
+
 
                       <div className="flex items-center justify-between">
                         <button

@@ -218,16 +218,19 @@ function siblingListFromConfirm(x) {
       if (!s) return;
       const name = ((s.name ?? s.nama) || "").toString().trim();
       const jenjang = (s.jenjang || s.level || "").toString().trim();
-      if (name || jenjang) list.push({ name, jenjang });
+      const kelas = (s.class || s.kelas || s.siblingClass || "").toString().trim();
+      if (name || jenjang || kelas) list.push({ name, jenjang, kelas });
     });
   }
-  if (!list.length && (x.siblingName || x.siblingJenjang)) {
+  if (!list.length && (x.siblingName || x.siblingJenjang || x.siblingClass)) {
     const name = (x.siblingName || "").toString().trim();
     const jenjang = (x.siblingJenjang || "").toString().trim();
-    if (name || jenjang) list.push({ name, jenjang });
+    const kelas = (x.siblingClass || "").toString().trim();
+    if (name || jenjang || kelas) list.push({ name, jenjang, kelas });
   }
   return list;
 }
+
 function siblingListFromRootUser(u) {
   const list = [];
   if (!u) return list;
@@ -236,16 +239,19 @@ function siblingListFromRootUser(u) {
       if (!s) return;
       const name = ((s.name ?? s.nama) || "").toString().trim();
       const jenjang = (s.jenjang || s.level || "").toString().trim();
-      if (name || jenjang) list.push({ name, jenjang });
+      const kelas = (s.class || s.kelas || "").toString().trim();
+      if (name || jenjang || kelas) list.push({ name, jenjang, kelas });
     });
   }
   if (!list.length) {
     const name = (u.saudaraNama || u.namaSaudara || "").toString().trim();
     const jenjang = (u.saudaraJenjang || u.jenjangSaudara || "").toString().trim();
-    if (name || jenjang) list.push({ name, jenjang });
+    const kelas = (u.saudaraKelas || u.kelasSaudara || "").toString().trim();
+    if (name || jenjang || kelas) list.push({ name, jenjang, kelas });
   }
   return list;
 }
+
 function siblingListFromSources(confirmData, rootUser) {
   const fromConfirm = siblingListFromConfirm(confirmData);
   if (fromConfirm.length) return fromConfirm;
@@ -981,20 +987,27 @@ export function NonPTKPanel({ db, jenjangFilter, pageSize = 10, onRowSelect }) {
                     {sibList.map((s, idx) => (
                       <div key={idx} className="rounded-xl border border-slate-200 p-3">
                         <div className="text-xs text-slate-500 mb-1">Saudara #{idx + 1}</div>
-                        <div className="grid grid-cols-1 sm:grid-cols-2 gap-2">
-                          <div>
-                            <div className="text-[11px] text-slate-500">Nama</div>
-                            <div className="text-sm font-semibold text-slate-900">
-                              {s.name || "-"}
-                            </div>
-                          </div>
-                          <div>
-                            <div className="text-[11px] text-slate-500">Jenjang</div>
-                            <div className="text-sm font-semibold text-slate-900">
-                              {s.jenjang || "-"}
-                            </div>
-                          </div>
-                        </div>
+                        <div className="grid grid-cols-1 sm:grid-cols-3 gap-2">
+  <div>
+    <div className="text-[11px] text-slate-500">Nama</div>
+    <div className="text-sm font-semibold text-slate-900">
+      {s.name || "-"}
+    </div>
+  </div>
+  <div>
+    <div className="text-[11px] text-slate-500">Jenjang</div>
+    <div className="text-sm font-semibold text-slate-900">
+      {s.jenjang || "-"}
+    </div>
+  </div>
+  <div>
+    <div className="text-[11px] text-slate-500">Kelas</div>
+    <div className="text-sm font-semibold text-slate-900">
+      {s.kelas || s.class || "-"}
+    </div>
+  </div>
+</div>
+
                       </div>
                     ))}
                   </div>
