@@ -10,6 +10,7 @@ import {
   doc,
   getDoc,
   setDoc,
+  addDoc,   
   updateDoc,
   serverTimestamp,
   deleteDoc,
@@ -478,10 +479,84 @@ export function KonfirmasiPotonganPanel({
     }
   }, [db, selected, isNonPTK, currentDiscount]);
 
+   // Kirim WA ke wali ketika status PTK disetujui / ditolak
+  async function sendWaPtkNotification(status) {
+    try {
+      if (!selected?.nisn) return;
+
+      const nisn = selected.nisn;
+
+      // Ambil nomor WA wali dari koleksi ppdb
+      const ppdbSnap = await getDoc(doc(db, "ppdb", nisn));
+      if (!ppdbSnap.exists()) return;
+
+      const p = ppdbSnap.data() || {};
+      let rawWa =
+        p.waliWa || p.waliHP || p.waliTelp || p.waWali || p.hpWali || "";
+      if (!rawWa) return;
+
+      // Ambil hanya digit
+      let digits = String(rawWa).replace(/[^\d]/g, "");
+      if (!digits) return;
+
+      // Normalisasi 08xx → 62xx
+      if (digits.startsWith("0")) {
+        digits = "62" + digits.slice(1);
+      }
+      const phone = digits;
+
+      const nama =
+        selected?.name ||
+        p.namaSantri ||
+        p.nama ||
+        p.namaLengkap ||
+        "-";
+
+      const jenjang =
+        regLevel ||
+        p.registrationLevel ||
+        p.jenjang ||
+        p.tingkat ||
+        "-";
+
+      const statusKalimat =
+        status === "APPROVED"
+          ? "telah DISETUJUI sebagai peserta jalur PTK. Silahkan lanjutkan proses daftar ulang."
+          : "BELUM DISETUJUI / DITOLAK sebagai peserta jalur PTK. Silakan menghubungi panitia SPMB untuk informasi lebih lanjut.";
+
+      const message =
+        `Bismillah.\n\n` +
+        `Pengajuan jalur PTK untuk peserta a.n. ${nama} ` +
+        `(${jenjang}, NISN ${nisn}) ${statusKalimat}\n\n` +
+        `Pesan ini dikirim otomatis oleh Panitia SPMB Pondok Asunnah Lombok.`;
+
+      // Buka WhatsApp Web
+      if (typeof window !== "undefined") {
+        const url =
+          "https://web.whatsapp.com/send?phone=" +
+          phone +
+          "&text=" +
+          encodeURIComponent(message);
+        window.open(url, "_blank", "noopener,noreferrer");
+      }
+
+      // (Opsional) simpan log WA
+      await addDoc(collection(db, "wa_logs"), {
+        to: phone,
+        message,
+        type: status === "APPROVED" ? "ptk:approved" : "ptk:rejected",
+        ref: `ptk_confirmation:${nisn}`,
+        createdAt: serverTimestamp(),
+      }).catch(() => {});
+    } catch (e) {
+      console.error("Gagal mengirim WA PTK:", e);
+    }
+  }
+
   /* 5) Approve / Reject PTK — hanya tampil untuk PTK */
   const onApprove = useCallback(async () => {
     if (!selected?.snap) return;
-    try {
+        try {
       setIsApproving(true);
       await updateDoc(selected.snap.ref, {
         status: "APPROVED",
@@ -489,6 +564,9 @@ export function KonfirmasiPotonganPanel({
       });
       setStatusLocal("APPROVED");
       onAfterApprove?.();
+
+      // Kirim WA ke wali
+      await sendWaPtkNotification("APPROVED");
 
       window.dispatchEvent(
         new CustomEvent("ptk:status-changed", {
@@ -508,13 +586,17 @@ export function KonfirmasiPotonganPanel({
 
   const onReject = useCallback(async () => {
     if (!selected?.snap) return;
-    try {
+     try {
       setIsRejecting(true);
       await updateDoc(selected.snap.ref, {
         status: "REJECTED",
         updatedAt: serverTimestamp(),
       });
       setStatusLocal("REJECTED");
+
+      // Kirim WA ke wali
+      await sendWaPtkNotification("REJECTED");
+
       window.dispatchEvent(
         new CustomEvent("ptk:status-changed", {
           detail: {

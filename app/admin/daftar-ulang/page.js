@@ -18,6 +18,7 @@ import {
   addDoc,
   serverTimestamp,
 } from "firebase/firestore";
+import { getAuth, onAuthStateChanged } from "firebase/auth";
 import {
   getStorage,
   ref as storageRef,
@@ -53,6 +54,7 @@ const firebaseConfig = {
 const app = getApps().length ? getApp() : initializeApp(firebaseConfig);
 const db = getFirestore(app);
 const storage = getStorage(app);
+const auth = getAuth(app);
 
 const PAGE_SIZES = [10, 25, 50];
 
@@ -89,28 +91,35 @@ function normalizeStatus(pLike) {
 /* ========= MODAL ========= */
 function ImageModal({ imageUrl, onClose }) {
   if (!imageUrl) return null;
+
   return (
     <div
       className="fixed inset-0 z-50 flex items-center justify-center bg-black/80 p-4"
       onClick={onClose}
     >
-      <div className="relative max-w-4xl max-h-[90vh] w-full">
+      <div
+        className="relative w-full max-w-4xl max-h-[90vh] bg-black/60 rounded-lg flex flex-col"
+        onClick={(e) => e.stopPropagation()} // klik di dalam modal tidak menutup
+      >
         <button
           onClick={onClose}
           className="absolute -top-12 right-0 p-2 rounded-full bg-white/10 hover:bg-white/20 text-white transition"
         >
           <X className="h-6 w-6" />
         </button>
-        <img
-          src={imageUrl}
-          alt="Bukti Pembayaran"
-          className="w-full h-full object-contain rounded-lg"
-          onClick={(e) => e.stopPropagation()}
-        />
+
+        <div className="flex-1 overflow-auto">
+          <img
+            src={imageUrl}
+            alt="Bukti Pembayaran"
+            className="w-full max-h-[90vh] object-contain rounded-lg"
+          />
+        </div>
       </div>
     </div>
   );
 }
+
 
 /* ========= PANEL KANAN: Persetujuan Pembayaran ========= */
 function PaymentsVerificationPanel({ db, selectedNisn, headerSuffix = "" }) {
@@ -121,6 +130,19 @@ function PaymentsVerificationPanel({ db, selectedNisn, headerSuffix = "" }) {
   const [pageSize, setPageSize] = useState(10);
   const [busyId, setBusyId] = useState("");
   const [viewImage, setViewImage] = useState(null);
+  const [adminEmail, setAdminEmail] = useState("");
+  const [authReady, setAuthReady] = useState(false);
+  const [confirmOpen, setConfirmOpen] = useState(false);
+  const [confirmAction, setConfirmAction] = useState(null); 
+  const [confirmRow, setConfirmRow] = useState(null);
+
+  useEffect(() => {
+    const unsub = onAuthStateChanged(auth, (user) => {
+      setAdminEmail(user?.email || "");
+      setAuthReady(true);
+    });
+    return unsub;
+  }, []);
 
   const [statusFilter, setStatusFilter] = useState("pending"); // 'pending' | 'approved' | 'rejected' | 'all'
   const selectedKey = useMemo(() => String(selectedNisn ?? ""), [selectedNisn]);
@@ -221,24 +243,163 @@ function PaymentsVerificationPanel({ db, selectedNisn, headerSuffix = "" }) {
     loadPage("first", null);
   }, [pageSize, selectedKey, statusFilter, loadPage]);
 
+     const sendWaNotification = async (row, action) => {
+    try {
+      const nisn = row.nisn;
+      if (!nisn) return;
+
+      // Ambil data PPDB untuk dapatkan nomor WA wali
+      const ppdbSnap = await getDoc(doc(db, "ppdb", nisn));
+      if (!ppdbSnap.exists()) return;
+
+      const p = ppdbSnap.data() || {};
+      let rawWa =
+        p.waliWa || p.waliHP || p.waliTelp || p.waWali || p.hpWali || "";
+      if (!rawWa) return;
+
+      // Ambil hanya digit
+      let digits = String(rawWa).replace(/[^\d]/g, "");
+      if (!digits) return;
+
+      // Normalisasi: 08xx -> 62xx
+      if (digits.startsWith("0")) {
+        digits = "62" + digits.slice(1);
+      }
+      const phone = digits;
+
+      const nama =
+        row.student?.name ||
+        p.namaSantri ||
+        p.nama ||
+        p.namaLengkap ||
+        "-";
+      const jenjang =
+        row.student?.level ||
+        p.registrationLevel ||
+        p.jenjang ||
+        p.tingkat ||
+        "-";
+      const amountText = fmtIDR(row.amount || 0);
+
+      const statusKalimat =
+        action === "approve"
+          ? "telah DISETUJUI oleh panitia."
+          : "BELUM DISETUJUI / DITOLAK oleh panitia. Silakan menghubungi panitia SPMB untuk informasi lebih lanjut.";
+
+      const message =
+        `Bismillah.\n\n` +
+        `Pembayaran daftar ulang sebesar ${amountText} untuk peserta a.n. ${nama} ` +
+        `(${jenjang}, NISN ${nisn}) ${statusKalimat}\n\n` +
+        `Pesan ini dikirim otomatis oleh Panitia SPMB Pondok Asunnah Lombok.`;
+
+      // ==== WA WEB: buka tab baru ====    
+if (typeof window !== "undefined") {
+  const url =
+    "https://web.whatsapp.com/send?phone=" +
+    phone +
+    "&text=" +
+    encodeURIComponent(message);
+  window.open(url, "_blank", "noopener,noreferrer");
+}
+
+
+      // (Opsional) tetap tulis log ke Firestore
+      await addDoc(collection(db, "wa_logs"), {
+        to: phone,
+        message,
+        type:
+          action === "approve"
+            ? "payment:rereg_approved"
+            : "payment:rereg_rejected",
+        ref: `rereg_payment:${nisn}:${row.id}`,
+        createdAt: serverTimestamp(),
+        createdBy: adminEmail || null,
+      });
+    } catch (err) {
+      console.error("Gagal membuat log / membuka WA pembayaran:", err);
+    }
+  };
+
+    const confirmAndAct = (row, action) => {
+    if (typeof window === "undefined") return;
+
+    const isApprove = action === "approve";
+    const message = isApprove
+      ? "Apakah Anda yakin ingin MENYETUJUI pembayaran ini dan mengirim WhatsApp ke wali?"
+      : "Apakah Anda yakin ingin MENOLAK pembayaran ini dan mengirim WhatsApp ke wali?";
+
+    const ok = window.confirm(message);
+    if (!ok) return;
+
+    return act(row, action);
+  };
+
+   const openConfirm = (row, action) => {
+    setConfirmRow(row);
+    setConfirmAction(action);
+    setConfirmOpen(true);
+  };
+
+  const handleConfirmYes = async () => {
+    if (!confirmRow || !confirmAction) {
+      setConfirmOpen(false);
+      return;
+    }
+    await act(confirmRow, confirmAction);
+    setConfirmOpen(false);
+    setConfirmRow(null);
+    setConfirmAction(null);
+  };
+
+  const handleConfirmNo = () => {
+    setConfirmOpen(false);
+    setConfirmRow(null);
+    setConfirmAction(null);
+  };
+
+
   const act = async (row, action /* 'approve' | 'reject' */) => {
+    // Pastikan auth sudah siap
+    if (!authReady) {
+      alert("Sedang memuat data login admin, coba lagi sebentar...");
+      return;
+    }
+
+    // Wajib ada email admin yang login
+    if (!adminEmail) {
+      alert("Tidak bisa memproses: email admin login tidak ditemukan. Coba login ulang.");
+      return;
+    }
+
     try {
       setBusyId(row.id);
       const res = await fetch("/api/re_registration_payments/verify", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         credentials: "include",
-        body: JSON.stringify({ nisn: row.nisn, paymentId: row.id, action }),
+        body: JSON.stringify({
+          nisn: row.nisn,
+          paymentId: row.id,
+          action,
+          adminEmail,
+        }),
       });
       const j = await res.json().catch(() => ({}));
       if (!res.ok) throw new Error(j?.error || "Gagal memverifikasi pembayaran.");
+
+      // ✅ setelah backend OK, buat log WA
+      await sendWaNotification(row, action);
+
       await loadPage("first", null);
+      
     } catch (e) {
       alert(e.message || "Gagal memproses.");
     } finally {
       setBusyId("");
     }
   };
+
+
 
   // ============ Tambahan: fungsi tambah pembayaran offline ============
   const handleAddOfflinePayment = async (e) => {
@@ -297,6 +458,71 @@ function PaymentsVerificationPanel({ db, selectedNisn, headerSuffix = "" }) {
 
   return (
     <>
+   {confirmOpen && (
+  <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/80">
+    <div className="modal-appear bg-white rounded-2xl shadow-xl w-full max-w-md mx-4 overflow-hidden">
+      <div className="px-6 py-4 border-b border-slate-200">
+        <h2 className="text-base font-semibold text-slate-900 text-center">
+          Konfirmasi verifikasi pembayaran
+        </h2>
+      </div>
+
+      <div className="px-6 py-5 text-sm text-slate-700 space-y-3">
+        <p className="text-center leading-relaxed">
+  {confirmAction === "approve" ? (
+    <>
+      Apakah Anda yakin ingin{" "}
+      <span className="font-semibold">MENYETUJUI</span>{" "}
+      pembayaran ini dan mengirim WhatsApp ke wali?
+    </>
+  ) : (
+    <>
+      Apakah Anda yakin ingin{" "}
+      <span className="font-semibold">MENOLAK</span>{" "}
+      pembayaran ini dan mengirim WhatsApp ke wali?
+    </>
+  )}
+</p>
+
+        {confirmRow && (
+          <div className="rounded-lg bg-slate-50 px-4 py-3 text-xs text-slate-600 flex flex-col gap-1">
+            <div className="flex justify-between gap-2">
+              <span className="text-slate-500">Peserta</span>
+              <span className="font-semibold text-slate-900">
+                {confirmRow.student?.name || "-"} ({confirmRow.nisn})
+              </span>
+            </div>
+            <div className="flex justify-between gap-2">
+              <span className="text-slate-500">Jumlah</span>
+              <span className="font-semibold text-emerald-700">
+                {fmtIDR(confirmRow.amount || 0)}
+              </span>
+            </div>
+          </div>
+        )}
+      </div>
+
+      <div className="px-6 py-4 border-t border-slate-200 flex items-center justify-center gap-3">
+        <button
+          type="button"
+          onClick={handleConfirmNo}
+          className="inline-flex items-center justify-center rounded-full border border-slate-300 bg-white px-4 py-1.5 text-xs font-medium text-slate-700 hover:bg-slate-50 transition-colors"
+        >
+          Batal
+        </button>
+        <button
+          type="button"
+          onClick={handleConfirmYes}
+          className="inline-flex items-center justify-center rounded-full bg-emerald-600 px-4 py-1.5 text-xs font-semibold text-white hover:bg-emerald-700 shadow-sm transition-colors"
+        >
+          Ya, lanjutkan
+        </button>
+      </div>
+    </div>
+  </div>
+)}
+
+
       <div className="rounded-2xl border border-slate-200 bg-white shadow-sm overflow-hidden">
         <div className="px-4 py-3 border-b border-slate-200 flex items-center justify-between">
           <div className="text-sm font-semibold text-slate-900">
@@ -458,22 +684,30 @@ function PaymentsVerificationPanel({ db, selectedNisn, headerSuffix = "" }) {
             rows.map((r) => {
               const s = normalizeStatus(r);
               const isPending = s === "pending";
+              const showReviewer = s === "approved" && r.reviewer;
+              const waAction =
+    s === "approved" ? "approve" : s === "rejected" ? "reject" : null;
               return (
                 <div
                   key={`${r.nisn}-${r.id}`}
                   className="p-4 flex flex-col gap-2"
                 >
                   <div className="flex items-center justify-between">
-                    <div className="text-sm font-semibold text-slate-900">
-                      {r.student?.name || "-"}{" "}
-                      <span className="text-slate-500 font-normal">
-                        ({r.nisn})
-                      </span>
-                    </div>
-                    <div className="text-xs text-slate-600">
-                      {r.student?.level || "-"}
-                    </div>
-                  </div>
+  <div className="text-sm font-semibold text-slate-900">
+    {r.student?.name || "-"}{" "}
+    <span className="text-slate-500 font-normal">
+      ({r.nisn})
+    </span>
+    {showReviewer ? (
+     <span className="ml-2 text-xs font-semibold text-violet-600">
+  Reviewer: {r.reviewer}
+</span>
+    ) : null}
+  </div>
+  <div className="text-xs text-slate-600">
+    {r.student?.level || "-"}
+  </div>
+</div>
 
                   <div className="flex items-center justify-between text-sm">
                     <div className="text-slate-700">
@@ -494,27 +728,39 @@ function PaymentsVerificationPanel({ db, selectedNisn, headerSuffix = "" }) {
                   </div>
 
                   <div className="flex items-center gap-2">
-                    <button
-                      type="button"
-                      disabled={busyId === r.id || !isPending}
-                      onClick={() => act(r, "approve")}
-                      className="inline-flex items-center gap-1 rounded-lg border border-emerald-300 bg-emerald-600 text-white px-3 py-1.5 text-xs font-semibold hover:bg-emerald-700 disabled:opacity-60"
-                      title={isPending ? "" : "Sudah diproses"}
-                    >
-                      <BadgeCheck className="h-4 w-4" />
-                      Setujui
-                    </button>
-                    <button
-                      type="button"
-                      disabled={busyId === r.id || !isPending}
-                      onClick={() => act(r, "reject")}
-                      className="inline-flex items-center gap-1 rounded-lg border border-rose-300 bg-white text-rose-700 px-3 py-1.5 text-xs font-semibold hover:bg-rose-50 disabled:opacity-60"
-                      title={isPending ? "" : "Sudah diproses"}
-                    >
-                      <XCircle className="h-4 w-4" />
-                      Tolak
-                    </button>
-                  </div>
+  <button
+    type="button"
+    disabled={busyId === r.id || !isPending}
+    onClick={() => openConfirm(r, "approve")}
+    className="inline-flex items-center gap-1 rounded-lg border border-emerald-300 bg-emerald-600 text-white px-3 py-1.5 text-xs font-semibold hover:bg-emerald-700 disabled:opacity-60"
+    title={isPending ? "" : "Sudah diproses"}
+  >
+    <BadgeCheck className="h-4 w-4" />
+    Setujui
+  </button>
+  <button
+    type="button"
+    disabled={busyId === r.id || !isPending}
+    onClick={() => openConfirm(r, "reject")}
+    className="inline-flex items-center gap-1 rounded-lg border border-rose-300 bg-white text-rose-700 px-3 py-1.5 text-xs font-semibold hover:bg-rose-50 disabled:opacity-60"
+    title={isPending ? "" : "Sudah diproses"}
+  >
+    <XCircle className="h-4 w-4" />
+    Tolak
+  </button>
+
+  {waAction && (
+    <button
+      type="button"
+      onClick={() => sendWaNotification(r, waAction)}
+      className="inline-flex items-center gap-1 rounded-lg border border-emerald-300 bg-emerald-50 text-emerald-700 px-3 py-1.5 text-xs font-semibold hover:bg-emerald-100"
+      title="Kirim ulang WhatsApp ke wali"
+    >
+      Kirim WA
+    </button>
+  )}
+</div>
+
                 </div>
               );
             })
@@ -637,8 +883,8 @@ export default function AdminDaftarUlangPage() {
   }, [view]);
 
   return (
-    <div className="min-h-screen bg-slate-50/60 w-full">
-      {/* === Judul sederhana (tanpa header/sticky) === */}
+    <div className="relative min-h-screen bg-slate-50/60 w-full pb-40">      
+      <div className="fixed inset-0 -z-10 bg-slate-50/60" />
       <div className="px-4 pt-6 md:pt-8">
         <h1 className="text-xl md:2xl font-bold tracking-tight text-slate-900">
           Halaman verifikasi daftar ulang

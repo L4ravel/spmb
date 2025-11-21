@@ -149,11 +149,44 @@ export default function AdminDataDaftarUlangPage() {
 
   // Aggregasi untuk stat card sesuai scope (ALL / PTK / NON_PTK)
   const scopedStats = useMemo(() => {
-    let filtered = rows;
+    // mulai dari semua rows
+    let base = [...rows];
+
+    // filter search
+    if (search.trim()) {
+      const s = search.trim().toLowerCase();
+      base = base.filter(
+        (r) =>
+          r.nisn.toLowerCase().includes(s) ||
+          r.name.toLowerCase().includes(s) ||
+          r.level.toLowerCase().includes(s)
+      );
+    }
+
+    // filter jalur dari dropdown
+    if (filterJalur === "PTK") {
+      base = base.filter((r) => r.jalur === "PTK");
+    } else if (filterJalur === "NON_PTK") {
+      // NON_PTK = semua yang BUKAN PTK
+      base = base.filter((r) => (r.jalur || "") !== "PTK");
+    }
+
+    // filter jenjang
+    if (filterLevel !== "ALL") {
+      base = base.filter((r) => r.level === filterLevel);
+    }
+
+    // filter status daftar ulang
+    if (filterStatus !== "ALL") {
+      base = base.filter((r) => r.statusDaftarUlang === filterStatus);
+    }
+
+    // setelah semua filter UI, baru pecah berdasarkan scope (ALL / PTK / NON_PTK)
+    let filtered = base;
     if (statScope === "PTK") {
-      filtered = rows.filter((r) => r.jalur === "PTK");
+      filtered = base.filter((r) => r.jalur === "PTK");
     } else if (statScope === "NON_PTK") {
-      filtered = rows.filter((r) => r.jalur === "NON_PTK");
+      filtered = base.filter((r) => (r.jalur || "") !== "PTK");
     }
 
     const totalTagihanNet = filtered.reduce(
@@ -175,24 +208,69 @@ export default function AdminDataDaftarUlangPage() {
       totalPaid,
       totalSisa,
     };
-  }, [rows, statScope]);
+  }, [rows, statScope, search, filterJalur, filterLevel, filterStatus]);
 
-  const discountValue = useMemo(() => {
-    const totalAll =
-      (Number(stats.totalDiscountPTK || 0) || 0) +
-      (Number(stats.totalDiscountNonPTK || 0) || 0);
+
+
+   const discountValue = useMemo(() => {
+    // mulai dari semua rows
+    let base = [...rows];
+
+    // filter search
+    if (search.trim()) {
+      const s = search.trim().toLowerCase();
+      base = base.filter(
+        (r) =>
+          r.nisn.toLowerCase().includes(s) ||
+          r.name.toLowerCase().includes(s) ||
+          r.level.toLowerCase().includes(s)
+      );
+    }
+
+    // filter jalur dari dropdown
+    if (filterJalur === "PTK") {
+      base = base.filter((r) => r.jalur === "PTK");
+    } else if (filterJalur === "NON_PTK") {
+      base = base.filter((r) => (r.jalur || "") !== "PTK");
+    }
+
+    // filter jenjang
+    if (filterLevel !== "ALL") {
+      base = base.filter((r) => r.level === filterLevel);
+    }
+
+    // filter status
+    if (filterStatus !== "ALL") {
+      base = base.filter((r) => r.statusDaftarUlang === filterStatus);
+    }
+
+    // hitung total diskon PTK & Non-PTK dari data yang sudah difilter
+    let totalPTK = 0;
+    let totalNonPTK = 0;
+    base.forEach((r) => {
+      totalPTK += Number(r.discPTK || 0) || 0;
+      totalNonPTK += Number(r.discNonPTK || 0) || 0;
+    });
 
     if (statScope === "ALL") {
-      return fmtIDR(totalAll);
+      return fmtIDR(totalPTK + totalNonPTK);
     }
     if (statScope === "PTK") {
-      return fmtIDR(stats.totalDiscountPTK);
+      return fmtIDR(totalPTK);
     }
     if (statScope === "NON_PTK") {
-      return fmtIDR(stats.totalDiscountNonPTK);
+      return fmtIDR(totalNonPTK);
     }
     return "-";
-  }, [statScope, stats.totalDiscountPTK, stats.totalDiscountNonPTK]);
+  }, [
+    rows,
+    search,
+    filterJalur,
+    filterLevel,
+    filterStatus,
+    statScope,
+  ]);
+
 
   const discountHelper = useMemo(() => {
     if (statScope === "ALL") return "Kiri: PTK · Kanan: Non-PTK";
@@ -475,9 +553,12 @@ export default function AdminDataDaftarUlangPage() {
       );
     }
 
-    if (filterJalur !== "ALL") {
-      out = out.filter((r) => (r.jalur || "") === filterJalur);
-    }
+    if (filterJalur === "PTK") {
+  out = out.filter((r) => r.jalur === "PTK");
+} else if (filterJalur === "NON_PTK") {
+  // NON_PTK = semua yang BUKAN PTK
+  out = out.filter((r) => (r.jalur || "") !== "PTK");
+}
 
     // filter jenjang
     if (filterLevel !== "ALL") {

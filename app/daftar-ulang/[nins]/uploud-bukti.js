@@ -32,6 +32,14 @@ export default function UploadBukti({ open, onClose, onUploaded, nisn }) {
     setFiles(Array.from(e.target.files));
   };
 
+    const formatAmount = (value) => {
+  // ambil digit saja
+  const digits = (value || "").replace(/\D/g, "");
+  if (!digits) return "";
+  // sisipkan titik setiap 3 angka dari belakang
+  return digits.replace(/\B(?=(\d{3})+(?!\d))/g, ".");
+};
+
   const handleSubmit = async (e) => {
     e.preventDefault();
     setError("");
@@ -116,7 +124,7 @@ export default function UploadBukti({ open, onClose, onUploaded, nisn }) {
                 type="text"
                 inputMode="numeric"
                 value={amountStr}
-                onChange={(e) => setAmountStr(e.target.value)}
+                onChange={(e) => setAmountStr(formatAmount(e.target.value))}
                 placeholder="mis. 300.000"
                 className="mt-1 w-full rounded-lg border border-slate-300 bg-white px-3 py-2 text-sm text-slate-900 placeholder:text-slate-400 focus:outline-none focus:ring-2 focus:ring-slate-400"
                 required

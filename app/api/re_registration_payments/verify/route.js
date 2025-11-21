@@ -23,7 +23,7 @@ export async function POST(req) {
       return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
     }
 
-    const { nisn, paymentId, action, reason } = await req.json();
+    const { nisn, paymentId, action, reason, adminEmail } = await req.json();
 
     const id = String(nisn || "").trim();
     const pid = String(paymentId || "").trim();
@@ -32,8 +32,12 @@ export async function POST(req) {
     if (!id || !pid) {
       return NextResponse.json({ error: "nisn/paymentId wajib diisi" }, { status: 400 });
     }
-    if (!["approve", "reject"].includes(act)) {
-      return NextResponse.json({ error: "action harus 'approve' atau 'reject'" }, { status: 400 });
+    const reviewerEmail = String(adminEmail || "").trim();
+    if (!reviewerEmail) {
+      return NextResponse.json(
+        { error: "adminEmail wajib dikirim (email admin login)." },
+        { status: 400 }
+      );
     }
 
     const db = getAdminDb();
@@ -45,7 +49,11 @@ export async function POST(req) {
     }
 
     const now = FieldValue.serverTimestamp();
-    const base = { updatedAt: now, reviewedAt: now, reviewer: "admin" };
+const base = {
+  updatedAt: now,
+  reviewedAt: now,
+  reviewer: reviewerEmail, // email admin yang login
+};
 
     const update =
       act === "approve"
@@ -61,10 +69,11 @@ export async function POST(req) {
 
     // (opsional) log kecil
     await payRef.collection("_audit").add({
-      action: act,
-      reason: reason || null,
-      at: now,
-    }).catch(() => {});
+  action: act,
+  reason: reason || null,
+  adminEmail: reviewerEmail,
+  at: now,
+}).catch(() => {});
 
     return NextResponse.json({ ok: true });
   } catch (e) {
