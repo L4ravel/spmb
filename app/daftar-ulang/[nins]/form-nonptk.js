@@ -284,6 +284,8 @@ export default function FormNonPTK({
   const [error, setError] = useState("");
   const [user, setUser] = useState(null);
   const [fees, setFees] = useState(null);
+   const [discount, setDiscount] = useState(null);
+  
 
   // Upload modal
   const [uploadOpen, setUploadOpen] = useState(false);
@@ -322,6 +324,28 @@ export default function FormNonPTK({
       // silent
     } finally {
       setLoadingPayments(false);
+    }
+  }, []);
+
+  const loadDiscount = useCallback(async (nisn) => {
+    try {
+      const db = getFirebaseDb();
+      const ref = doc(
+        db,
+        "users_app",
+        String(nisn),
+        "re_registration",
+        "nonptk_discount"
+      );
+      const snap = await getDoc(ref);
+      if (snap.exists()) {
+        setDiscount({ id: snap.id, ...snap.data() });
+      } else {
+        setDiscount(null);
+      }
+    } catch (e) {
+      // potongan sifatnya opsional, diam saja kalau gagal
+      setDiscount(null);
     }
   }, []);
 
@@ -382,7 +406,7 @@ export default function FormNonPTK({
           );
         const feeDoc = qSnap.docs[0].data();
 
-        if (!cancelled) {
+         if (!cancelled) {
           const userObj = {
             nisn: u?.nisn || nisnFromUrl || "-",
             fullName: u?.fullName || "-",
@@ -396,6 +420,7 @@ export default function FormNonPTK({
           setSiblings(preSiblings);
 
           loadPayments(String(userObj.nisn));
+          loadDiscount(String(userObj.nisn)); // 🔹 tambahan
         }
       } catch (e) {
         if (!cancelled)
@@ -408,7 +433,7 @@ export default function FormNonPTK({
     return () => {
       cancelled = true;
     };
-  }, [nisnFromUrl, loadPayments]);
+  }, [nisnFromUrl, loadPayments, loadDiscount]);
 
   // 🔎 Cek status PTK untuk popup
   useEffect(() => {
@@ -458,6 +483,17 @@ export default function FormNonPTK({
     return spp + totalUangPangkal;
   }, [fees?.spp, totalUangPangkal]);
 
+    const effectiveTotalTagihan = useMemo(() => {
+    const base = Number(totalPembayaran) || 0;
+    const disc =
+      discount && Number(discount.amount || 0) > 0
+        ? Number(discount.amount)
+        : 0;
+
+    if (!Number.isFinite(base) || !Number.isFinite(disc)) return base;
+    return Math.max(0, base - disc);
+  }, [totalPembayaran, discount]);
+
   const totalTerverifikasi = useMemo(
     () =>
       payments.reduce((acc, p) => {
@@ -467,14 +503,14 @@ export default function FormNonPTK({
     [payments]
   );
 
-  const sisaTagihan = useMemo(
+   const sisaTagihan = useMemo(
     () =>
       Math.max(
         0,
-        (Number(totalPembayaran) || 0) -
+        (Number(effectiveTotalTagihan) || 0) -
           (Number(totalTerverifikasi) || 0)
       ),
-    [totalPembayaran, totalTerverifikasi]
+    [effectiveTotalTagihan, totalTerverifikasi]
   );
 
   // Opsi jenjang saudara sesuai jenjang user
@@ -899,7 +935,7 @@ export default function FormNonPTK({
                 <div className="grid grid-cols-1 md:grid-cols-2 gap-3 md:gap-4">
                   <Stat
                     icon={Wallet}
-                    label="SPP (per bulan)"
+                    label="SPP (per semester)"
                     value={fmtIDR(fees?.spp ?? 0)}
                   />
                   <Stat
@@ -909,13 +945,26 @@ export default function FormNonPTK({
                   />
                 </div>
 
-                <div className="mt-3 rounded-xl border-2 border-slate-300 bg-white px-4 py-3 flex items-center justify-between">
-                  <span className="text-sm font-semibold text-slate-700">
-                    Total Tagihan
-                  </span>
-                  <span className="text-xl md:text-2xl font-extrabold tracking-tight text-slate-900">
-                    {fmtIDR(totalPembayaran)}
-                  </span>
+                <div className="mt-3 rounded-xl border-2 border-slate-300 bg-white px-4 py-3">
+                  <div className="flex items-center justify-between">
+                    <span className="text-sm font-semibold text-slate-700">
+                      Total Tagihan
+                    </span>
+                    <span className="text-xl md:text-2xl font-extrabold tracking-tight text-slate-900">
+                      {fmtIDR(effectiveTotalTagihan)}
+                    </span>
+                  </div>
+
+                  {discount && Number(discount.amount || 0) > 0 && (
+                    <div className="mt-1 flex items-center justify-between text-[11px] text-emerald-800">
+                      <span>
+                        Potongan {discount.type || "BP3"} karena saudara
+                      </span>
+                      <span className="font-semibold">
+                        -{fmtIDR(Number(discount.amount || 0))}
+                      </span>
+                    </div>
+                  )}
                 </div>
 
                 <div className="mt-3 grid grid-cols-1 md:grid-cols-2 gap-3">
@@ -975,90 +1024,88 @@ export default function FormNonPTK({
                     ) : (
                       <ul className="space-y-2">
                         {payments.map((p) => {
-                          const status = normalizeStatus(p);
-                          const badge =
-                            status === "approved"
-                              ? "bg-emerald-100 text-emerald-800 border-emerald-200"
-                              : status === "rejected"
-                              ? "bg-red-100 text-red-800 border-red-200"
-                              : "bg-amber-100 text-amber-800 border-amber-200";
-                          const label =
-                            status === "approved"
-                              ? "Disetujui"
-                              : status === "rejected"
-                              ? "Ditolak"
-                              : "Menunggu Konfirmasi";
-                          const approved = isApproved(p);
+  const status = normalizeStatus(p);
+  const badge =
+    status === "approved"
+      ? "bg-emerald-100 text-emerald-800 border-emerald-200"
+      : status === "rejected"
+      ? "bg-red-100 text-red-800 border-red-200"
+      : "bg-amber-100 text-amber-800 border-amber-200";
+  const label =
+    status === "approved"
+      ? "Disetujui"
+      : status === "rejected"
+      ? "Ditolak"
+      : "Menunggu Konfirmasi";
+  const approved = isApproved(p);
 
-                          return (
-                            <li
-                              key={p.id}
-                              className="flex items-start gap-3 rounded-lg border border-slate-200 bg-slate-50 p-3"
-                            >
-                              <div className="mt-0.5">
-                                <FileText className="h-4 w-4 text-slate-600" />
-                              </div>
-                              <div className="flex-1 min-w-0">
-                                <div className="flex items-center gap-2">
-                                  <div className="text-sm font-medium text-slate-900 break-all">
-                                    {p.fileName || "bukti.pdf"}
-                                  </div>
-                                  <span
-                                    className={`text-[10px] px-2 py-0.5 rounded-full border ${badge}`}
-                                  >
-                                    {label}
-                                  </span>
-                                </div>
-                                <div className="text-xs text-slate-600">
-                                  Jumlah:{" "}
-                                  <span className="font-semibold">
-                                    {fmtIDR(
-                                      Number(p.amount || 0)
-                                    )}
-                                  </span>
-                                  {p.note ? (
-                                    <>
-                                      {" "}
-                                      •{" "}
-                                      <span className="italic">
-                                        {p.note}
-                                      </span>
-                                    </>
-                                  ) : null}
-                                </div>
-                              </div>
-                              <div className="flex flex-col items-end gap-1">
-                                {p.downloadURL ? (
-                                  <a
-                                    href={p.downloadURL}
-                                    target="_blank"
-                                    rel="noreferrer"
-                                    className="inline-flex items-center gap-1 text-xs font-medium text-slate-700 hover:text-slate-900"
-                                  >
-                                    Lihat{" "}
-                                    <ExternalLink className="h-3.5 w-3.5" />
-                                  </a>
-                                ) : null}
-                                {/* <button
-                                  type="button"
-                                  onClick={() =>
-                                    cancelPayment(p)
-                                  }
-                                  disabled={approved}
-                                  className="inline-flex items-center gap-1 rounded-lg border border-rose-300 bg-white px-2.5 py-1 text-[11px] font-semibold text-rose-700 hover:bg-rose-50 disabled:opacity-40 disabled:cursor-not-allowed"
-                                  title={
-                                    approved
-                                      ? "Bukti yang sudah disetujui admin tidak bisa dibatalkan"
-                                      : "Batalkan / hapus bukti ini"
-                                  }
-                                >
-                                  <Trash2 className="h-3.5 w-3.5" />
-                                  Batalkan
-                                </button> */}
-                              </div>
-                            </li>
-                          );
-                        })}
+  // 🔹 Tambahan: label sumber pembayaran
+  const sumberLabel =
+    p.source === "ADMIN_PANEL"
+      ? "Diinput panitia (offline)"
+      : p.source === "USER_UPLOAD"
+      ? "Upload peserta"
+      : "";
+
+  return (
+    <li
+      key={p.id}
+      className="flex items-start gap-3 rounded-lg border border-slate-200 bg-slate-50 p-3"
+    >
+      <div className="mt-0.5">
+        <FileText className="h-4 w-4 text-slate-600" />
+      </div>
+      <div className="flex-1 min-w-0">
+        <div className="flex items-center gap-2">
+          <div className="text-sm font-medium text-slate-900 break-all">
+            {p.fileName || "bukti.pdf"}
+          </div>
+          <span
+            className={`text-[10px] px-2 py-0.5 rounded-full border ${badge}`}
+          >
+            {label}
+          </span>
+        </div>
+        <div className="text-xs text-slate-600">
+          Jumlah:{" "}
+          <span className="font-semibold">
+            {fmtIDR(Number(p.amount || 0))}
+          </span>
+          {p.note ? (
+            <>
+              {" "}
+              • <span className="italic">{p.note}</span>
+            </>
+          ) : null}
+          {sumberLabel && (
+            <>
+              {" "}
+              •{" "}
+              <span className="font-medium text-slate-700">
+                {sumberLabel}
+              </span>
+            </>
+          )}
+        </div>
+      </div>
+      <div className="flex flex-col items-end gap-1">
+        {p.downloadURL ? (
+          <a
+            href={p.downloadURL}
+            target="_blank"
+            rel="noreferrer"
+            className="inline-flex items-center gap-1 text-xs font-medium text-slate-700 hover:text-slate-900"
+          >
+            Lihat <ExternalLink className="h-3.5 w-3.5" />
+          </a>
+        ) : null}
+        {/* tombol batalkan tetap komentar, sesuai kode awal */}
+        {/* <button ...>Batalkan</button> */}
+      </div>
+    </li>
+  );
+})}
+
                       </ul>
                     )}
                   </div>

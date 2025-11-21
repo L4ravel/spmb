@@ -47,14 +47,20 @@ const db = getFirestore(app);
 /* ---------------- Utils ---------------- */
 const fmtIDR = (n) =>
   typeof n === "number"
-    ? n.toLocaleString("id-ID", { style: "currency", currency: "IDR", maximumFractionDigits: 0 })
+    ? n.toLocaleString("id-ID", {
+        style: "currency",
+        currency: "IDR",
+        maximumFractionDigits: 0,
+      })
     : "-";
 
 function Row({ label, value }) {
   return (
     <div className="flex items-start justify-between gap-4 py-2">
       <span className="text-sm text-slate-600">{label}</span>
-      <span className="text-sm font-semibold text-slate-900">{value ?? "-"}</span>
+      <span className="text-sm font-semibold text-slate-900">
+        {value ?? "-"}
+      </span>
     </div>
   );
 }
@@ -98,20 +104,40 @@ async function resolveNisn(db, raw) {
 
   const d = await getDoc(doc(db, "users_app", input));
   if (d.exists())
-    return { nisn: d.id, studentName: d.data()?.fullName || d.data()?.nama || d.data()?.name || "" };
+    return {
+      nisn: d.id,
+      studentName:
+        d.data()?.fullName || d.data()?.nama || d.data()?.name || "",
+    };
 
-  const q1 = query(collection(db, "users_app"), where("nins", "==", input), limit(1));
+  const q1 = query(
+    collection(db, "users_app"),
+    where("nins", "==", input),
+    limit(1)
+  );
   const s1 = await getDocs(q1);
   if (!s1.empty) {
     const x = s1.docs[0];
-    return { nisn: x.id, studentName: x.data()?.fullName || x.data()?.nama || x.data()?.name || "" };
+    return {
+      nisn: x.id,
+      studentName:
+        x.data()?.fullName || x.data()?.nama || x.data()?.name || "",
+    };
   }
 
-  const q2 = query(collection(db, "users_app"), where("username", "==", input), limit(1));
+  const q2 = query(
+    collection(db, "users_app"),
+    where("username", "==", input),
+    limit(1)
+  );
   const s2 = await getDocs(q2);
   if (!s2.empty) {
     const x = s2.docs[0];
-    return { nisn: x.id, studentName: x.data()?.fullName || x.data()?.nama || x.data()?.name || "" };
+    return {
+      nisn: x.id,
+      studentName:
+        x.data()?.fullName || x.data()?.nama || x.data()?.name || "",
+    };
   }
   return null;
 }
@@ -126,7 +152,8 @@ function normalizeStatus(p) {
       (p?.approved ? "APPROVED" : "") ||
       "").toString();
   const s = raw.trim().toUpperCase();
-  if (["APPROVED", "VERIFIED", "ACCEPTED", "OK", "CONFIRMED"].includes(s)) return "approved";
+  if (["APPROVED", "VERIFIED", "ACCEPTED", "OK", "CONFIRMED"].includes(s))
+    return "approved";
   if (["REJECTED", "DENIED", "DECLINED"].includes(s)) return "rejected";
   return "pending";
 }
@@ -135,7 +162,11 @@ function isApproved(p) {
 }
 
 /* ---------------- Main ---------------- */
-export default function FormPTK({ onBack, onOpenUniform, uniformFilled = false }) {
+export default function FormPTK({
+  onBack,
+  onOpenUniform,
+  uniformFilled = false,
+}) {
   const params = useParams();
   const router = useRouter();
   const paramInput = useMemo(() => {
@@ -182,14 +213,18 @@ export default function FormPTK({ onBack, onOpenUniform, uniformFilled = false }
         const uSnap = await getDoc(doc(db, "users_app", r.nisn));
         if (uSnap.exists()) {
           const ud = uSnap.data() || {};
-          setStudentName(ud?.fullName || ud?.nama || ud?.name || r.studentName || "");
+          setStudentName(
+            ud?.fullName || ud?.nama || ud?.name || r.studentName || ""
+          );
           setRegistrationLevel(ud?.registrationLevel || "");
         } else {
           setRegistrationLevel("");
         }
 
         // konfirmasi PTK dari API
-        const res = await fetch(`/api/ptk/confirm?nisn=${encodeURIComponent(r.nisn)}`);
+        const res = await fetch(
+          `/api/ptk/confirm?nisn=${encodeURIComponent(r.nisn)}`
+        );
         if (res.ok) {
           const j = await res.json();
           if (alive && j?.exists && j?.data) setPTK({ ...j.data });
@@ -209,7 +244,13 @@ export default function FormPTK({ onBack, onOpenUniform, uniformFilled = false }
     let alive = true;
     (async () => {
       if (!nisn) return;
-      const dref = doc(db, "users_app", nisn, "re_registration", "ptk_discount");
+      const dref = doc(
+        db,
+        "users_app",
+        nisn,
+        "re_registration",
+        "ptk_discount"
+      );
       const ds = await getDoc(dref);
       if (!alive) return;
       setDiscount(ds.exists() ? { id: ds.id, ...ds.data() } : null);
@@ -258,7 +299,9 @@ export default function FormPTK({ onBack, onOpenUniform, uniformFilled = false }
       setPayments(s.docs.map((d) => ({ id: d.id, ...d.data() })));
     } catch {
       setPayments([]);
-      setPaymentsNote("Bukti tersimpan, namun belum diizinkan untuk ditampilkan di aplikasi ini.");
+      setPaymentsNote(
+        "Bukti tersimpan, namun belum diizinkan untuk ditampilkan di aplikasi ini."
+      );
     } finally {
       setLoadingPay(false);
     }
@@ -301,12 +344,19 @@ export default function FormPTK({ onBack, onOpenUniform, uniformFilled = false }
   );
 
   const sisaTagihan = useMemo(
-    () => Math.max(0, (Number(totalPembayaran) || 0) - (Number(totalTerverifikasi) || 0)),
+    () =>
+      Math.max(
+        0,
+        (Number(totalPembayaran) || 0) - (Number(totalTerverifikasi) || 0)
+      ),
     [totalPembayaran, totalTerverifikasi]
   );
 
   const isPending = !loading && ptk?.status !== "APPROVED";
   const showEditButton = ptk?.jenjang && !(ptk?.status === "APPROVED" || !!fees);
+
+  const hasDiscount =
+    discount && Number(discount.amount || 0) > 0 && discount.type;
 
   return (
     <section className="bg-white rounded-2xl border border-slate-200 shadow-sm">
@@ -343,7 +393,8 @@ export default function FormPTK({ onBack, onOpenUniform, uniformFilled = false }
             <div className="flex items-start gap-2">
               <AlertTriangle className="h-4 w-4 mt-0.5" />
               <div className="text-sm">
-                <b>Konfirmasi belum lengkap.</b> Isi data orang tua/wali terlebih dahulu.
+                <b>Konfirmasi belum lengkap.</b> Isi data orang tua/wali
+                terlebih dahulu.
                 <div className="mt-2">
                   <button
                     onClick={goConfirm}
@@ -363,7 +414,8 @@ export default function FormPTK({ onBack, onOpenUniform, uniformFilled = false }
             <div className="flex items-start gap-2">
               <AlertTriangle className="h-4 w-4 mt-0.5" />
               <div className="text-sm">
-                <b>Menunggu konfirmasi admin.</b> Pembayaran akan muncul setelah disetujui.
+                <b>Menunggu konfirmasi admin.</b> Pembayaran akan muncul
+                setelah disetujui.
                 <div className="mt-1 text-[12px] text-amber-900/90">
                   Status sekarang: <b>{ptk?.status || "PENDING"}</b>
                 </div>
@@ -394,13 +446,24 @@ export default function FormPTK({ onBack, onOpenUniform, uniformFilled = false }
             <div className="p-4">
               <div className="grid grid-cols-1 md:grid-cols-3 gap-1 md:gap-4 mb-2">
                 <Field icon={IdCard} label="NISN" value={nisn || "-"} />
-                <Field icon={User2} label="Nama Lengkap" value={studentName || "-"} />
-                <Field icon={GraduationCap} label="Jenjang" value={registrationLevel || "-"} />
+                <Field
+                  icon={User2}
+                  label="Nama Lengkap"
+                  value={studentName || "-"}
+                />
+                <Field
+                  icon={GraduationCap}
+                  label="Jenjang"
+                  value={registrationLevel || "-"}
+                />
               </div>
               <Row label="Nama Orang Tua" value={ptk?.parentName || "-"} />
               <Row label="NIK Orang Tua" value={ptk?.nik || "-"} />
               <Row label="Jabatan Orang Tua" value={ptk?.jabatan || "-"} />
-              <Row label="Jenjang (info PTK)" value={ptk?.jenjang || "-"} />
+              <Row
+                label="Jenjang (info PTK)"
+                value={ptk?.jenjang || "-"}
+              />
             </div>
           </div>
         )}
@@ -426,7 +489,9 @@ export default function FormPTK({ onBack, onOpenUniform, uniformFilled = false }
               ) ? (
                 <button
                   type="button"
-                  onClick={() => onOpenUniform && onOpenUniform(registrationLevel)}
+                  onClick={() =>
+                    onOpenUniform && onOpenUniform(registrationLevel)
+                  }
                   className={[
                     "w-full inline-flex items-center justify-center gap-2 rounded-lg border px-3 py-3 text-sm font-semibold shadow-sm transition-all",
                     uniformFilled
@@ -434,8 +499,14 @@ export default function FormPTK({ onBack, onOpenUniform, uniformFilled = false }
                       : "bg-slate-900 hover:bg-black text-white border-slate-900",
                   ].join(" ")}
                 >
-                  {uniformFilled ? <BadgeCheck className="h-4 w-4" /> : <Shirt className="h-4 w-4" />}
-                  {uniformFilled ? "Ukuran Baju: Sudah diisi" : "Isi Ukuran Baju"}
+                  {uniformFilled ? (
+                    <BadgeCheck className="h-4 w-4" />
+                  ) : (
+                    <Shirt className="h-4 w-4" />
+                  )}
+                  {uniformFilled
+                    ? "Ukuran Baju: Sudah diisi"
+                    : "Isi Ukuran Baju"}
                 </button>
               ) : (
                 <button
@@ -456,15 +527,35 @@ export default function FormPTK({ onBack, onOpenUniform, uniformFilled = false }
         {ptk?.status === "APPROVED" && (
           <>
             <div className="grid grid-cols-1 md:grid-cols-2 gap-3 md:gap-4">
-              <Stat icon={Wallet} label="SPP (per bulan)" value={fmtIDR(netSPP)} />
-              <Stat icon={Banknote} label="Total Uang Pangkal" value={fmtIDR(netPangkal)} />
+              <Stat icon={Wallet} label="SPP (per semester)" value={fmtIDR(netSPP)} />
+              <Stat
+                icon={Banknote}
+                label="Total Uang Pangkal"
+                value={fmtIDR(netPangkal)}
+              />
             </div>
 
-            <div className="mt-3 rounded-xl border-2 border-slate-300 bg-white px-4 py-3 flex items-center justify-between">
-              <span className="text-sm font-semibold text-slate-700">Total Tagihan</span>
-              <span className="text-xl md:text-2xl font-extrabold tracking-tight text-slate-900">
-                {fmtIDR(totalPembayaran)}
-              </span>
+            {/* Total Tagihan + info potongan PTK */}
+            <div className="mt-3 rounded-xl border-2 border-slate-300 bg-white px-4 py-3">
+              <div className="flex items-center justify-between">
+                <span className="text-sm font-semibold text-slate-700">
+                  Total Tagihan
+                </span>
+                <span className="text-xl md:text-2xl font-extrabold tracking-tight text-slate-900">
+                  {fmtIDR(totalPembayaran)}
+                </span>
+              </div>
+
+              {hasDiscount && (
+                <div className="mt-1 flex items-center justify-between text-[11px] text-emerald-800">
+                  <span>
+                    Potongan {discount.type} (anak PTK)
+                  </span>
+                  <span className="font-semibold">
+                    -{fmtIDR(Number(discount.amount || 0))}
+                  </span>
+                </div>
+              )}
             </div>
 
             <div className="mt-3 grid grid-cols-1 md:grid-cols-2 gap-3">
@@ -478,7 +569,9 @@ export default function FormPTK({ onBack, onOpenUniform, uniformFilled = false }
                 </span>
               </div>
               <div className="rounded-xl border border-slate-300 bg-white px-4 py-3 flex items-center justify-between">
-                <span className="text-sm font-semibold text-slate-700">Sisa yang Harus Dibayar</span>
+                <span className="text-sm font-semibold text-slate-700">
+                  Sisa yang Harus Dibayar
+                </span>
                 <span className="text-lg md:text-xl font-extrabold tracking-tight text-slate-900">
                   {fmtIDR(sisaTagihan)}
                 </span>
@@ -486,8 +579,9 @@ export default function FormPTK({ onBack, onOpenUniform, uniformFilled = false }
             </div>
 
             <p className="mt-1 text-[11px] text-slate-500">
-              Nominal yang mengurangi tagihan hanyalah pembayaran yang sudah <b>disetujui admin</b>.
-              Kiriman berstatus <i>Menunggu Konfirmasi</i> belum mengurangi total.
+              Nominal yang mengurangi tagihan hanyalah pembayaran yang sudah{" "}
+              <b>disetujui admin</b>. Kiriman berstatus{" "}
+              <i>Menunggu Konfirmasi</i> belum mengurangi total.
             </p>
           </>
         )}
@@ -498,7 +592,9 @@ export default function FormPTK({ onBack, onOpenUniform, uniformFilled = false }
             <div className="flex items-center justify-between px-4 py-3 border-b border-slate-200 bg-slate-50/60">
               <div className="inline-flex items-center gap-2 text-slate-800">
                 <UploadCloud className="h-4 w-4" />
-                <span className="text-sm font-semibold">Bukti Pembayaran Daftar Ulang</span>
+                <span className="text-sm font-semibold">
+                  Bukti Pembayaran Daftar Ulang
+                </span>
               </div>
               <button
                 type="button"
@@ -546,7 +642,9 @@ export default function FormPTK({ onBack, onOpenUniform, uniformFilled = false }
                             <div className="text-sm font-medium text-slate-900 break-all">
                               {p.fileName || "bukti.pdf"}
                             </div>
-                            <span className={`text-[10px] px-2 py-0.5 rounded-full border ${badge}`}>
+                            <span
+                              className={`text-[10px] px-2 py-0.5 rounded-full border ${badge}`}
+                            >
                               {label}
                             </span>
                           </div>
