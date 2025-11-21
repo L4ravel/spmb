@@ -15,7 +15,15 @@ import {
   getDocs,
   getDoc,
   doc,
+  addDoc,
+  serverTimestamp,
 } from "firebase/firestore";
+import {
+  getStorage,
+  ref as storageRef,
+  uploadBytes,
+  getDownloadURL,
+} from "firebase/storage";
 import {
   Users,
   UserSquare2,
@@ -44,6 +52,7 @@ const firebaseConfig = {
 };
 const app = getApps().length ? getApp() : initializeApp(firebaseConfig);
 const db = getFirestore(app);
+const storage = getStorage(app);
 
 const PAGE_SIZES = [10, 25, 50];
 
@@ -115,6 +124,12 @@ function PaymentsVerificationPanel({ db, selectedNisn, headerSuffix = "" }) {
 
   const [statusFilter, setStatusFilter] = useState("pending"); // 'pending' | 'approved' | 'rejected' | 'all'
   const selectedKey = useMemo(() => String(selectedNisn ?? ""), [selectedNisn]);
+
+  // ==== Tambahan: state input pembayaran offline ====
+  const [offlineAmount, setOfflineAmount] = useState("");
+  const [offlineNote, setOfflineNote] = useState("");
+  const [offlineFile, setOfflineFile] = useState(null);
+  const [uploadBusy, setUploadBusy] = useState(false);
 
   const passesFilter = useCallback(
     (docData) => {
@@ -225,6 +240,61 @@ function PaymentsVerificationPanel({ db, selectedNisn, headerSuffix = "" }) {
     }
   };
 
+  // ============ Tambahan: fungsi tambah pembayaran offline ============
+  const handleAddOfflinePayment = async (e) => {
+    e.preventDefault();
+    if (!selectedKey) {
+      alert("Pilih peserta dulu di panel kiri.");
+      return;
+    }
+
+    const raw = String(offlineAmount || "").replace(/[^\d]/g, "");
+    const amountNum = Number(raw || 0);
+
+    if (!Number.isFinite(amountNum) || amountNum <= 0) {
+      alert("Jumlah pembayaran tidak valid.");
+      return;
+    }
+
+    try {
+      setUploadBusy(true);
+
+      let downloadURL = null;
+      if (offlineFile) {
+        const path = `re_registration_payments/${selectedKey}/${Date.now()}_${offlineFile.name}`;
+        const fileRef = storageRef(storage, path);
+        const snap = await uploadBytes(fileRef, offlineFile);
+        downloadURL = await getDownloadURL(snap.ref);
+      }
+
+      const payload = {
+        amount: amountNum,
+        note: offlineNote || "Pembayaran offline (diinput admin)",
+        status: "PENDING", // tetap lewat alur Setujui/Tolak supaya sinkron dengan API
+        method: "OFFLINE",
+        source: "ADMIN_PANEL",
+        createdAt: serverTimestamp(),
+        ...(downloadURL ? { downloadURL } : {}),
+      };
+
+      await addDoc(
+        collection(db, "users_app", selectedKey, "payments"),
+        payload
+      );
+
+      setOfflineAmount("");
+      setOfflineNote("");
+      setOfflineFile(null);
+
+      await loadPage("first", null);
+    } catch (err) {
+      console.error(err);
+      alert(err?.message || "Gagal menyimpan pembayaran offline.");
+    } finally {
+      setUploadBusy(false);
+    }
+  };
+
   return (
     <>
       <div className="rounded-2xl border border-slate-200 bg-white shadow-sm overflow-hidden">
@@ -271,7 +341,7 @@ function PaymentsVerificationPanel({ db, selectedNisn, headerSuffix = "" }) {
             <select
               value={pageSize}
               onChange={(e) => setPageSize(Number(e.target.value))}
-              className="rounded-lg border border-slate-200 bg-white px-2 py-1 text-xs text-slate-900"
+              className="rounded-lg border border-slate-200 bg-white px-2 py-1 text-xs text-slate-900 "
             >
               {PAGE_SIZES.map((n) => (
                 <option key={n} value={n}>
@@ -282,12 +352,98 @@ function PaymentsVerificationPanel({ db, selectedNisn, headerSuffix = "" }) {
             <button
               type="button"
               onClick={() => loadPage("first", null)}
-              className="rounded-lg border border-slate-200 bg-white px-2 py-1 text-xs hover:bg-slate-50"
+              className="rounded-lg border border-slate-200 bg-white px-2 py-1 text-xs hover:bg-slate-50 text-black"
             >
               Refresh
             </button>
           </div>
         </div>
+
+        {/* ===== Tambahan: Form input pembayaran offline (hanya jika ada NISN terpilih) ===== */}
+        {selectedKey ? (
+          <form
+  onSubmit={handleAddOfflinePayment}
+  className="border-b border-slate-100 bg-slate-50/60 px-4 py-3 flex flex-col gap-2"
+>
+  <div className="flex items-center justify-between gap-2">
+    <div className="text-xs font-semibold text-slate-800">
+      Tambah Pembayaran Offline
+    </div>
+  </div>
+
+  {/* Baris 1: Jumlah + Catatan */}
+  <div className="flex flex-col gap-2 md:flex-row md:items-start md:gap-3">
+    <div className="flex-1 flex flex-col gap-1">
+      <input
+        type="text"
+        inputMode="numeric"
+        placeholder="Jumlah (IDR)"
+        value={offlineAmount}
+        onChange={(e) => setOfflineAmount(e.target.value)}
+        className="w-full rounded-lg border border-slate-200 bg-white px-3 py-1.5 text-xs text-slate-900 focus:outline-none focus:ring-1 focus:ring-slate-500"
+      />
+      {/* Preview SELALU muncul, default Rp 0 */}
+      <span className="text-[11px] text-slate-500">
+        Preview:{" "}
+        <b>
+          {fmtIDR(
+            Number(
+              String(offlineAmount || "")
+                .replace(/[^\d]/g, "") || 0
+            )
+          )}
+        </b>
+      </span>
+    </div>
+
+    <div className="flex-1 flex flex-col">
+      <input
+        type="text"
+        placeholder="Catatan (opsional)"
+        value={offlineNote}
+        onChange={(e) => setOfflineNote(e.target.value)}
+        className="w-full rounded-lg border border-slate-200 bg-white px-3 py-1.5 text-xs text-slate-900 focus:outline-none focus:ring-1 focus:ring-slate-500"
+      />
+    </div>
+  </div>
+
+  {/* Baris 2: Upload + Tombol */}
+  <div className="mt-2 flex flex-col gap-2 md:flex-row md:items-center md:justify-between md:gap-3 md:flex-nowrap">
+    <div className="flex flex-col gap-1 md:flex-row md:items-center md:gap-2 md:flex-1">
+      <label
+        htmlFor="offline-file"
+        className="inline-flex items-center rounded-lg border border-slate-300 bg-white px-3 py-1.5 text-[11px] font-medium text-slate-800 cursor-pointer hover:bg-slate-50"
+      >
+        Pilih Bukti Pembayaran (JPG/PNG)
+      </label>
+      <input
+        id="offline-file"
+        type="file"
+        accept="image/*"
+        onChange={(e) => setOfflineFile(e.target.files?.[0] ?? null)}
+        className="sr-only"
+      />
+      <span className="text-[11px] text-slate-500 truncate max-w-xs md:max-w-sm">
+        {offlineFile ? offlineFile.name : "Belum ada file dipilih"}
+      </span>
+    </div>
+
+    <div className="flex items-center justify-end md:shrink-0">
+      <button
+        type="submit"
+        disabled={uploadBusy}
+        className="inline-flex items-center gap-2 rounded-xl border border-emerald-300 bg-emerald-600 px-3 py-1.5 text-xs font-semibold text-white hover:bg-emerald-700 disabled:opacity-60"
+      >
+        {uploadBusy && (
+          <Loader2 className="h-3.5 w-3.5 animate-spin" />
+        )}
+        Simpan Pembayaran Offline
+      </button>
+    </div>
+  </div>
+</form>
+
+        ) : null}
 
         <div className="divide-y divide-slate-100">
           {loading ? (
@@ -303,7 +459,10 @@ function PaymentsVerificationPanel({ db, selectedNisn, headerSuffix = "" }) {
               const s = normalizeStatus(r);
               const isPending = s === "pending";
               return (
-                <div key={`${r.nisn}-${r.id}`} className="p-4 flex flex-col gap-2">
+                <div
+                  key={`${r.nisn}-${r.id}`}
+                  className="p-4 flex flex-col gap-2"
+                >
                   <div className="flex items-center justify-between">
                     <div className="text-sm font-semibold text-slate-900">
                       {r.student?.name || "-"}{" "}
@@ -614,25 +773,25 @@ export default function AdminDaftarUlangPage() {
         <div className="xl:col-span-2 space-y-6">
           {/* Potongan untuk PTK (pakai toggle) */}
           {view === "PTK" && showPotongan && selected ? (
-  <KonfirmasiPotonganPanel
-    db={db}
-    selected={selected}
-    onAfterApprove={handleAfterApprove}
-    onRequestHide={() => setShowPotongan(false)}   // sudah oke
-  />
-) : null}
+            <KonfirmasiPotonganPanel
+              db={db}
+              selected={selected}
+              onAfterApprove={handleAfterApprove}
+              onRequestHide={() => setShowPotongan(false)} // sudah oke
+            />
+          ) : null}
 
           {/* Potongan untuk NON_PTK: selalu tampil saat ada selected; syarat saudara di-handle di potongan.js */}
           {view === "NON_PTK" && selected ? (
-  <KonfirmasiPotonganPanel
-    db={db}
-    selected={selected}
-    mode="NON_PTK"
-    variant="NON_PTK"
-    onAfterApprove={handleAfterApprove}
-    onRequestHide={() => setSelectedNonPTK(null)}   // ⬅️ TAMBAHAN
-  />
-) : null}
+            <KonfirmasiPotonganPanel
+              db={db}
+              selected={selected}
+              mode="NON_PTK"
+              variant="NON_PTK"
+              onAfterApprove={handleAfterApprove}
+              onRequestHide={() => setSelectedNonPTK(null)} // ⬅️ TAMBAHAN
+            />
+          ) : null}
 
           {/* Persetujuan pembayaran */}
           <PaymentsVerificationPanel

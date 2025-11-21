@@ -140,8 +140,16 @@ export default function HasilFinalPage() {
       const snap = await getDocs(buildUsersQuery(afterDoc));
 
       const users = [];
-      snap.forEach((d) => users.push({ id: d.id, ...(d.data() || {}) }));
-      setHasNext(users.length === PAGE_SIZE);
+snap.forEach((d) => {
+  const data = d.data() || {};
+  const finalDecision = String(data.finalDecision || "").toUpperCase();
+
+  // Skip yang sudah LULUS
+  if (finalDecision === "LULUS") return;
+
+  users.push({ id: d.id, ...data });
+});
+setHasNext(users.length === PAGE_SIZE);
       if (users.length > 0) {
         const last = snap.docs[snap.docs.length - 1];
         setAnchors((prev) => { const c = [...prev]; c[targetIndex] = last; return c; });
@@ -258,14 +266,37 @@ export default function HasilFinalPage() {
       const baseClauses = [where("registrationPaymentStatus", "in", VERIFIED_VARIANTS)];
       if (levelFilter !== "ALL") baseClauses.push(where("registrationLevel", "==", levelFilter));
 
-      let qRef = query(colRef, ...baseClauses, orderBy(documentId()), limit(EXPORT_BATCH));
+        let qRef = query(
+        colRef,
+        ...baseClauses,
+        orderBy(documentId()),
+        limit(EXPORT_BATCH)
+      );
+
       while (true) {
         const snap = await getDocs(qRef);
         if (snap.empty) break;
-        snap.forEach((d) => users.push({ id: d.id, ...(d.data() || {}) }));
+
+        snap.forEach((d) => {
+          const data = d.data() || {};
+          const finalDecision = String(data.finalDecision || "").toUpperCase();
+
+          // Skip yang sudah LULUS
+          if (finalDecision === "LULUS") return;
+
+          users.push({ id: d.id, ...data });
+        });
+
         if (snap.size < EXPORT_BATCH) break;
+
         const last = snap.docs[snap.docs.length - 1];
-        qRef = query(colRef, ...baseClauses, orderBy(documentId()), startAfter(last), limit(EXPORT_BATCH));
+        qRef = query(
+          colRef,
+          ...baseClauses,
+          orderBy(documentId()),
+          startAfter(last),
+          limit(EXPORT_BATCH)
+        );
       }
 
       // 2) Join nilai + Wali WA
@@ -468,12 +499,12 @@ export default function HasilFinalPage() {
                   </tr>
                 )}
 
-                {!loading && rows.length > 0 && rows.map((r) => (
+                {!loading && rows.length > 0 && rows.map((r, idx) => (
                   <tr
                     key={`${r.nisn}-${r.no}`}
                     className="border-b border-slate-100 odd:bg-white even:bg-slate-50/40 hover:bg-slate-50/80 transition-colors"
                   >
-                    <td className="px-4 py-3">{r.no}</td>
+                    <td className="px-4 py-3">{idx + 1}</td>
                     <td className="px-4 py-3 font-mono">{r.nisn}</td>
                     <td className="px-4 py-3 font-medium text-slate-900">{r.name}</td>
                     <td className="px-4 py-3">{r.level}</td>

@@ -931,7 +931,7 @@ export function NonPTKPanel({ db, jenjangFilter, pageSize = 10, onRowSelect }) {
       </div>
 
       {/* Pagination */}
-      <div className="px-4 py-3 border-t border-slate-200 flex items-center justify-between">
+      <div className="px-4 py-3 border-t border-slate-200 flex items-center justify-between text-black">
         <button
           type="button"
           onClick={() => {

@@ -743,7 +743,7 @@ export function PTKPanel({ db, jenjangFilter, pageSize = 10, onRowSelect }) {
             setPageIndex(0);
             fetchTablePage("first");
           }}
-          className="inline-flex items-center gap-2 rounded-xl border border-slate-200 bg-white px-3 py-2 text-sm hover:bg-slate-50 disabled:opacity-60"
+          className="inline-flex items-center gap-2 rounded-xl border border-slate-200 bg-white px-3 py-2 text-sm hover:bg-slate-50 disabled:opacity-60 text-black"
           disabled={pageIndex === 0 || loading}
         >
           <ChevronLeft className="h-4 w-4" />

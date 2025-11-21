@@ -1,401 +1,1130 @@
-// app/admin/data-daftar-ulang/page.js
 "use client";
 
-import { useCallback, useEffect, useMemo, useRef, useState } from "react";
-import { RefreshCw, ChevronRight, Search } from "lucide-react";
-import { listUsersWithPaymentPage } from "./data/firestore";
-import DafulTable from "./components/DafulTable";
-
-import { db } from "@/lib/firebase";
+import { useEffect, useMemo, useState } from "react";
+import { initializeApp, getApp, getApps } from "firebase/app";
 import {
-  doc, getDoc, collection, getDocs, orderBy, limit as fbLimit, query,
+  getFirestore,
+  collection,
+  collectionGroup,
+  getDocs,
+  query,
+  where,
+  limit,
 } from "firebase/firestore";
+import {
+  Loader2,
+  Users,
+  Wallet,
+  Banknote,
+  TicketPercent,
+  AlertCircle,
+  Search,
+  Filter,
+  LayoutGrid,
+  Rows,
+  Download,
+} from "lucide-react";
+import * as XLSX from "xlsx";
 
-/* ========= Helpers ========= */
-const up = (v) => (v ?? "").toString().trim().toUpperCase();
-const normPTK = (v) => {
-  const s = up(v);
-  if (["APPROVED","VERIFIED","ACCEPTED","CONFIRMED"].includes(s)) return "APPROVED";
-  if (["REJECTED","DENIED","DECLINED"].includes(s)) return "REJECTED";
-  return s || "PENDING";
+/* ==== Firebase init ==== */
+const firebaseConfig = {
+  apiKey: process.env.NEXT_PUBLIC_FIREBASE_API_KEY,
+  authDomain: process.env.NEXT_PUBLIC_FIREBASE_AUTH_DOMAIN,
+  projectId: process.env.NEXT_PUBLIC_FIREBASE_PROJECT_ID,
+  storageBucket: process.env.NEXT_PUBLIC_FIREBASE_STORAGE_BUCKET,
+  messagingSenderId: process.env.NEXT_PUBLIC_FIREBASE_MESSAGING_SENDER_ID,
+  appId: process.env.NEXT_PUBLIC_FIREBASE_APP_ID,
 };
+const app = getApps().length ? getApp() : initializeApp(firebaseConfig);
+const db = getFirestore(app);
 
-// ambil kandidat key dokumen users_app (urutan penting: docId/username dulu)
-function pickDocKeys(r) {
-  const cands = [
-    r?.id,
-    r?.docId,
-    r?.username,      // kebiasaan: username = id dokumen (contoh "02970011")
-    r?.uid,
-    r?.userId,
-    r?.NIS, r?.NISN,
-    r?.nisn,          // paling belakang karena sering beda dengan doc id
-  ].map((x) => (x ?? "").toString().trim()).filter(Boolean);
-  return Array.from(new Set(cands));
-}
+const PAGE_SIZES = [10, 25, 50];
 
-/* ========= Prefetch & Cache (dipakai lintas batch) =========
-   Kita kurangi latency dengan:
-   1) Kumpulkan semua KEY unik dari satu batch.
-   2) Prefetch paralel:
-      - users_app/{k}  -> ambil finalDecision (jika ada)
-      - users_app/{k}/ptk_confirmation/current -> status PTK
-   3) HANYA untuk key yang belum dapat finalDecision, barulah query subkoleksi
-      users_app/{k}/finalDecision (orderBy finalDecidedAt desc, limit 1).
-   4) Simpan ke cache agar batch berikutnya reuse.
-*/
-async function prefetchMetaForKeys(keys, cache) {
-  const unique = Array.from(new Set(keys)).filter(Boolean);
-  const missing = unique.filter((k) => !cache.has(k));
+const MAX_FINAL = 500; // berapa banyak peserta LULUS yang diambil
+const MAX_RE_REG_DOCS = 2000;
+const MAX_PAYMENTS_DOCS = 5000;
 
-  if (missing.length === 0) return cache;
-
-  // Pass 1: ambil dok utama & ptk current secara paralel
-  await Promise.all(
-    missing.map(async (k) => {
-      let fd = "";
-      let ptkApproved = false;
-      try {
-        const [userDoc, ptkDoc] = await Promise.all([
-          getDoc(doc(db, "users_app", k)),
-          getDoc(doc(db, "users_app", k, "ptk_confirmation", "current")),
-        ]);
-        if (userDoc.exists()) fd = up(userDoc.data()?.finalDecision);
-        if (ptkDoc.exists())  ptkApproved = normPTK(ptkDoc.data()?.status) === "APPROVED";
-      } catch {}
-      cache.set(k, { fd, ptkApproved });
-    })
-  );
-
-  // Pass 2: untuk yang finalDecision masih kosong -> cek subkoleksi (batasi paralel)
-  const needFd = missing.filter((k) => !cache.get(k)?.fd);
-  const CONCURRENCY = 6;
-  for (let i = 0; i < needFd.length; i += CONCURRENCY) {
-    const slice = needFd.slice(i, i + CONCURRENCY);
-    // jalankan paralel per slice agar tidak over-fetch
-    await Promise.all(
-      slice.map(async (k) => {
-        try {
-          const qref = query(
-            collection(db, "users_app", k, "finalDecision"),
-            orderBy("finalDecidedAt", "desc"),
-            fbLimit(1)
-          );
-          const snap = await getDocs(qref);
-          if (!snap.empty) {
-            const fd = up(snap.docs[0].data()?.finalDecision);
-            const prev = cache.get(k) || { fd: "", ptkApproved: false };
-            cache.set(k, { ...prev, fd });
-          }
-        } catch {}
-      })
-    );
-  }
-
-  return cache;
-}
-
-/* Enrich batch dengan cache & prefetch (super cepat) */
-async function enrichBatch(rows, cache) {
-  // 1) kumpulkan semua key unik dari rows (termasuk fallback id/username/nisn)
-  const allKeys = rows.flatMap((r) => pickDocKeys(r));
-  // 2) prefetch meta ke cache
-  await prefetchMetaForKeys(allKeys, cache);
-  // 3) susun output
-  return rows.map((r) => {
-    const keys = pickDocKeys(r);
-    let fd = up(r?.finalDecision);
-    let ptkApproved = false;
-
-    for (const k of keys) {
-      const m = cache.get(k);
-      if (!m) continue;
-      if (!fd && m.fd) fd = m.fd;
-      if (m.ptkApproved) ptkApproved = true;
-      if (fd && ptkApproved) break; // cukup
-    }
-
-    return { ...r, __finalDecision: fd, __ptkApproved: !!ptkApproved };
+function fmtIDR(n) {
+  const v = Number(n || 0);
+  if (!Number.isFinite(v)) return "-";
+  return v.toLocaleString("id-ID", {
+    style: "currency",
+    currency: "IDR",
+    maximumFractionDigits: 0,
   });
 }
 
-/* --- Aturan dataset halaman ---
-   - PTK = __ptkApproved === true (ikut untuk tab "Semua")
-   - Non-PTK = !__ptkApproved && __finalDecision === "LULUS"
-   - Lainnya dibuang dari dataset
-*/
-const coreFilter = (rows) =>
-  rows.filter((r) => r.__ptkApproved || (!r.__ptkApproved && up(r.__finalDecision) === "LULUS"));
+function formatDateTime(ms) {
+  if (!ms) return "-";
+  try {
+    return new Date(ms).toLocaleString("id-ID", {
+      dateStyle: "short",
+      timeStyle: "short",
+    });
+  } catch {
+    return "-";
+  }
+}
 
-export default function DataDaftarUlangPage() {
+/* ===== Normalizer status (pembayaran) ===== */
+function normalizeStatus(pLike) {
+  try {
+    const raw =
+      (pLike?.status ??
+        pLike?.paymentStatus ??
+        pLike?.reviewStatus ??
+        (pLike?.verified ? "VERIFIED" : "") ??
+        (pLike?.approved ? "APPROVED" : "") ??
+        "") + "";
+    const s = raw.trim().toUpperCase();
+    if (["APPROVED", "VERIFIED", "ACCEPTED", "OK", "CONFIRMED"].includes(s))
+      return "approved";
+    if (["REJECTED", "DENIED", "DECLINED"].includes(s)) return "rejected";
+    return "pending";
+  } catch {
+    return "pending";
+  }
+}
+
+function isApproved(p) {
+  return normalizeStatus(p) === "approved";
+}
+
+/* ====== Komponen kecil ====== */
+function StatCard({ icon: Icon, label, value, helper, onClick, active }) {
+  return (
+    <button
+      type="button"
+      onClick={onClick}
+      className={`group w-full text-left rounded-2xl border bg-white shadow-sm hover:shadow-md transition-all duration-300 p-4 md:p-5 ${
+        active
+          ? "border-emerald-300 ring-2 ring-emerald-200"
+          : "border-slate-200"
+      }`}
+    >
+      <div className="flex items-center gap-3">
+        <div className="inline-flex h-11 w-11 items-center justify-center rounded-xl border border-slate-200 bg-slate-50">
+          <Icon className="h-5 w-5 text-slate-700" />
+        </div>
+        <div className="min-w-0">
+          <div className="text-[11px] md:text-xs font-medium uppercase tracking-wide text-slate-500">
+            {label}
+          </div>
+          <div className="mt-0.5 text-sm md:text-lg font-extrabold tracking-tight tabular-nums text-slate-900 break-words">
+            {value}
+          </div>
+          {helper ? (
+            <div className="mt-0.5 text-[11px] text-slate-500 truncate">
+              {helper}
+            </div>
+          ) : null}
+        </div>
+      </div>
+    </button>
+  );
+}
+
+/* ========= Halaman Data Daftar Ulang ========= */
+export default function AdminDataDaftarUlangPage() {
+  const [rows, setRows] = useState([]);
+  const [stats, setStats] = useState({
+    totalParticipants: 0,
+    totalTagihanNet: 0,
+    totalPaid: 0,
+    totalSisa: 0,
+    totalDiscountPTK: 0,
+    totalDiscountNonPTK: 0,
+  });
   const [loading, setLoading] = useState(true);
-  const [raw, setRaw] = useState([]);
-  const [enrichedRows, setEnrichedRows] = useState([]);
-  const [hasMore, setHasMore] = useState(false);
-  const cursorRef = useRef(null);
+  const [errorMsg, setErrorMsg] = useState("");
 
-  const [pageSize, setPageSize] = useState(25);
-  const [q, setQ] = useState("");
+  const [pageSize, setPageSize] = useState(10);
+  const [page, setPage] = useState(1);
+  const [search, setSearch] = useState("");
+  const [filterJalur, setFilterJalur] = useState("ALL");
+  const [filterStatus, setFilterStatus] = useState("ALL");
+  const [viewMode, setViewMode] = useState("SUMMARY"); // SUMMARY | COMPONENT
+  const [statScope, setStatScope] = useState("ALL");
+  const [filterLevel, setFilterLevel] = useState("ALL");
 
-  const [filterJenjang, setFilterJenjang] = useState("all");
-  const [filterStatus, setFilterStatus] = useState("all"); // "all" | "PTK" | "Non-PTK"
-  const [filterLunas, setFilterLunas] = useState("all");   // "all" | "lunas" | "belum"
+  // Aggregasi untuk stat card sesuai scope (ALL / PTK / NON_PTK)
+  const scopedStats = useMemo(() => {
+    let filtered = rows;
+    if (statScope === "PTK") {
+      filtered = rows.filter((r) => r.jalur === "PTK");
+    } else if (statScope === "NON_PTK") {
+      filtered = rows.filter((r) => r.jalur === "NON_PTK");
+    }
 
-  // cache meta lintas batch (key = users_app docId/username/nisn)
-  const metaCacheRef = useRef(new Map());
+    const totalTagihanNet = filtered.reduce(
+      (sum, r) => sum + (Number(r.netTagihan || 0) || 0),
+      0
+    );
+    const totalPaid = filtered.reduce(
+      (sum, r) => sum + (Number(r.totalPaid || 0) || 0),
+      0
+    );
+    const totalSisa = filtered.reduce(
+      (sum, r) => sum + (Number(r.sisa || 0) || 0),
+      0
+    );
 
-  /* FILL-UNTIL-PAGE setelah coreFilter — dipercepat dengan enrichBatch */
-  const reload = useCallback(async (reset = true) => {
-    setLoading(true);
-    try {
-      let localRaw = reset ? [] : [...raw];
-      let localEnriched = reset ? [] : [...enrichedRows];
-      let localCursor = reset ? null : cursorRef.current;
-      let localHasMore = true;
+    return {
+      participants: filtered.length,
+      totalTagihanNet,
+      totalPaid,
+      totalSisa,
+    };
+  }, [rows, statScope]);
 
-      const SAFETY = 30;
-      let iter = 0;
+  const discountValue = useMemo(() => {
+    const totalAll =
+      (Number(stats.totalDiscountPTK || 0) || 0) +
+      (Number(stats.totalDiscountNonPTK || 0) || 0);
 
-      while (true) {
-        iter += 1;
-        const current = coreFilter(localEnriched);
-        if (current.length >= pageSize) break;
-        if (!localHasMore && iter > 1) break;
+    if (statScope === "ALL") {
+      return fmtIDR(totalAll);
+    }
+    if (statScope === "PTK") {
+      return fmtIDR(stats.totalDiscountPTK);
+    }
+    if (statScope === "NON_PTK") {
+      return fmtIDR(stats.totalDiscountNonPTK);
+    }
+    return "-";
+  }, [statScope, stats.totalDiscountPTK, stats.totalDiscountNonPTK]);
 
-        const res = await listUsersWithPaymentPage({
-          pageSize,
-          cursor: localCursor,
+  const discountHelper = useMemo(() => {
+    if (statScope === "ALL") return "Kiri: PTK · Kanan: Non-PTK";
+    if (statScope === "PTK") return "Diskon jalur PTK";
+    if (statScope === "NON_PTK") return "Diskon jalur Non-PTK";
+    return "";
+  }, [statScope]);
+
+  const scopeLabelSuffix =
+    statScope === "ALL"
+      ? " (Semua Jalur)"
+      : statScope === "PTK"
+      ? " (PTK)"
+      : " (Non-PTK)";
+
+  const handleToggleStatScope = () => {
+    setStatScope((prev) =>
+      prev === "ALL" ? "PTK" : prev === "PTK" ? "NON_PTK" : "ALL"
+    );
+  };
+
+  useEffect(() => {
+    let alive = true;
+
+    async function load() {
+      setLoading(true);
+      setErrorMsg("");
+      try {
+        /* 1) Ambil peserta LULUS dari users_app (field finalDecision) */
+        const finalSnap = await getDocs(
+          query(
+            collection(db, "users_app"),
+            where("finalDecision", "==", "LULUS"),
+            limit(MAX_FINAL)
+          )
+        );
+
+        /* 2) Ambil seluruh konfigurasi biaya re_registration_fees */
+        const feesSnap = await getDocs(collection(db, "re_registration_fees"));
+        const feesByLabel = {};
+        feesSnap.forEach((d) => {
+          const data = d.data() || {};
+          const label = (data.label || data.key || "").toString().trim();
+          if (!label) return;
+          feesByLabel[label] = {
+            spp: typeof data.spp === "number" ? data.spp : 0,
+            uangPangkal:
+              data.uangPangkal && typeof data.uangPangkal === "object"
+                ? data.uangPangkal
+                : {},
+          };
         });
 
-        const batch = res.list || [];
-        if (!batch.length) { localHasMore = false; break; }
+        /* 3) Ambil semua dokumen potongan di subkoleksi re_registration */
+        const reRegSnap = await getDocs(
+          query(collectionGroup(db, "re_registration"), limit(MAX_RE_REG_DOCS))
+        );
+        const discountsByNisn = {};
+        let totalDiscountPTK = 0;
+        let totalDiscountNonPTK = 0;
 
-        // ==== ENRICH CEPAT (prefetch+cache per batch) ====
-        const enriched = await enrichBatch(batch, metaCacheRef.current);
+        reRegSnap.forEach((docSnap) => {
+          const docId = docSnap.id; // "ptk_discount" / "nonptk_discount" / lainnya
+          if (docId !== "ptk_discount" && docId !== "nonptk_discount") return;
 
-        localRaw = [...localRaw, ...batch];
-        localEnriched = [...localEnriched, ...enriched];
+          const data = docSnap.data() || {};
+          const amount = Number(data.amount || 0);
+          if (!Number.isFinite(amount) || amount <= 0) return;
 
-        localCursor = res.lastDoc || null;
-        localHasMore = !!res.lastDoc;
+          const parent = docSnap.ref.parent; // re_registration
+          const userRef = parent?.parent; // users_app/{nisn}
+          const nisn = userRef?.id || "";
+          if (!nisn) return;
 
-        if (iter >= SAFETY || !localHasMore) break;
+          if (!discountsByNisn[nisn]) {
+            discountsByNisn[nisn] = { ptk: 0, nonptk: 0 };
+          }
+
+          if (docId === "ptk_discount") {
+            discountsByNisn[nisn].ptk += amount;
+            totalDiscountPTK += amount;
+          } else if (docId === "nonptk_discount") {
+            discountsByNisn[nisn].nonptk += amount;
+            totalDiscountNonPTK += amount;
+          }
+        });
+
+        /* 4) Ambil semua payments (collectionGroup) */
+        const paySnap = await getDocs(
+          query(collectionGroup(db, "payments"), limit(MAX_PAYMENTS_DOCS))
+        );
+        const payAggByNisn = {};
+        paySnap.forEach((docSnap) => {
+          const data = docSnap.data() || {};
+          const parent = docSnap.ref.parent; // payments
+          const userRef = parent?.parent;
+          const nisn = userRef?.id || "";
+          if (!nisn) return;
+
+          const amount = Number(data.amount || 0);
+          if (!Number.isFinite(amount) || amount <= 0) return;
+
+          const status = normalizeStatus(data);
+          const ts = data.createdAt;
+          const ms = ts?.toMillis
+            ? ts.toMillis()
+            : ts instanceof Date
+            ? ts.getTime()
+            : null;
+
+          if (!payAggByNisn[nisn]) {
+            payAggByNisn[nisn] = {
+              totalApproved: 0,
+              count: 0,
+              lastPaidAt: null,
+            };
+          }
+
+          const agg = payAggByNisn[nisn];
+          agg.count += 1;
+
+          if (status === "approved") {
+            agg.totalApproved += amount;
+          }
+
+          if (ms && (!agg.lastPaidAt || ms > agg.lastPaidAt)) {
+            agg.lastPaidAt = ms;
+          }
+        });
+
+        /* 5) Susun rows per peserta LULUS */
+        const tmpRows = [];
+        let statTotalTagihanNet = 0;
+        let statTotalPaid = 0;
+        let statTotalSisa = 0;
+
+        for (const fSnap of finalSnap.docs) {
+          const ud = fSnap.data() || {};
+
+          const nisn = (ud.nisn || fSnap.id || "").toString().trim();
+          if (!nisn) continue;
+
+          const level = (
+            ud.registrationLevel ||
+            ud.jenjangDiterima ||
+            ud.jenjang ||
+            ""
+          )
+            .toString()
+            .trim();
+          if (!level) continue;
+
+          const name =
+            ud.fullName || ud.nama || ud.name || ud.studentName || nisn;
+          const phone =
+            ud.noWa || ud.whatsapp || ud.phone || ud.hp || ud.noHP || "";
+
+          // Biaya dasar dari label/jenjang
+          const fee = feesByLabel[level] || null;
+          const baseSPP = fee?.spp || 0;
+
+          let pangkalComponents = {};
+          let totalPangkal = 0;
+          if (fee?.uangPangkal && typeof fee.uangPangkal === "object") {
+            pangkalComponents = fee.uangPangkal;
+            for (const v of Object.values(fee.uangPangkal)) {
+              const n = Number(v || 0);
+              if (Number.isFinite(n)) totalPangkal += n;
+            }
+          }
+          const totalAwal = baseSPP + totalPangkal;
+
+          // Potongan PTK / Non-PTK
+          const discInfo = discountsByNisn[nisn] || { ptk: 0, nonptk: 0 };
+          const discPTK = Number(discInfo.ptk || 0);
+          const discNonPTK = Number(discInfo.nonptk || 0);
+          const totalDisc =
+            (Number.isFinite(discPTK) ? discPTK : 0) +
+            (Number.isFinite(discNonPTK) ? discNonPTK : 0);
+
+          const netTagihan = Math.max(0, totalAwal - totalDisc);
+
+          // Aggregasi pembayaran
+          const payAgg = payAggByNisn[nisn] || {
+            totalApproved: 0,
+            count: 0,
+            lastPaidAt: null,
+          };
+          const totalPaid = payAgg.totalApproved || 0;
+          const sisa = Math.max(0, netTagihan - totalPaid);
+
+          let statusDaftarUlang = "BELUM BAYAR";
+          if (totalPaid <= 0) statusDaftarUlang = "BELUM BAYAR";
+          else if (totalPaid < netTagihan) statusDaftarUlang = "SEBAGIAN";
+          else statusDaftarUlang = "LUNAS";
+
+          const jalur =
+            discPTK > 0
+              ? "PTK"
+              : discNonPTK > 0
+              ? "NON_PTK"
+              : ud.isPTK
+              ? "PTK"
+              : ud.isNonPTK
+              ? "NON_PTK"
+              : "";
+
+          tmpRows.push({
+            nisn,
+            name,
+            level,
+            jalur,
+            phone,
+            baseSPP,
+            pangkalComponents,
+            totalPangkal,
+            totalAwal,
+            discPTK,
+            discNonPTK,
+            totalDisc,
+            netTagihan,
+            totalPaid,
+            sisa,
+            buktiCount: payAgg.count || 0,
+            lastPaidAt: payAgg.lastPaidAt,
+            statusDaftarUlang,
+          });
+
+          statTotalTagihanNet += netTagihan;
+          statTotalPaid += totalPaid;
+          statTotalSisa += sisa;
+        }
+
+        if (!alive) return;
+
+        // Urutkan by level lalu nama
+        tmpRows.sort((a, b) => {
+          if (a.level === b.level) {
+            return a.name.localeCompare(b.name, "id");
+          }
+          return a.level.localeCompare(b.level, "id");
+        });
+
+        setRows(tmpRows);
+        setStats({
+          totalParticipants: tmpRows.length,
+          totalTagihanNet: statTotalTagihanNet,
+          totalPaid: statTotalPaid,
+          totalSisa: statTotalSisa,
+          totalDiscountPTK,
+          totalDiscountNonPTK,
+        });
+      } catch (e) {
+        console.error(e);
+        if (!alive) return;
+        setErrorMsg(e?.message || "Gagal memuat data daftar ulang.");
+      } finally {
+        alive && setLoading(false);
       }
-
-      setRaw(localRaw);
-      setEnrichedRows(localEnriched);
-      cursorRef.current = localCursor;
-      setHasMore(!!localCursor);
-    } finally {
-      setLoading(false);
     }
-  }, [pageSize, raw, enrichedRows]);
 
-  const loadMore = useCallback(async () => {
-    if (!hasMore) return;
-    setLoading(true);
-    try {
-      const res = await listUsersWithPaymentPage({ pageSize, cursor: cursorRef.current });
-      const batch = res.list || [];
-      // ==== ENRICH CEPAT ====
-      const enriched = await enrichBatch(batch, metaCacheRef.current);
+    load();
 
-      setRaw((s) => [...s, ...batch]);
-      setEnrichedRows((s) => [...s, ...enriched]);
-      cursorRef.current = res.lastDoc || null;
-      setHasMore(!!res.lastDoc);
-    } finally {
-      setLoading(false);
+    return () => {
+      alive = false;
+    };
+  }, []);
+
+  // Filter & pencarian
+  const filteredRows = useMemo(() => {
+    let out = [...rows];
+
+    if (search.trim()) {
+      const s = search.trim().toLowerCase();
+      out = out.filter(
+        (r) =>
+          r.nisn.toLowerCase().includes(s) ||
+          r.name.toLowerCase().includes(s) ||
+          r.level.toLowerCase().includes(s)
+      );
     }
-  }, [hasMore, pageSize]);
 
-  useEffect(() => { reload(true); /* on mount */ }, []);               // eslint-disable-line
-  useEffect(() => { reload(true); }, [pageSize]);                      // refill saat pageSize berubah
-
-  /* Dataset dasar halaman sesuai aturan */
-  const effectiveRows = useMemo(() => coreFilter(enrichedRows), [enrichedRows]);
-
-  /* Filter UI */
-  const filtered = useMemo(() => {
-    if (!q && filterJenjang === "all" && filterStatus === "all" && filterLunas === "all") {
-      return effectiveRows;
+    if (filterJalur !== "ALL") {
+      out = out.filter((r) => (r.jalur || "") === filterJalur);
     }
-    return effectiveRows.filter((r) => {
-      const qq = q.toLowerCase();
-      const matchSearch =
-        !q || `${r.nisn} ${r.username} ${r.fullName} ${r.level}`.toLowerCase().includes(qq);
 
-      const matchJenjang = filterJenjang === "all" || r.level === filterJenjang;
+    // filter jenjang
+    if (filterLevel !== "ALL") {
+      out = out.filter((r) => r.level === filterLevel);
+    }
 
-      // Status pakai definisi baru:
-      const isPTK = !!r.__ptkApproved;
-      const isNonPTK = !r.__ptkApproved && up(r.__finalDecision) === "LULUS";
-      const matchStatus =
-        filterStatus === "all" ||
-        (filterStatus === "PTK" ? isPTK : isNonPTK);
+    if (filterStatus !== "ALL") {
+      out = out.filter((r) => r.statusDaftarUlang === filterStatus);
+    }
 
-      const isLunas = r.tunggakan <= 0 && r.kewajibanTotal > 0;
-      const matchLunas =
-        filterLunas === "all" ||
-        (filterLunas === "lunas" && isLunas) ||
-        (filterLunas === "belum" && !isLunas);
+    return out;
+  }, [rows, search, filterJalur, filterLevel, filterStatus]);
 
-      return matchSearch && matchJenjang && matchStatus && matchLunas;
-    });
-  }, [effectiveRows, q, filterJenjang, filterStatus, filterLunas]);
+  const totalPages = useMemo(
+    () => Math.max(1, Math.ceil(filteredRows.length / pageSize)),
+    [filteredRows.length, pageSize]
+  );
 
-  /* Jenjang & stats berdasarkan effectiveRows */
-  const jenjangList = useMemo(() => {
+  const pageSafe = Math.min(page, totalPages);
+  const paginatedRows = useMemo(() => {
+    const start = (pageSafe - 1) * pageSize;
+    return filteredRows.slice(start, start + pageSize);
+  }, [filteredRows, pageSafe, pageSize]);
+
+  const pangkalLabelMap = {
+    pakaian: "PAKAIAN",
+    sarpras: "SARPRAS",
+    kasur: "KASUR",
+    kitab: "KITAB",
+    bp3: "BP3",
+  };
+  const pangkalKeyOrder = ["pakaian", "sarpras", "kasur", "kitab", "bp3"];
+
+  const levelOptions = useMemo(() => {
     const set = new Set();
-    for (const r of effectiveRows) if (r.level) set.add(r.level);
-    return Array.from(set).sort();
-  }, [effectiveRows]);
+    rows.forEach((r) => {
+      if (r.level) set.add(r.level);
+    });
+    return Array.from(set).sort((a, b) => a.localeCompare(b, "id"));
+  }, [rows]);
 
-  const stats = useMemo(() => {
-    const ptk = effectiveRows.filter((r) => !!r.__ptkApproved).length;
-    const nonPtk = effectiveRows.filter((r) => !r.__ptkApproved && up(r.__finalDecision) === "LULUS").length;
-    const lunas = effectiveRows.filter((r) => r.tunggakan <= 0 && r.kewajibanTotal > 0).length;
-    const belumLunas = effectiveRows.length - lunas;
-    return { ptk, nonPtk, lunas, belumLunas };
-  }, [effectiveRows]);
+  // ====== Download Excel (.xls) ======
+  const buildSummarySheetData = (data) => {
+    const header = [
+      "NISN",
+      "Nama",
+      "Jenjang",
+      "Jalur",
+      "Tagihan Awal",
+      "Diskon",
+      "Tagihan Net",
+      "Terbayar",
+      "Sisa",
+      "Status",
+      "Bukti",
+      "Terakhir Bayar",   
+    ];
+
+    const rows = data.map((r) => {
+      const totalAwalNum = Number(r.totalAwal || 0) || 0;
+      const totalPaidNum = Number(r.totalPaid || 0) || 0;
+      const perluNum = Math.max(0, totalAwalNum - totalPaidNum);
+
+      return [
+        r.nisn,
+        r.name,
+        r.level,
+        r.jalur || "",
+        totalAwalNum,
+        Number(r.totalDisc || 0) || 0,
+        Number(r.netTagihan || 0) || 0,
+        totalPaidNum,
+        Number(r.sisa || 0) || 0,
+        r.statusDaftarUlang,
+        r.buktiCount || 0,
+        formatDateTime(r.lastPaidAt),       
+      ];
+    });
+
+    return [header, ...rows];
+  };
+
+  // data untuk mode KOMPONEN
+  const buildComponentSheetData = (data) => {
+    const header = [
+      "NISN",
+      "Nama",
+      "Jenjang",
+      "Jalur",
+      "SPP",
+      "Pakaian",
+      "Sarpras",
+      "Kasur",
+      "Kitab",
+      "BP3",
+      "Total Uang Pangkal",
+      "Total Dibayar (SPP+Pangkal)",
+      "Jumlah Dibayar (Approved)",
+      "Perlu Dibayar Lagi", // (SPP + pangkal) - jumlah dibayar
+    ];
+
+    const rows = data.map((r) => {
+      const pk = r.pangkalComponents || {};
+      const getPkValNum = (key) => {
+        const val = Number(pk?.[key] || 0);
+        return Number.isFinite(val) ? val : 0;
+      };
+
+      const baseSPPNum = Number(r.baseSPP || 0) || 0;
+      const totalPangkalNum = Number(r.totalPangkal || 0) || 0;
+      const totalAll = baseSPPNum + totalPangkalNum; // total dibayar (SPP+Pangkal)
+      const totalPaidNum = Number(r.totalPaid || 0) || 0;
+      const perluNum = Math.max(0, totalAll - totalPaidNum);
+
+      return [
+        r.nisn,
+        r.name,
+        r.level,
+        r.jalur || "",
+        baseSPPNum,
+        getPkValNum("pakaian"),
+        getPkValNum("sarpras"),
+        getPkValNum("kasur"),
+        getPkValNum("kitab"),
+        getPkValNum("bp3"),
+        totalPangkalNum,
+        totalAll,
+        totalPaidNum,
+        perluNum,
+      ];
+    });
+
+    return [header, ...rows];
+  };
+
+  const handleDownloadXls = () => {
+    if (!filteredRows.length) return;
+
+    // pilih data berdasarkan view yang aktif
+    const ts = new Date().toISOString().slice(0, 10);
+    const wb = XLSX.utils.book_new();
+
+    let sheetData;
+    let sheetName;
+
+    if (viewMode === "SUMMARY") {
+      sheetData = buildSummarySheetData(filteredRows);
+      sheetName = "Rekap";
+    } else {
+      sheetData = buildComponentSheetData(filteredRows);
+      sheetName = "Komponen";
+    }
+
+    const ws = XLSX.utils.aoa_to_sheet(sheetData);
+    XLSX.utils.book_append_sheet(wb, ws, sheetName);
+
+    const filename = `data-daftar-ulang-${viewMode.toLowerCase()}-${ts}.xls`;
+
+    // tulis sebagai file .xls asli
+    XLSX.writeFile(wb, filename, { bookType: "xls" });
+  };
 
   return (
-    <div className="min-h-screen bg-white">
-      <div className="px-4 py-8 space-y-6 max-w-[1600px] mx-auto">
-        {/* Header */}
-        <div className="space-y-2">
-          <div className="flex items-center gap-3">
-            <div className="h-10 w-1.5 rounded-full bg-gradient-to-b from-slate-700 via-slate-600 to-slate-500 shadow-lg" />
-            <h1 className="text-3xl md:text-3xl font-bold bg-gradient-to-r from-slate-800 to-slate-600 bg-clip-text text-transparent">
-              Data Daftar Ulang
-            </h1>
-          </div>
-          
+    <main className="p-4 md:p-6 space-y-4">
+      <div className="flex flex-col gap-2 md:flex-row md:items-center md:justify-between">
+        <div>
+          <h1 className="text-lg md:text-xl font-bold text-slate-900">
+            Data Rekap Daftar Ulang
+          </h1>         
         </div>
+      </div>
 
-        {/* Controls */}
-        <div className="rounded-xl border border-slate-200/50 bg-white shadow-lg p-6 space-y-4">
-          <div className="grid grid-cols-2 md:grid-cols-4 gap-3">
-            <div className="bg-gradient-to-br from-blue-50 to-blue-100 rounded-lg p-3 border border-blue-200">
-              <div className="text-xs font-semibold text-blue-600 uppercase tracking-wide">Total Data</div>
-              <div className="text-2xl font-bold text-blue-900 mt-1">{effectiveRows.length}</div>
-            </div>
-            <div className="bg-gradient-to-br from-emerald-50 to-emerald-100 rounded-lg p-3 border border-emerald-200">
-              <div className="text-xs font-semibold text-emerald-600 uppercase tracking-wide">PTK</div>
-              <div className="text-2xl font-bold text-emerald-900 mt-1">{stats.ptk}</div>
-            </div>
-            <div className="bg-gradient-to-br from-violet-50 to-violet-100 rounded-lg p-3 border border-violet-200">
-              <div className="text-xs font-semibold text-violet-600 uppercase tracking-wide">Lunas</div>
-              <div className="text-2xl font-bold text-violet-900 mt-1">{stats.lunas}</div>
-            </div>
-            <div className="bg-gradient-to-br from-amber-50 to-amber-100 rounded-lg p-3 border border-amber-200">
-              <div className="text-xs font-semibold text-amber-600 uppercase tracking-wide">Belum Lunas</div>
-              <div className="text-2xl font-bold text-amber-900 mt-1">{stats.belumLunas}</div>
-            </div>
+      {/* Stat cards */}
+      <div className="grid grid-cols-1 md:grid-cols-3 xl:grid-cols-5 gap-3">
+        <StatCard
+          icon={Users}
+          label={`Peserta Daftar Ulang (LULUS)${scopeLabelSuffix}`}
+          value={scopedStats.participants.toLocaleString("id-ID")}
+          helper="Klik untuk toggle: Semua → PTK → Non-PTK"
+          onClick={handleToggleStatScope}
+          active={statScope !== "ALL"}
+        />
+        <StatCard
+          icon={Wallet}
+          label={`Total Tagihan (net)${scopeLabelSuffix}`}
+          value={fmtIDR(scopedStats.totalTagihanNet)}
+          helper="Setelah potongan sesuai jalur"
+          onClick={handleToggleStatScope}
+          active={statScope !== "ALL"}
+        />
+        <StatCard
+          icon={Banknote}
+          label={`Total Pembayaran ${scopeLabelSuffix}`}
+          value={fmtIDR(scopedStats.totalPaid)}
+          helper="Hanya pembayaran berstatus disetujui"
+          onClick={handleToggleStatScope}
+          active={statScope !== "ALL"}
+        />
+        <StatCard
+          icon={AlertCircle}
+          label={`Total Sisa Tagihan${scopeLabelSuffix}`}
+          value={fmtIDR(scopedStats.totalSisa)}
+          helper="Tagihan net dikurangi pembayaran"
+          onClick={handleToggleStatScope}
+          active={statScope !== "ALL"}
+        />
+        <StatCard
+          icon={TicketPercent}
+          label={`Total Diskon${scopeLabelSuffix}`}
+          value={discountValue}
+          helper={discountHelper}
+          onClick={handleToggleStatScope}
+          active={statScope !== "ALL"}
+        />
+      </div>
+
+      {/* Filter & kontrol tabel */}
+      <div className="rounded-2xl border border-slate-200 bg-white shadow-sm">
+        <div className="px-3 py-3 md:px-4 md:py-3 border-b border-slate-200 flex flex-col gap-3 md:flex-row md:items-center md:justify-between">
+          <div className="flex items-center gap-2 text-slate-800">
+            <Filter className="h-4 w-4" />
+            <span className="text-sm font-semibold">Data peserta</span>
+            {loading && (
+              <span className="inline-flex items-center gap-1 text-[11px] text-slate-500">
+                <Loader2 className="h-3.5 w-3.5 animate-spin" />
+                Memuat…
+              </span>
+            )}
           </div>
-
-          <div className="grid grid-cols-1 md:grid-cols-4 gap-3 pt-2 border-t border-slate-100">
-            <div>
-              <label className="block text-xs font-bold text-slate-700 mb-2 uppercase tracking-wide">Jenjang</label>
-              <select
-                value={filterJenjang}
-                onChange={(e) => setFilterJenjang(e.target.value)}
-                className="w-full rounded-lg border border-slate-300 bg-white px-3 py-2 text-sm text-slate-900 font-semibold focus:outline-none focus:ring-2 focus:ring-slate-500 focus:border-transparent transition-all"
-              >
-                <option value="all">Semua Jenjang</option>
-                {jenjangList.map((j) => (<option key={j} value={j}>{j}</option>))}
-              </select>
+          <div className="flex flex-col gap-2 md:flex-row md:items-center md:gap-3">
+            {/* Search */}
+            <div className="flex items-center gap-1 rounded-lg border border-slate-200 bg-slate-50 px-2">
+              <Search className="h-3.5 w-3.5 text-slate-500" />
+              <input
+                value={search}
+                onChange={(e) => {
+                  setSearch(e.target.value);
+                  setPage(1);
+                }}
+                placeholder="Cari NISN / nama / jenjang…"
+                className="bg-transparent px-1 py-1 text-xs md:text-sm text-slate-900 placeholder:text-slate-400 focus:outline-none"
+              />
             </div>
 
-            <div>
-              <label className="block text-xs font-bold text-slate-700 mb-2 uppercase tracking-wide">Status</label>
+            {/* Filters */}
+            <div className="flex items-center gap-2">
+              {/* Filter jalur */}
+              <select
+                value={filterJalur}
+                onChange={(e) => {
+                  setFilterJalur(e.target.value);
+                  setPage(1);
+                }}
+                className="rounded-lg border border-slate-200 bg-white px-2 py-1 text-xs text-slate-900"
+              >
+                <option value="ALL">Semua Jalur</option>
+                <option value="PTK">PTK</option>
+                <option value="NON_PTK">Non-PTK</option>
+              </select>
+
+              {/* Filter jenjang */}
+              <select
+                value={filterLevel}
+                onChange={(e) => {
+                  setFilterLevel(e.target.value);
+                  setPage(1);
+                }}
+                className="rounded-lg border border-slate-200 bg-white px-2 py-1 text-xs text-slate-900 max-w-[160px]"
+              >
+                <option value="ALL">Semua Jenjang</option>
+                {levelOptions.map((lv) => (
+                  <option key={lv} value={lv}>
+                    {lv}
+                  </option>
+                ))}
+              </select>
+
+              {/* Filter status */}
               <select
                 value={filterStatus}
-                onChange={(e) => setFilterStatus(e.target.value)}
-                className="w-full rounded-lg border border-slate-300 bg-white px-3 py-2 text-sm text-slate-900 font-semibold focus:outline-none focus:ring-2 focus:ring-slate-500 focus:border-transparent transition-all"
+                onChange={(e) => {
+                  setFilterStatus(e.target.value);
+                  setPage(1);
+                }}
+                className="rounded-lg border border-slate-200 bg-white px-2 py-1 text-xs text-slate-900"
               >
-                <option value="all">Semua Status</option>
-                <option value="PTK">PTK ({stats.ptk})</option>
-                <option value="Non-PTK">Non-PTK ({stats.nonPtk})</option>
+                <option value="ALL">Semua Status</option>
+                <option value="BELUM BAYAR">Belum bayar</option>
+                <option value="SEBAGIAN">Sebagian</option>
+                <option value="LUNAS">Lunas</option>
               </select>
-            </div>
 
-            <div>
-              <label className="block text-xs font-bold text-slate-700 mb-2 uppercase tracking-wide">Pembayaran</label>
-              <select
-                value={filterLunas}
-                onChange={(e) => setFilterLunas(e.target.value)}
-                className="w-full rounded-lg border border-slate-300 bg-white px-3 py-2 text-sm text-slate-900 font-semibold focus:outline-none focus:ring-2 focus:ring-slate-500 focus:border-transparent transition-all"
-              >
-                <option value="all">Semua</option>
-                <option value="lunas">Lunas ({stats.lunas})</option>
-                <option value="belum">Belum Lunas ({stats.belumLunas})</option>
-              </select>
-            </div>
-
-            <div>
-              <label className="block text-xs font-bold text-slate-700 mb-2 uppercase tracking-wide">Baris per Halaman</label>
+              {/* Page size */}
               <select
                 value={pageSize}
-                onChange={(e) => setPageSize(Number(e.target.value))}
-                className="w-full rounded-lg border border-slate-300 bg-white px-3 py-2 text-sm text-slate-900 font-semibold focus:outline-none focus:ring-2 focus:ring-slate-500 focus:border-transparent transition-all"
+                onChange={(e) => {
+                  setPageSize(Number(e.target.value));
+                  setPage(1);
+                }}
+                className="rounded-lg border border-slate-200 bg-white px-2 py-1 text-xs text-slate-900"
               >
-                <option value={10}>10 baris</option>
-                <option value={25}>25 baris</option>
-                <option value={50}>50 baris</option>
-                <option value={100}>100 baris</option>
+                {PAGE_SIZES.map((n) => (
+                  <option key={n} value={n}>
+                    {n}
+                  </option>
+                ))}
               </select>
             </div>
-          </div>
 
-          <div className="grid grid-cols-1 lg:grid-cols-12 gap-4">
-            <div className="lg:col-span-12">
-              <label className="block text-xs font-bold text-slate-700 mb-2 uppercase tracking-wide">Pencarian</label>
-              <div className="relative">
-                <Search className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-slate-400" />
-                <input
-                  value={q}
-                  onChange={(e) => setQ(e.target.value)}
-                  className="w-full rounded-lg border border-slate-300 bg-white pl-10 pr-4 py-2.5 text-sm text-slate-900 placeholder-slate-400 focus:outline-none focus:ring-2 focus:ring-slate-500 focus:border-transparent transition-all"
-                  placeholder="Cari berdasarkan NISN/Username, Nama, atau Jenjang…"
-                />
-              </div>
-              <div className="mt-2 flex items-center gap-2 text-xs text-slate-600">
-                <div className="h-1.5 w-1.5 rounded-full bg-slate-400"></div>
-                <span>
-                  Menampilkan <span className="font-bold text-slate-800">{filtered.length}</span> dari{" "}
-                  <span className="font-bold text-slate-800">{effectiveRows.length}</span> data dimuat
-                </span>
-              </div>
+            {/* Mode toggle: Rekap vs Komponen */}
+            <div className="inline-flex rounded-lg border border-slate-200 bg-slate-50 overflow-hidden text-xs">
+              <button
+                type="button"
+                onClick={() => setViewMode("SUMMARY")}
+                className={`inline-flex items-center gap-1 px-2.5 py-1.5 font-semibold ${
+                  viewMode === "SUMMARY"
+                    ? "bg-white text-slate-900"
+                    : "text-slate-500 hover:text-slate-800"
+                }`}
+              >
+                <LayoutGrid className="h-3.5 w-3.5" />
+                Rekap
+              </button>
+              <button
+                type="button"
+                onClick={() => setViewMode("COMPONENT")}
+                className={`inline-flex items-center gap-1 px-2.5 py-1.5 font-semibold border-l border-slate-200 ${
+                  viewMode === "COMPONENT"
+                    ? "bg-white text-slate-900"
+                    : "text-slate-500 hover:text-slate-800"
+                }`}
+              >
+                <Rows className="h-3.5 w-3.5" />
+                Komponen
+              </button>
             </div>
-          </div>
 
-          <div className="flex items-center justify-end gap-3 pt-2 border-t border-slate-100">
+            {/* Download XLS */}
             <button
               type="button"
-              onClick={() => reload(true)}
-              disabled={loading}
-              className="inline-flex items-center gap-2 rounded-lg bg-gradient-to-r from-slate-700 to-slate-600 px-4 py-2.5 text-sm font-bold text-white shadow-md hover:shadow-lg hover:from-slate-800 hover:to-slate-700 disabled:opacity-50 disabled:cursor-not-allowed transition-all"
-              title="Muat ulang dari awal"
+              onClick={handleDownloadXls}
+              className="inline-flex items-center gap-1 rounded-lg border border-emerald-500 bg-emerald-600 px-3 py-1.5 text-xs font-semibold text-white hover:bg-emerald-700"
             >
-              <RefreshCw className={`h-4 w-4 ${loading ? "animate-spin" : ""}`} />
-              Muat Ulang
-            </button>
-            <button
-              type="button"
-              onClick={loadMore}
-              disabled={!hasMore || loading}
-              className="inline-flex items-center gap-2 rounded-lg border border-slate-300 bg-white px-4 py-2.5 text-sm font-bold text-slate-800 shadow-sm hover:bg-slate-50 hover:shadow-md disabled:opacity-50 disabled:cursor-not-allowed transition-all"
-            >
-              Muat Lagi
-              <ChevronRight className="h-4 w-4" />
+              <Download className="h-3.5 w-3.5" />
+              Download .xls
             </button>
           </div>
         </div>
 
-        {/* Table */}
-        <DafulTable rows={filtered} loading={loading} />
+        {/* Tabel */}
+        {errorMsg ? (
+          <div className="p-4 text-sm text-rose-700 flex items-center gap-2">
+            <AlertCircle className="h-4 w-4" />
+            {errorMsg}
+          </div>
+        ) : filteredRows.length === 0 && !loading ? (
+          <div className="p-4 text-sm text-slate-700">
+            Tidak ada data daftar ulang yang cocok dengan filter.
+          </div>
+        ) : (
+          <div className="overflow-x-auto">
+            {viewMode === "SUMMARY" ? (
+              /* ---------- MODE 1: REKAP ---------- */
+              <table className="min-w-full text-xs md:text-sm">
+                <thead className="bg-slate-50 border-b border-slate-200">
+                  {/* baris header 1: grup TAGIHAN */}
+                  <tr className="text-left text-[11px] font-semibold uppercase tracking-wide text-slate-500">
+                    <th className="px-3 py-2" rowSpan={2}>
+                      NISN
+                    </th>
+                    <th className="px-3 py-2" rowSpan={2}>
+                      Nama
+                    </th>
+                    <th className="px-3 py-2" rowSpan={2}>
+                      Jenjang
+                    </th>
+                    <th className="px-3 py-2" rowSpan={2}>
+                      Status
+                    </th>
+                    <th className="px-3 py-2 text-center" colSpan={5}>
+                      TAGIHAN
+                    </th>
+                    <th className="px-3 py-2" rowSpan={2}>
+                      Status
+                    </th>
+                    <th className="px-3 py-2 text-center" rowSpan={2}>
+                      Bukti
+                    </th>
+                    <th className="px-3 py-2" rowSpan={2}>
+                      Terakhir Bayar
+                    </th>
+                  </tr>
+                  {/* baris header 2: sub kolom TAGIHAN */}
+                  <tr className="text-left text-[11px] font-semibold uppercase tracking-wide text-slate-500">
+                    <th className="px-3 py-1 text-right">Tagihan Awal</th>
+                    <th className="px-3 py-1 text-right">Diskon</th>
+                    <th className="px-3 py-1 text-right">Tagihan Net</th>
+                    <th className="px-3 py-1 text-right">Terbayar</th>
+                    <th className="px-3 py-1 text-right">Sisa</th>
+                  </tr>
+                </thead>
+
+                <tbody className="divide-y divide-slate-100">
+                  {paginatedRows.map((r) => (
+                    <tr key={r.nisn} className="hover:bg-slate-50">
+                      <td className="px-3 py-2 font-mono text-[11px] text-slate-800">
+                        {r.nisn}
+                      </td>
+                      <td className="px-3 py-2">
+                        <div className="font-semibold text-slate-900">
+                          {r.name}
+                        </div>
+                        {r.phone ? (
+                          <div className="text-[11px] text-slate-500">
+                            {r.phone}
+                          </div>
+                        ) : null}
+                      </td>
+                      <td className="px-3 py-2 text-slate-800">{r.level}</td>
+                      <td className="px-3 py-2">
+                        {r.jalur ? (
+                          <span
+                            className={`inline-flex items-center rounded-full px-2 py-0.5 text-[10px] font-semibold border ${
+                              r.jalur === "PTK"
+                                ? "bg-emerald-50 border-emerald-200 text-emerald-700"
+                                : "bg-sky-50 border-sky-200 text-sky-700"
+                            }`}
+                          >
+                            {r.jalur}
+                          </span>
+                        ) : (
+                          <span className="text-[11px] text-slate-400">—</span>
+                        )}
+                      </td>
+                      <td className="px-3 py-2 text-right tabular-nums text-slate-900">
+                        {fmtIDR(r.totalAwal)}
+                      </td>
+                      <td className="px-3 py-2 text-right tabular-nums text-slate-900">
+                        {r.totalDisc > 0 ? fmtIDR(r.totalDisc) : "—"}
+                      </td>
+                      <td className="px-3 py-2 text-right tabular-nums text-slate-900">
+                        {fmtIDR(r.netTagihan)}
+                      </td>
+                      <td className="px-3 py-2 text-right tabular-nums text-slate-900">
+                        {fmtIDR(r.totalPaid)}
+                      </td>
+                      <td className="px-3 py-2 text-right tabular-nums text-slate-900">
+                        {fmtIDR(r.sisa)}
+                      </td>
+                      <td className="px-3 py-2">
+                        <span
+                          className={`inline-flex items-center rounded-full px-2 py-0.5 text-[10px] font-semibold border ${
+                            r.statusDaftarUlang === "LUNAS"
+                              ? "bg-emerald-50 border-emerald-200 text-emerald-700"
+                              : r.statusDaftarUlang === "SEBAGIAN"
+                              ? "bg-amber-50 border-amber-200 text-amber-700"
+                              : "bg-rose-50 border-rose-200 text-rose-700"
+                          }`}
+                        >
+                          {r.statusDaftarUlang}
+                        </span>
+                      </td>
+                      <td className="px-3 py-2 text-center text-[11px] text-slate-800">
+                        {r.buktiCount || 0}
+                      </td>
+                      <td className="px-3 py-2 text-[11px] text-slate-700">
+                        {formatDateTime(r.lastPaidAt)}
+                      </td>
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+            ) : (
+              /* ---------- MODE 2: KOMPONEN SPP & UANG PANGKAL ---------- */
+              <table className="min-w-full text-xs md:text-sm">
+                <thead className="bg-slate-50 border-b border-slate-200">
+                  {/* baris header 1: group UANG PANGKAL */}
+                  <tr className="text-left text-[11px] font-semibold uppercase tracking-wide text-slate-500">
+                    <th className="px-3 py-2" rowSpan={2}>
+                      NISN
+                    </th>
+                    <th className="px-3 py-2" rowSpan={2}>
+                      Nama
+                    </th>
+                    <th className="px-3 py-2" rowSpan={2}>
+                      Jenjang
+                    </th>
+                    <th className="px-3 py-2" rowSpan={2}>
+                      Status
+                    </th>
+                    <th className="px-3 py-2 text-right" rowSpan={2}>
+                      SPP
+                    </th>
+                    <th className="px-3 py-2 text-center" colSpan={6}>
+                      UANG PANGKAL
+                    </th>
+                    <th className="px-3 py-2 text-right" rowSpan={2}>
+                      TOTAL DIBAYAR
+                    </th>
+                    <th className="px-3 py-2 text-right" rowSpan={2}>
+                      JUMLAH DIBAYAR
+                    </th>
+                  </tr>
+
+                  {/* baris header 2: sub kolom uang pangkal */}
+                  <tr className="text-left text-[11px] font-semibold uppercase tracking-wide text-slate-500">
+                    <th className="px-3 py-1 text-right">PAKAIAN</th>
+                    <th className="px-3 py-1 text-right">SARPRAS</th>
+                    <th className="px-3 py-1 text-right">KASUR</th>
+                    <th className="px-3 py-1 text-right">KITAB</th>
+                    <th className="px-3 py-1 text-right">BP3</th>
+                    <th className="px-3 py-1 text-right">TOTAL</th>
+                  </tr>
+                </thead>
+                <tbody className="divide-y divide-slate-100">
+                  {paginatedRows.map((r) => {
+                    const pk = r.pangkalComponents || {};
+                    const getPkVal = (key) => {
+                      const val = Number(pk?.[key] || 0);
+                      return Number.isFinite(val) && val > 0 ? fmtIDR(val) : "–";
+                    };
+                    return (
+                      <tr key={r.nisn} className="hover:bg-slate-50 align-top">
+                        <td className="px-3 py-2 font-mono text-[11px] text-slate-800">
+                          {r.nisn}
+                        </td>
+                        <td className="px-3 py-2">
+                          <div className="font-semibold text-slate-900">
+                            {r.name}
+                          </div>
+                          {r.phone ? (
+                            <div className="text-[11px] text-slate-500">
+                              {r.phone}
+                            </div>
+                          ) : null}
+                        </td>
+                        <td className="px-3 py-2 text-slate-800">
+                          {r.level}
+                        </td>
+                        <td className="px-3 py-2">
+                          {r.jalur ? (
+                            <span
+                              className={`inline-flex items-center rounded-full px-2 py-0.5 text-[10px] font-semibold border ${
+                                r.jalur === "PTK"
+                                  ? "bg-emerald-50 border-emerald-200 text-emerald-700"
+                                  : "bg-sky-50 border-sky-200 text-sky-700"
+                              }`}
+                            >
+                              {r.jalur}
+                            </span>
+                          ) : (
+                            <span className="text-[11px] text-slate-400">
+                              —
+                            </span>
+                          )}
+                        </td>
+
+                        {/* SPP */}
+                        <td className="px-3 py-2 text-right tabular-nums text-slate-900">
+                          {fmtIDR(r.baseSPP)}
+                        </td>
+
+                        {/* PAKAIAN */}
+                        <td className="px-3 py-2 text-right tabular-nums text-slate-900">
+                          {getPkVal("pakaian")}
+                        </td>
+                        {/* SARPRAS */}
+                        <td className="px-3 py-2 text-right tabular-nums text-slate-900">
+                          {getPkVal("sarpras")}
+                        </td>
+                        {/* KASUR */}
+                        <td className="px-3 py-2 text-right tabular-nums text-slate-900">
+                          {getPkVal("kasur")}
+                        </td>
+                        {/* KITAB */}
+                        <td className="px-3 py-2 text-right tabular-nums text-slate-900">
+                          {getPkVal("kitab")}
+                        </td>
+                        {/* BP3 */}
+                        <td className="px-3 py-2 text-right tabular-nums text-slate-900">
+                          {getPkVal("bp3")}
+                        </td>
+                        {/* TOTAL UANG PANGKAL */}
+                        <td className="px-3 py-2 text-right tabular-nums font-semibold text-slate-900">
+                          {fmtIDR(r.totalPangkal)}
+                        </td>
+
+                        {/* TOTAL DIBAYAR = SPP + Total Pangkal */}
+                        <td className="px-3 py-2 text-right tabular-nums text-slate-900">
+                          {fmtIDR(r.baseSPP + r.totalPangkal)}
+                        </td>
+
+                        {/* JUMLAH DIBAYAR (total approved) */}
+                        <td className="px-3 py-2 text-right tabular-nums text-slate-900">
+                          {fmtIDR(r.totalPaid)}
+                        </td>
+                      </tr>
+                    );
+                  })}
+                </tbody>
+              </table>
+            )}
+          </div>
+        )}
+
+        {/* Pagination */}
+        <div className="px-3 py-2 md:px-4 md:py-3 border-t border-slate-200 flex flex-col gap-2 md:flex-row md:items-center md:justify-between text-[11px] md:text-xs text-slate-600">
+          <div>
+            Menampilkan{" "}
+            <span className="font-semibold">
+              {paginatedRows.length.toLocaleString("id-ID")}
+            </span>{" "}
+            dari{" "}
+            <span className="font-semibold">
+              {filteredRows.length.toLocaleString("id-ID")}
+            </span>{" "}
+            peserta (total{" "}
+            <span className="font-semibold">
+              {rows.length.toLocaleString("id-ID")}
+            </span>
+            ).
+          </div>
+          <div className="inline-flex items-center gap-1">
+            <button
+              type="button"
+              onClick={() => setPage((p) => Math.max(1, p - 1))}
+              disabled={pageSafe === 1}
+              className="rounded-lg border border-slate-200 bg-white px-2 py-1 disabled:opacity-40"
+            >
+              &lt;
+            </button>
+            <span>
+              Halaman{" "}
+              <span className="font-semibold">{pageSafe}</span> dari{" "}
+              <span className="font-semibold">{totalPages}</span>
+            </span>
+            <button
+              type="button"
+              onClick={() => setPage((p) => Math.min(totalPages, p + 1))}
+              disabled={pageSafe === totalPages}
+              className="rounded-lg border border-slate-200 bg-white px-2 py-1 disabled:opacity-40"
+            >
+              &gt;
+            </button>
+          </div>
+        </div>
       </div>
-    </div>
+    </main>
   );
 }

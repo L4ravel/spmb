@@ -531,6 +531,12 @@ export function KonfirmasiPotonganPanel({
     }
   }, [selected?.snap, selected?.nisn]);
 
+  /* ==== KHUSUS NON_PTK: jika tidak ada saudara ⇒ panel potongan tidak muncul ==== */
+  if (isNonPTK && selected?.nisn && Number(siblingsCount) <= 0) {
+    // Tidak render apa pun untuk NON_PTK tanpa saudara
+    return null;
+  }
+
   /* ===== UI ===== */
   return (
     <div className="rounded-2xl border border-slate-200 bg-white shadow-sm overflow-hidden">
@@ -542,349 +548,349 @@ export function KonfirmasiPotonganPanel({
           </span>
         </div>
         <div className="flex items-center gap-2">
-          {selected?.nisn ? (
-            <span className="text-[11px] text-slate-900">{selected.nisn}</span>
-          ) : null}
+{selected?.nisn ? (
+<span className="text-[11px] text-slate-900">{selected.nisn}</span>
+) : null}
 
-          {/* Tombol Sembunyikan — PTK & NON_PTK, parent yang atur visibilitas */}
-          <button
-            type="button"
-            onClick={() => onRequestHide?.()}
-            className="inline-flex items-center gap-1 rounded-lg border border-slate-200 bg-white px-2.5 py-1.5 text-xs font-semibold text-slate-800 hover:bg-slate-50"
-            title="Sembunyikan panel potongan"
-          >
-            {/* EyeOff icon inline */}
-            <svg
-              xmlns="http://www.w3.org/2000/svg"
-              viewBox="0 0 24 24"
-              width="16"
-              height="16"
-              fill="none"
-              stroke="currentColor"
-              strokeWidth="2"
-            >
-              <path d="M3 3l18 18" />
-              <path d="M10.7 5.1A9.77 9.77 0 0121 12c-.6 1.1-1.4 2.1-2.3 3m-3.7 2.7A9.77 9.77 0 013 12a16.9 16.9 0 013.2-3.9" />
-              <path d="M9.9 9.9a3 3 0 104.2 4.2" />
-            </svg>
-            Sembunyikan
-          </button>
-        </div>
+      {/* Tombol Sembunyikan — PTK & NON_PTK, parent yang atur visibilitas */}
+      <button
+        type="button"
+        onClick={() => onRequestHide?.()}
+        className="inline-flex items-center gap-1 rounded-lg border border-slate-200 bg-white px-2.5 py-1.5 text-xs font-semibold text-slate-800 hover:bg-slate-50"
+        title="Sembunyikan panel potongan"
+      >
+        {/* EyeOff icon inline */}
+        <svg
+          xmlns="http://www.w3.org/2000/svg"
+          viewBox="0 0 24 24"
+          width="16"
+          height="16"
+          fill="none"
+          stroke="currentColor"
+          strokeWidth="2"
+        >
+          <path d="M3 3l18 18" />
+          <path d="M10.7 5.1A9.77 9.77 0 0121 12c-.6 1.1-1.4 2.1-2.3 3m-3.7 2.7A9.77 9.77 0 013 12a16.9 16.9 0 013.2-3.9" />
+          <path d="M9.9 9.9a3 3 0 104.2 4.2" />
+        </svg>
+        Sembunyikan
+      </button>
+    </div>
+  </div>
+
+  <div className="p-4">
+    {!selected ? (
+      <div className="text-sm text-slate-900">
+        {isNonPTK
+          ? "Pilih baris untuk menetapkan potongan NON-PTK."
+          : "Pilih baris untuk konfirmasi PTK dan menetapkan potongan."}
       </div>
-
-      <div className="p-4">
-        {!selected ? (
-          <div className="text-sm text-slate-900">
-            {isNonPTK
-              ? "Pilih baris untuk menetapkan potongan NON-PTK."
-              : "Pilih baris untuk konfirmasi PTK dan menetapkan potongan."}
+    ) : (
+      <>
+        {/* Identitas */}
+        <div className="rounded-xl border border-slate-200 p-3">
+          <div className="text-sm font-semibold text-slate-900">
+            {selected.name}
           </div>
-        ) : (
-          <>
-            {/* Identitas */}
-            <div className="rounded-xl border border-slate-200 p-3">
-              <div className="text-sm font-semibold text-slate-900">
-                {selected.name}
-              </div>
-              <div className="text-xs text-slate-900 mt-0.5">
-                {regLevel || "—"}
-              </div>
+          <div className="text-xs text-slate-900 mt-0.5">
+            {regLevel || "—"}
+          </div>
 
-              <div className="mt-2 flex flex-wrap gap-2">
-                <span className="inline-flex items-center gap-1.5 rounded-full border border-sky-200 bg-sky-50 px-2.5 py-0.5 text-[11px] font-semibold text-sky-800">
-                  <User2 className="h-3.5 w-3.5" />
-                  Orang Tua: {parentName || "—"}
-                </span>
-                <span className="inline-flex items-center gap-1.5 rounded-full border border-indigo-200 bg-indigo-50 px-2.5 py-0.5 text-[11px] font-semibold text-indigo-800">
-                  <Briefcase className="h-3.5 w-3.5" />
-                  Jabatan: {parentRole || "—"}
-                </span>
-                <span className="inline-flex items-center gap-1.5 rounded-full border border-violet-200 bg-violet-50 px-2.5 py-0.5 text-[11px] font-semibold text-violet-800">
-                  Jumlah Saudara:{" "}
-                  {Number.isFinite(Number(siblingsCount)) ? siblingsCount : 0}
-                </span>
-              </div>
+          <div className="mt-2 flex flex-wrap gap-2">
+            <span className="inline-flex items-center gap-1.5 rounded-full border border-sky-200 bg-sky-50 px-2.5 py-0.5 text-[11px] font-semibold text-sky-800">
+              <User2 className="h-3.5 w-3.5" />
+              Orang Tua: {parentName || "—"}
+            </span>
+            <span className="inline-flex items-center gap-1.5 rounded-full border border-indigo-200 bg-indigo-50 px-2.5 py-0.5 text-[11px] font-semibold text-indigo-800">
+              <Briefcase className="h-3.5 w-3.5" />
+              Jabatan: {parentRole || "—"}
+            </span>
+            <span className="inline-flex items-center gap-1.5 rounded-full border border-violet-200 bg-violet-50 px-2.5 py-0.5 text-[11px] font-semibold text-violet-800">
+              Jumlah Saudara:{" "}
+              {Number.isFinite(Number(siblingsCount)) ? siblingsCount : 0}
+            </span>
+          </div>
 
-              {!isNonPTK ? (
-                <div className="mt-2 flex flex-wrap gap-2">
-                  <span
-                    className={`inline-flex items-center rounded-full border px-2.5 py-0.5 text-[11px] font-semibold ${
-                      statusLocal === "APPROVED"
-                        ? "bg-emerald-50 border-emerald-200 text-emerald-700"
-                        : statusLocal === "PENDING"
-                        ? "bg-amber-50 border-amber-300 text-amber-800"
-                        : "bg-rose-50 border-rose-200 text-rose-700"
-                    }`}
-                  >
-                    {statusLocal || "-"}
-                  </span>
-                  {currentDiscount ? (
-                    <span className="inline-flex items-center rounded-full border border-indigo-300 bg-indigo-50 px-2.5 py-0.5 text-[11px] font-semibold text-indigo-800">
-                      Potongan aktif: {currentDiscount.type}{" "}
-                      {fmtIDR(currentDiscount.amount || 0)}
-                    </span>
-                  ) : (
-                    <span className="text-[11px] text-slate-700">
-                      Tidak ada potongan aktif
-                    </span>
-                  )}
-                </div>
+          {!isNonPTK ? (
+            <div className="mt-2 flex flex-wrap gap-2">
+              <span
+                className={`inline-flex items-center rounded-full border px-2.5 py-0.5 text-[11px] font-semibold ${
+                  statusLocal === "APPROVED"
+                    ? "bg-emerald-50 border-emerald-200 text-emerald-700"
+                    : statusLocal === "PENDING"
+                    ? "bg-amber-50 border-amber-300 text-amber-800"
+                    : "bg-rose-50 border-rose-200 text-rose-700"
+                }`}
+              >
+                {statusLocal || "-"}
+              </span>
+              {currentDiscount ? (
+                <span className="inline-flex items-center rounded-full border border-indigo-300 bg-indigo-50 px-2.5 py-0.5 text-[11px] font-semibold text-indigo-800">
+                  Potongan aktif: {currentDiscount.type}{" "}
+                  {fmtIDR(currentDiscount.amount || 0)}
+                </span>
               ) : (
-                <div className="mt-2">
-                  {currentDiscount ? (
-                    <span className="inline-flex items-center rounded-full border border-indigo-300 bg-indigo-50 px-2.5 py-0.5 text-[11px] font-semibold text-indigo-800">
-                      Potongan aktif: {currentDiscount.type}{" "}
-                      {fmtIDR(currentDiscount.amount || 0)}
-                    </span>
-                  ) : (
-                    <span className="text-[11px] text-slate-700">
-                      Tidak ada potongan aktif
-                    </span>
-                  )}
-                </div>
+                <span className="text-[11px] text-slate-700">
+                  Tidak ada potongan aktif
+                </span>
               )}
             </div>
-
-            {/* Ringkasan Biaya */}
-            <div className="mt-4 rounded-xl border border-slate-200">
-              <div className="px-3 py-2 border-b border-slate-200 bg-slate-50/60 flex items-center gap-2">
-                <Percent className="h-4 w-4" />
-                <span className="text-sm font-semibold text-slate-900">
-                  Ringkasan Biaya
+          ) : (
+            <div className="mt-2">
+              {currentDiscount ? (
+                <span className="inline-flex items-center rounded-full border border-indigo-300 bg-indigo-50 px-2.5 py-0.5 text-[11px] font-semibold text-indigo-800">
+                  Potongan aktif: {currentDiscount.type}{" "}
+                  {fmtIDR(currentDiscount.amount || 0)}
                 </span>
-              </div>
-              <div className="p-3">
-                {loadingFees ? (
-                  <div className="inline-flex items-center gap-2 text-sm text-slate-900">
-                    <Loader2 className="h-4 w-4 animate-spin" /> Memuat biaya…
-                  </div>
-                ) : !fees ? (
-                  <div className="text-sm text-slate-900">
-                    Belum ada data biaya untuk label:{" "}
-                    <b>{regLevel || "—"}</b>.
-                  </div>
-                ) : (
-                  <>
-                    {/* SPP */}
-                    <div className="flex items-center justify-between py-1">
-                      <span className="text-sm text-slate-900">
-                        SPP per bulan
-                      </span>
-                      <span className="text-sm font-semibold text-slate-900">
-                        {fmtIDR(detail.spp)}
-                      </span>
-                    </div>
-
-                    {/* Uang Pangkal */}
-                    <div className="mt-2 rounded-lg border border-slate-200 overflow-hidden">
-                      <div className="px-3 py-2 bg-slate-50/50 text-sm font-medium text-slate-900 flex items-center gap-2">
-                        <ListOrdered className="h-4 w-4" />
-                        Uang Pangkal (rincian)
-                      </div>
-                      <div className="divide-y divide-slate-100">
-                        {detail.pangkalEntries.length === 0 ? (
-                          <div className="px-3 py-2 text-sm text-slate-900">
-                            —
-                          </div>
-                        ) : (
-                          detail.pangkalEntries.map((it) => (
-                            <div
-                              key={it.key}
-                              className="px-3 py-2 flex items-center justify-between"
-                            >
-                              <span className="text-sm text-slate-900">
-                                {it.label}
-                              </span>
-                              <span className="text-sm font-semibold text-slate-900">
-                                {fmtIDR(it.value)}
-                              </span>
-                            </div>
-                          ))
-                        )}
-                        <div className="px-3 py-2 flex items-center justify-between bg-slate-50">
-                          <span className="text-sm font-semibold text-slate-900">
-                            Total Uang Pangkal
-                          </span>
-                          <span className="text-sm font-bold text-slate-900">
-                            {fmtIDR(detail.totalPangkal)}
-                          </span>
-                        </div>
-                      </div>
-                    </div>
-
-                    {/* Total sebelum/sesudah potongan */}
-                    <div className="mt-3 grid grid-cols-1 md:grid-cols-2 gap-2">
-                      <div className="rounded-lg border border-slate-200 px-3 py-2">
-                        <div className="text-xs text-slate-700">
-                          Total Kewajiban (sebelum potongan)
-                        </div>
-                        <div className="text-base font-bold text-slate-900">
-                          {fmtIDR(detail.totalSebelumPotongan)}
-                        </div>
-                      </div>
-                      <div className="rounded-lg border border-emerald-300 bg-emerald-50 px-3 py-2">
-                        <div className="text-xs text-emerald-800">
-                          Setelah Potongan Aktif{" "}
-                          {detail.aktifType ? `(${detail.aktifType})` : ""}
-                        </div>
-                        <div className="text-base font-bold text-emerald-900">
-                          {fmtIDR(detail.totalSesudahPot)}
-                        </div>
-                      </div>
-                    </div>
-                  </>
-                )}
-              </div>
+              ) : (
+                <span className="text-[11px] text-slate-700">
+                  Tidak ada potongan aktif
+                </span>
+              )}
             </div>
+          )}
+        </div>
 
-            {/* Kelola Potongan */}
-            <div className="mt-4 rounded-xl border border-slate-200">
-              <div className="px-3 py-2 border-b border-slate-200 bg-slate-50/60 text-sm font-semibold text-slate-900">
-                {isNonPTK
-                  ? "Potongan (NON-PTK — hanya BP3)"
-                  : "Kelola Potongan (pilih satu)"}
+        {/* Ringkasan Biaya */}
+        <div className="mt-4 rounded-xl border border-slate-200">
+          <div className="px-3 py-2 border-b border-slate-200 bg-slate-50/60 flex items-center gap-2">
+            <Percent className="h-4 w-4" />
+            <span className="text-sm font-semibold text-slate-900">
+              Ringkasan Biaya
+            </span>
+          </div>
+          <div className="p-3">
+            {loadingFees ? (
+              <div className="inline-flex items-center gap-2 text-sm text-slate-900">
+                <Loader2 className="h-4 w-4 animate-spin" /> Memuat biaya…
               </div>
-
-              <div className="p-3 grid grid-cols-1 md:grid-cols-2 gap-2">
-                {/* BP3 selalu ada */}
-                <button
-                  type="button"
-                  disabled={!fees}
-                  onClick={() => setChoice("BP3")}
-                  className={`text-left rounded-xl border px-4 py-3 transition ${
-                    choice === "BP3"
-                      ? "border-violet-600 bg-violet-50 text-violet-900"
-                      : "border-slate-200 bg-white text-slate-900 hover:bg-slate-50"
-                  } disabled:opacity-60`}
-                >
-                  <div className="flex items-center justify-between">
-                    <div className="font-semibold">Potong BP3</div>
-                    {choice === "BP3" ? (
-                      <CheckCircle2 className="h-4 w-4" />
-                    ) : null}
-                  </div>
-                  <div className="text-[12px] text-slate-900 mt-0.5">
-                    Komponen: <b>uangPangkal.bp3</b>
-                  </div>
-                  <div className="mt-1 text-sm">
-                    {fees ? fmtIDR(fees?.uangPangkal?.bp3) : "—"}
-                  </div>
-                </button>
-
-                {/* SPP hanya untuk PTK */}
-                {!isNonPTK && (
-                  <button
-                    type="button"
-                    disabled={!fees}
-                    onClick={() => setChoice("SPP")}
-                    className={`text-left rounded-xl border px-4 py-3 transition ${
-                      choice === "SPP"
-                        ? "border-violet-600 bg-violet-50 text-violet-900"
-                        : "border-slate-200 bg-white text-slate-900 hover:bg-slate-50"
-                    } disabled:opacity-60`}
-                  >
-                    <div className="flex items-center justify-between">
-                      <div className="font-semibold">Potong SPP</div>
-                      {choice === "SPP" ? (
-                        <CheckCircle2 className="h-4 w-4" />
-                      ) : null}
-                    </div>
-                    <div className="text-[12px] text-slate-900 mt-0.5">
-                      Komponen: <b>SPP</b>
-                    </div>
-                    <div className="mt-1 text-sm">
-                      {fees ? fmtIDR(fees?.spp) : "—"}
-                    </div>
-                  </button>
-                )}
+            ) : !fees ? (
+              <div className="text-sm text-slate-900">
+                Belum ada data biaya untuk label:{" "}
+                <b>{regLevel || "—"}</b>.
               </div>
-
-              <div className="px-3 pb-3">
-                <div className="flex items-center justify-between rounded-lg border border-slate-200 px-4 py-3">
-                  <div className="text-sm text-slate-900">
-                    <div>
-                      Jenis Potongan: <b>{choice || "—"}</b>
-                    </div>
-                    <div>
-                      Nominal: <b>{fmtIDR(amount)}</b>
-                    </div>
-                    {isNonPTK ? (
-                      <div className="text-[11px] text-slate-600 mt-1">
-                        Syarat: harus memiliki saudara terdaftar (siblings &gt;
-                        0, dan <code>saudaraNama</code> terisi).
-                      </div>
-                    ) : null}
-                  </div>
-                  <div className="flex flex-col items-end gap-2">
-  <button
-    type="button"
-    onClick={onApplyDiscount}
-    className="inline-flex min-w-[150px] items-center justify-center gap-2 rounded-xl border border-emerald-600 bg-emerald-600 px-4 py-2.5 text-sm font-semibold text-white hover:bg-emerald-700 disabled:opacity-60"
-    disabled={saving || !choice || amount <= 0}
-  >
-    {saving ? (
-      <Loader2 className="h-4 w-4 animate-spin" />
-    ) : null}
-    {saving ? "Menyimpan…" : "Terapkan"}
-  </button>
-
-  <button
-    type="button"
-    onClick={onCancelDiscount}
-    className="inline-flex min-w-[150px] items-center justify-center gap-2 rounded-xl border border-slate-300 bg-white px-4 py-2.5 text-sm font-semibold text-rose-700 hover:bg-rose-50 disabled:opacity-40 disabled:cursor-not-allowed whitespace-nowrap"
-    disabled={saving || !currentDiscount}
-  >
-    Batalkan
-  </button>
-</div>
+            ) : (
+              <>
+                {/* SPP */}
+                <div className="flex items-center justify-between py-1">
+                  <span className="text-sm text-slate-900">
+                    SPP per bulan
+                  </span>
+                  <span className="text-sm font-semibold text-slate-900">
+                    {fmtIDR(detail.spp)}
+                  </span>
                 </div>
-                {!canApply ? (
-                  <div className="mt-2 text-[12px] text-slate-900">
-                    {isNonPTK
-                      ? "Terapkan akan berhasil jika data biaya ditemukan dan siswa memiliki saudara (saudaraNama tidak kosong). Jika belum, akan muncul pesan alasan di atas."
-                      : "Terapkan akan berhasil jika status = APPROVED dan data biaya ditemukan. Jika belum, akan muncul pesan alasan di atas."}
+
+                {/* Uang Pangkal */}
+                <div className="mt-2 rounded-lg border border-slate-200 overflow-hidden">
+                  <div className="px-3 py-2 bg-slate-50/50 text-sm font-medium text-slate-900 flex items-center gap-2">
+                    <ListOrdered className="h-4 w-4" />
+                    Uang Pangkal (rincian)
+                  </div>
+                  <div className="divide-y divide-slate-100">
+                    {detail.pangkalEntries.length === 0 ? (
+                      <div className="px-3 py-2 text-sm text-slate-900">
+                        —
+                      </div>
+                    ) : (
+                      detail.pangkalEntries.map((it) => (
+                        <div
+                          key={it.key}
+                          className="px-3 py-2 flex items-center justify-between"
+                        >
+                          <span className="text-sm text-slate-900">
+                            {it.label}
+                          </span>
+                          <span className="text-sm font-semibold text-slate-900">
+                            {fmtIDR(it.value)}
+                          </span>
+                        </div>
+                      ))
+                    )}
+                    <div className="px-3 py-2 flex items-center justify-between bg-slate-50">
+                      <span className="text-sm font-semibold text-slate-900">
+                        Total Uang Pangkal
+                      </span>
+                      <span className="text-sm font-bold text-slate-900">
+                        {fmtIDR(detail.totalPangkal)}
+                      </span>
+                    </div>
+                  </div>
+                </div>
+
+                {/* Total sebelum/sesudah potongan */}
+                <div className="mt-3 grid grid-cols-1 md:grid-cols-2 gap-2">
+                  <div className="rounded-lg border border-slate-200 px-3 py-2">
+                    <div className="text-xs text-slate-700">
+                      Total Kewajiban (sebelum potongan)
+                    </div>
+                    <div className="text-base font-bold text-slate-900">
+                      {fmtIDR(detail.totalSebelumPotongan)}
+                    </div>
+                  </div>
+                  <div className="rounded-lg border border-emerald-300 bg-emerald-50 px-3 py-2">
+                    <div className="text-xs text-emerald-800">
+                      Setelah Potongan Aktif{" "}
+                      {detail.aktifType ? `(${detail.aktifType})` : ""}
+                    </div>
+                    <div className="text-base font-bold text-emerald-900">
+                      {fmtIDR(detail.totalSesudahPot)}
+                    </div>
+                  </div>
+                </div>
+              </>
+            )}
+          </div>
+        </div>
+
+        {/* Kelola Potongan */}
+        <div className="mt-4 rounded-xl border border-slate-200">
+          <div className="px-3 py-2 border-b border-slate-200 bg-slate-50/60 text-sm font-semibold text-slate-900">
+            {isNonPTK
+              ? "Potongan (NON-PTK — hanya BP3)"
+              : "Kelola Potongan (pilih satu)"}
+          </div>
+
+          <div className="p-3 grid grid-cols-1 md:grid-cols-2 gap-2">
+            {/* BP3 selalu ada */}
+            <button
+              type="button"
+              disabled={!fees}
+              onClick={() => setChoice("BP3")}
+              className={`text-left rounded-xl border px-4 py-3 transition ${
+                choice === "BP3"
+                  ? "border-violet-600 bg-violet-50 text-violet-900"
+                  : "border-slate-200 bg-white text-slate-900 hover:bg-slate-50"
+              } disabled:opacity-60`}
+            >
+              <div className="flex items-center justify-between">
+                <div className="font-semibold">Potong BP3</div>
+                {choice === "BP3" ? (
+                  <CheckCircle2 className="h-4 w-4" />
+                ) : null}
+              </div>
+              <div className="text-[12px] text-slate-900 mt-0.5">
+                Komponen: <b>uangPangkal.bp3</b>
+              </div>
+              <div className="mt-1 text-sm">
+                {fees ? fmtIDR(fees?.uangPangkal?.bp3) : "—"}
+              </div>
+            </button>
+
+            {/* SPP hanya untuk PTK */}
+            {!isNonPTK && (
+              <button
+                type="button"
+                disabled={!fees}
+                onClick={() => setChoice("SPP")}
+                className={`text-left rounded-xl border px-4 py-3 transition ${
+                  choice === "SPP"
+                    ? "border-violet-600 bg-violet-50 text-violet-900"
+                    : "border-slate-200 bg-white text-slate-900 hover:bg-slate-50"
+                } disabled:opacity-60`}
+              >
+                <div className="flex items-center justify-between">
+                  <div className="font-semibold">Potong SPP</div>
+                  {choice === "SPP" ? (
+                    <CheckCircle2 className="h-4 w-4" />
+                  ) : null}
+                </div>
+                <div className="text-[12px] text-slate-900 mt-0.5">
+                  Komponen: <b>SPP</b>
+                </div>
+                <div className="mt-1 text-sm">
+                  {fees ? fmtIDR(fees?.spp) : "—"}
+                </div>
+              </button>
+            )}
+          </div>
+
+          <div className="px-3 pb-3">
+            <div className="flex items-center justify-between rounded-lg border border-slate-200 px-4 py-3">
+              <div className="text-sm text-slate-900">
+                <div>
+                  Jenis Potongan: <b>{choice || "—"}</b>
+                </div>
+                <div>
+                  Nominal: <b>{fmtIDR(amount)}</b>
+                </div>
+                {isNonPTK ? (
+                  <div className="text-[11px] text-slate-600 mt-1">
+                    Syarat: harus memiliki saudara terdaftar (siblings &gt;
+                    0, dan <code>saudaraNama</code> terisi).
                   </div>
                 ) : null}
               </div>
-            </div>
+              <div className="flex flex-col items-end gap-2">
+                <button
+                  type="button"
+                  onClick={onApplyDiscount}
+                  className="inline-flex min-w-[150px] items-center justify-center gap-2 rounded-xl border border-emerald-600 bg-emerald-600 px-4 py-2.5 text-sm font-semibold text-white hover:bg-emerald-700 disabled:opacity-60"
+                  disabled={saving || !choice || amount <= 0}
+                >
+                  {saving ? (
+                    <Loader2 className="h-4 w-4 animate-spin" />
+                  ) : null}
+                  {saving ? "Menyimpan…" : "Terapkan"}
+                </button>
 
-            {/* Approve/Reject — hanya untuk PTK */}
-            {!isNonPTK &&
-              (statusLocal === "PENDING" ||
-                isApproving ||
-                isRejecting) && (
-                <div className="mt-3 flex items-center gap-2">
-                  <button
-                    type="button"
-                    onClick={onApprove}
-                    disabled={isApproving || isRejecting}
-                    className="inline-flex items-center gap-2 rounded-xl border border-emerald-600 bg-emerald-600 px-4 py-2 text-sm font-semibold text-white hover:bg-emerald-700 disabled:opacity-60"
-                  >
-                    {isApproving ? (
-                      <Loader2 className="h-4 w-4 animate-spin" />
-                    ) : (
-                      <ThumbsUp className="h-4 w-4" />
-                    )}
-                    {isApproving ? "Memp​roses…" : "Setujui PTK"}
-                  </button>
-                  <button
-                    type="button"
-                    onClick={onReject}
-                    disabled={isApproving || isRejecting}
-                    className="inline-flex items-center gap-2 rounded-xl border border-rose-600 bg-rose-600 px-4 py-2 text-sm font-semibold text-white hover:bg-rose-700 disabled:opacity-60"
-                  >
-                    {isRejecting ? (
-                      <Loader2 className="h-4 w-4 animate-spin" />
-                    ) : (
-                      <XCircle className="h-4 w-4" />
-                    )}
-                    {isRejecting ? "Memp​roses…" : "Tolak"}
-                  </button>
-                </div>
-              )}
-          </>
-        )}
-      </div>
-    </div>
-  );
+                <button
+                  type="button"
+                  onClick={onCancelDiscount}
+                  className="inline-flex min-w-[150px] items-center justify-center gap-2 rounded-xl border border-slate-300 bg-white px-4 py-2.5 text-sm font-semibold text-rose-700 hover:bg-rose-50 disabled:opacity-40 disabled:cursor-not-allowed whitespace-nowrap"
+                  disabled={saving || !currentDiscount}
+                >
+                  Batalkan
+                </button>
+              </div>
+            </div>
+            {!canApply ? (
+              <div className="mt-2 text-[12px] text-slate-900">
+                {isNonPTK
+                  ? "Terapkan akan berhasil jika data biaya ditemukan dan siswa memiliki saudara (saudaraNama tidak kosong). Jika belum, akan muncul pesan alasan di atas."
+                  : "Terapkan akan berhasil jika status = APPROVED dan data biaya ditemukan. Jika belum, akan muncul pesan alasan di atas."}
+              </div>
+            ) : null}
+          </div>
+        </div>
+
+        {/* Approve/Reject — hanya untuk PTK */}
+        {!isNonPTK &&
+          (statusLocal === "PENDING" ||
+            isApproving ||
+            isRejecting) && (
+            <div className="mt-3 flex items-center gap-2">
+              <button
+                type="button"
+                onClick={onApprove}
+                disabled={isApproving || isRejecting}
+                className="inline-flex items-center gap-2 rounded-xl border border-emerald-600 bg-emerald-600 px-4 py-2 text-sm font-semibold text-white hover:bg-emerald-700 disabled:opacity-60"
+              >
+                {isApproving ? (
+                  <Loader2 className="h-4 w-4 animate-spin" />
+                ) : (
+                  <ThumbsUp className="h-4 w-4" />
+                )}
+                {isApproving ? "Memp​roses…" : "Setujui PTK"}
+              </button>
+              <button
+                type="button"
+                onClick={onReject}
+                disabled={isApproving || isRejecting}
+                className="inline-flex items-center gap-2 rounded-xl border border-rose-600 bg-rose-600 px-4 py-2 text-sm font-semibold text-white hover:bg-rose-700 disabled:opacity-60"
+              >
+                {isRejecting ? (
+                  <Loader2 className="h-4 w-4 animate-spin" />
+                ) : (
+                  <XCircle className="h-4 w-4" />
+                )}
+                {isRejecting ? "Memp​roses…" : "Tolak"}
+              </button>
+            </div>
+          )}
+      </>
+    )}
+  </div>
+</div>
+);
 }

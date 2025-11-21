@@ -6,7 +6,7 @@ import Link from 'next/link';
 import {
   Users, CreditCard, UserCheck, Calendar, FileText, BarChart3, MessageSquare,
   BookOpenCheck, DollarSign, Megaphone, KeyRound, LineChart, Wallet, ClipboardList,
-  PieChart, MapPin, Table, RefreshCw,
+  PieChart, MapPin, Table, RefreshCw, MessageCircle,
 } from 'lucide-react';
 
 import { db } from '@/lib/firebase';
@@ -122,6 +122,7 @@ export default function AdminDashboard() {
         { label: 'Hasil Penilain Al-Quran', href: '/admin/hasil-tahfidz', icon: BarChart3 },
         { label: 'Hasil Final', href: '/admin/hasil-final', icon: Table },
         { label: 'Umumkan', href: '/admin/hasil-final/umumkan', icon: Megaphone },
+        { label: "WA Kelulusan", shortLabel: "WA", href: "/admin/wa-kelulusan", icon: MessageCircle },
       ],
     },
     {
