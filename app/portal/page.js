@@ -9,7 +9,6 @@ import { getApp, getApps, initializeApp } from "firebase/app";
 import { getFirestore, doc, getDoc, updateDoc, serverTimestamp, collection, getDocs } from "firebase/firestore";
 import { Eye, EyeOff } from "lucide-react";
 import { downloadBuktiPembayaran } from "./pdf";
-import PortalSurveyPopup from "./popup";
 
 /* ============ Firebase Init ============ */
 function getFirebaseApp() {
@@ -751,8 +750,7 @@ export default function PortalPPDB() {
             </form>
           </div>
         </div>
-      )}
-      <PortalSurveyPopup userId={nisn} />
+      )}     
     </div>
   );
 }
