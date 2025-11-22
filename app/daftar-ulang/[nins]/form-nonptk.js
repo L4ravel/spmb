@@ -39,6 +39,8 @@ import {
   Save,
   Plus,
   Trash2,
+  Copy,
+  PhoneCall, 
 } from "lucide-react";
 import UploadBukti from "./uploud-bukti";
 
@@ -137,6 +139,7 @@ function isApproved(p) {
 function PTKNoticeModal({ open, onClose, info = {} }) {
   const router = useRouter();
   const [navigating, setNavigating] = useState(false);
+  
 
   useEffect(() => {
     document.body.style.overflow = open ? "hidden" : "unset";
@@ -271,6 +274,177 @@ function PTKNoticeModal({ open, onClose, info = {} }) {
   );
 }
 
+function TutorialPaymentModal({ open, onClose, amount }) {
+  const [copied, setCopied] = useState(false);
+  const waNumberDisplay = "0877 2024 2025";
+  const waNumber = "6287720242025"; // format internasional untuk wa.me
+  const waMessage = encodeURIComponent(
+    "Assalamu'alaikum, saya ingin konfirmasi pembayaran SPMB. Berikut bukti pembayaran saya."
+  );
+  const waUrl = `https://wa.me/${waNumber}?text=${waMessage}`;
+
+  useEffect(() => {
+    document.body.style.overflow = open ? "hidden" : "unset";
+    return () => {
+      document.body.style.overflow = "unset";
+    };
+  }, [open]);
+
+  if (!open) return null;
+
+  const rekeningRaw = "1111157778";
+  const rekeningDisplay = "111 115 7778";
+
+  const handleCopy = async () => {
+    try {
+      if (navigator?.clipboard?.writeText) {
+        await navigator.clipboard.writeText(rekeningRaw);
+        setCopied(true);
+        setTimeout(() => setCopied(false), 1500);
+      }
+    } catch {
+      // diam saja kalau gagal
+    }
+  };
+
+  return (
+    <div className="fixed inset-0 z-[99998]">
+      <div
+        className="absolute inset-0 bg-slate-950/70 backdrop-blur-sm"
+        onClick={onClose}
+        aria-hidden="true"
+      />
+      <div className="absolute inset-0 flex items-center justify-center px-3 md:px-4">
+        <div className="w-full max-w-xl rounded-2xl bg-white shadow-2xl border border-slate-200 overflow-hidden">
+          {/* Header */}
+          <div className="flex items-center justify-between px-5 py-4 border-b border-slate-200">
+            <div className="inline-flex items-center gap-2">
+              <div className="inline-flex h-9 w-9 items-center justify-center rounded-lg bg-violet-100">
+                <Info className="h-5 w-5 text-violet-700" />
+              </div>
+              <h3 className="text-base md:text-lg font-bold text-slate-900">
+                Tutorial Pembayaran
+              </h3>
+            </div>
+            <button
+              onClick={onClose}
+              className="p-2 rounded-md hover:bg-slate-100"
+              aria-label="Tutup"
+            >
+              <X className="h-5 w-5 text-slate-600" />
+            </button>
+          </div>
+
+          {/* Body */}
+          <div className="px-5 pt-4 pb-3 text-sm text-slate-700 space-y-3">
+            <ol className="list-decimal list-inside space-y-2">
+              <li>
+                Buka aplikasi{" "}
+                <span className="font-semibold">
+                  m-banking / ATM / BSI / ke-Alfamart / Indomaret
+                </span>{" "}
+                terdekat.
+              </li>
+              <li>
+                Transfer ke rekening:
+                <div className="mt-2 rounded-lg border border-slate-200 bg-slate-50 px-3 py-2 flex flex-col gap-1 text-sm">
+                  <span className="font-semibold text-slate-900">
+                    Bank Syariah Indonesia a.n. Spmb Pas
+                  </span>
+                  <div className="flex items-center justify-between gap-2">
+                    <span className="inline-flex items-center gap-2 text-slate-900 font-mono font-bold">
+                      {rekeningDisplay}
+                    </span>
+                    <button
+                      type="button"
+                      onClick={handleCopy}
+                      className="inline-flex items-center gap-1 rounded-lg border border-emerald-300 bg-emerald-50 px-2.5 py-1 text-[11px] font-semibold text-emerald-800 hover:bg-emerald-100"
+                    >
+                      <Copy className="h-3.5 w-3.5" />
+                      {copied ? "Tersalin" : "Salin"}
+                    </button>
+                  </div>
+                </div>
+              </li>
+              <li>
+                Jumlah transfer:{" "}
+                <span className="font-semibold text-slate-900">
+                  {fmtIDR(Number(amount || 0))}
+                </span>{" "}
+                <span className="text-slate-600 italic">
+                  (Jika belum bisa bayar lunas, silahkan konfirmasi terlebih dahulu ke pantia untuk membuat perjanjian).
+                </span>
+              </li>
+              <li>
+                Simpan struk / screenshot bukti pembayaran dari ATM /
+                m-banking / kasir.
+              </li>
+              <li>
+                Kembali ke halaman ini, klik{" "}
+                <span className="font-semibold">Upload Bukti</span> lalu pilih
+                file bukti pembayaran.
+              </li>
+              <li>
+                Setelah terunggah, klik{" "}
+                <span className="font-semibold">Konfirmasi WA</span> (untuk mempercepat proses verifikasi)
+              </li>
+              <li className="space-y-1">
+  
+    Kirim bukti pembayaran ke panitia melalui WhatsApp dengan klik
+    tombol nomor berikut:
+
+
+    <div className="flex justify-center">
+  <button
+    type="button"
+    onClick={() => {
+      if (typeof window !== "undefined") {
+        window.open(waUrl, "_blank", "noopener,noreferrer");
+      }
+    }}
+    className="mt-1 inline-flex items-center gap-2 rounded-2xl border border-emerald-300 bg-emerald-50 px-3 py-1.5 shadow-sm hover:bg-emerald-100 hover:border-emerald-400 transition"
+  >
+    <span className="inline-flex h-8 w-8 items-center justify-center rounded-full bg-emerald-100">
+      <PhoneCall className="h-3.5 w-3.5 text-emerald-700" />
+    </span>
+
+    <span className="flex flex-col items-center">
+      <span className="text-[9px] font-medium uppercase tracking-wide text-emerald-700">
+        WhatsApp Panitia
+      </span>
+      <span className="text-sm md:text-[12px] font-semibold text-emerald-900">
+        {waNumberDisplay}
+      </span>
+    </span>
+  </button>
+</div>
+ 
+</li>
+            </ol>
+
+            <p className="mt-2 text-[11px] text-slate-500 text-center">
+              Verifikasi oleh panitia berlangsung sekitar 1–3 hari kerja. Jika
+              ada kendala, hubungi panitia via WA.
+            </p>
+          </div>
+
+          {/* Footer */}
+          <div className="px-5 py-4 border-t border-slate-200 flex justify-end">
+            <button
+              type="button"
+              onClick={onClose}
+              className="inline-flex items-center justify-center rounded-xl px-5 py-2.5 text-sm font-bold text-white bg-violet-600 hover:bg-violet-700 active:bg-violet-800 transition"
+            >
+              Mengerti
+            </button>
+          </div>
+        </div>
+      </div>
+    </div>
+  );
+}
+
+
 /* --------------------------- Komponen Utama --------------------------- */
 export default function FormNonPTK({
   onBack,
@@ -284,13 +458,15 @@ export default function FormNonPTK({
   const [error, setError] = useState("");
   const [user, setUser] = useState(null);
   const [fees, setFees] = useState(null);
-   const [discount, setDiscount] = useState(null);
+const [discount, setDiscount] = useState(null);
+const [ayahIncomeEmpty, setAyahIncomeEmpty] = useState(false);
   
 
   // Upload modal
   const [uploadOpen, setUploadOpen] = useState(false);
   const [payments, setPayments] = useState([]);
   const [loadingPayments, setLoadingPayments] = useState(false);
+  const [tutorialOpen, setTutorialOpen] = useState(false);
 
   // PTK notice
   const [showPTKNotice, setShowPTKNotice] = useState(false);
@@ -367,10 +543,31 @@ export default function FormNonPTK({
         const uSnap = await getDoc(uRef);
         if (!uSnap.exists())
           throw new Error("Data peserta tidak ditemukan.");
-        const u = uSnap.data();
+          const u = uSnap.data();
         const registrationLevel = u?.registrationLevel || "";
         if (!registrationLevel)
           throw new Error("Jenjang belum terisi.");
+
+        // 1b) cek status ayah di koleksi ppdb
+      let ayahIncomeEmptyVal = false;
+        try {
+          const pRef = doc(
+            db,
+            "ppdb",
+            String(nisnFromUrl || "").trim()
+          );
+          const pSnap = await getDoc(pRef);
+          if (pSnap.exists()) {
+            const pdata = pSnap.data() || {};
+            const incomeRaw =
+              pdata.ayahIncome ?? pdata.ayah_income ?? "";
+            const normalized = String(incomeRaw).trim();
+            ayahIncomeEmptyVal = normalized === "";
+          }
+        } catch (_) {
+          // abaikan jika gagal, anggap tidak kosong
+          ayahIncomeEmptyVal = false;
+        }
 
         // Prefill Data Saudara (multi/legacy)     
         let preSiblings = [];
@@ -420,6 +617,7 @@ export default function FormNonPTK({
           };
           setUser(userObj);
           setFees(feeDoc);
+          setAyahIncomeEmpty(ayahIncomeEmptyVal);
 
           // set prefill sibling (multi)
           setHasSibling(preSiblings.length > 0);
@@ -476,13 +674,34 @@ export default function FormNonPTK({
     };
   }, [nisnFromUrl]);
 
-  const totalUangPangkal = useMemo(() => {
-    if (!fees || !fees.uangPangkal) return 0;
-    return Object.values(fees.uangPangkal).reduce((acc, v) => {
-      const n = typeof v === "number" ? v : NaN;
-      return acc + (Number.isFinite(n) ? n : 0);
-    }, 0);
-  }, [fees]);
+const totalUangPangkal = useMemo(() => {
+  if (!fees || !fees.uangPangkal) return 0;
+
+  // Normalisasi jenjang ke lowercase
+  const jenjang = (user?.registrationLevel || "")
+    .toString()
+    .toLowerCase();
+
+  // Selama jenjang salah satu dari 4 PPS
+  const isPpsJenjang =
+    jenjang.includes("pps ula putra") ||
+    jenjang.includes("pps ula putri") ||
+    jenjang.includes("pps wustho") ||
+    jenjang.includes("pps ulya");
+
+  // Khusus jenjang PPS + income ayah KOSONG → Uang Pangkal 0
+  if (isPpsJenjang && ayahIncomeEmpty) {
+    return 0;
+  }
+
+  // Selain itu, hitung normal dari fees.uangPangkal
+  return Object.values(fees.uangPangkal).reduce((acc, v) => {
+    const n = typeof v === "number" ? v : NaN;
+    return acc + (Number.isFinite(n) ? n : 0);
+  }, 0);
+}, [fees, user?.registrationLevel, ayahIncomeEmpty]);
+
+
 
   const totalPembayaran = useMemo(() => {
     const spp = typeof fees?.spp === "number" ? fees.spp : 0;
@@ -1034,120 +1253,31 @@ const cleaned = raw.filter((s) => s.name || s.level || s.class);
                 </p>
 
                 {/* BUKTI */}
-                <div className="mt-2 md:mt-2 rounded-xl border border-slate-200 bg-white p-3 md:p-4">
-                  <div className="flex items-center justify-between gap-3">
-                    <div className="text-sm text-slate-700">
-                      Bukti Pembayaran (bisa beberapa kali
-                      transfer)
-                    </div>
-                    <button
-                      type="button"
-                      onClick={() => setUploadOpen(true)}
-                      className="inline-flex items-center gap-2 rounded-lg border border-slate-300 bg-white px-3 py-2 text-sm font-semibold text-slate-800 hover:bg-slate-50"
-                    >
-                      <Upload className="h-4 w-4" />
-                      Upload Bukti
-                    </button>
-                  </div>
+                <div className="flex flex-col md:flex-row md:items-center md:justify-between gap-3">
+  <div className="text-sm text-slate-700">
+    Bukti Pembayaran (bisa beberapa kali transfer)
+  </div>
 
-                  <div className="mt-1">
-                    {loadingPayments ? (
-                      <div className="text-sm text-slate-500">
-                        Memuat bukti…
-                      </div>
-                    ) : payments.length === 0 ? (
-                      <div className="text-sm text-slate-500">
-                        Belum ada bukti tersimpan.
-                      </div>
-                    ) : (
-                      <ul className="space-y-2">
-                        {payments.map((p) => {
-  const status = normalizeStatus(p);
-  const badge =
-    status === "approved"
-      ? "bg-emerald-100 text-emerald-800 border-emerald-200"
-      : status === "rejected"
-      ? "bg-red-100 text-red-800 border-red-200"
-      : "bg-amber-100 text-amber-800 border-amber-200";
-  const label =
-    status === "approved"
-      ? "Disetujui"
-      : status === "rejected"
-      ? "Ditolak"
-      : "Menunggu Konfirmasi";
-  const approved = isApproved(p);
-
-  // 🔹 Tambahan: label sumber pembayaran
-  const sumberLabel =
-    p.source === "ADMIN_PANEL"
-      ? "Diinput panitia (offline)"
-      : p.source === "USER_UPLOAD"
-      ? "Upload peserta"
-      : "";
-
-  return (
-    <li
-      key={p.id}
-      className="flex items-start gap-3 rounded-lg border border-slate-200 bg-slate-50 p-3"
+  <div className="flex flex-col sm:flex-row gap-2 w-full md:w-auto md:justify-end">
+    <button
+      type="button"
+      onClick={() => setTutorialOpen(true)}
+      className="w-full md:w-auto inline-flex items-center justify-center gap-2 rounded-lg border border-slate-300 bg-slate-50 px-3 py-2 text-xs md:text-sm font-semibold text-slate-800 hover:bg-slate-100"
     >
-      <div className="mt-0.5">
-        <FileText className="h-4 w-4 text-slate-600" />
-      </div>
-      <div className="flex-1 min-w-0">
-        <div className="flex items-center gap-2">
-          <div className="text-sm font-medium text-slate-900 break-all">
-            {p.fileName || "bukti.pdf"}
-          </div>
-          <span
-            className={`text-[10px] px-2 py-0.5 rounded-full border ${badge}`}
-          >
-            {label}
-          </span>
-        </div>
-        <div className="text-xs text-slate-600">
-          Jumlah:{" "}
-          <span className="font-semibold">
-            {fmtIDR(Number(p.amount || 0))}
-          </span>
-          {p.note ? (
-            <>
-              {" "}
-              • <span className="italic">{p.note}</span>
-            </>
-          ) : null}
-          {sumberLabel && (
-            <>
-              {" "}
-              •{" "}
-              <span className="font-medium text-slate-700">
-                {sumberLabel}
-              </span>
-            </>
-          )}
-        </div>
-      </div>
-      <div className="flex flex-col items-end gap-1">
-        {p.downloadURL ? (
-          <a
-            href={p.downloadURL}
-            target="_blank"
-            rel="noreferrer"
-            className="inline-flex items-center gap-1 text-xs font-medium text-slate-700 hover:text-slate-900"
-          >
-            Lihat <ExternalLink className="h-3.5 w-3.5" />
-          </a>
-        ) : null}
-        {/* tombol batalkan tetap komentar, sesuai kode awal */}
-        {/* <button ...>Batalkan</button> */}
-      </div>
-    </li>
-  );
-})}
+      <Info className="h-4 w-4" />
+      Tutorial Pembayaran
+    </button>
 
-                      </ul>
-                    )}
-                  </div>
-                </div>
+    <button
+      type="button"
+      onClick={() => setUploadOpen(true)}
+      className="w-full md:w-auto inline-flex items-center justify-center gap-2 rounded-lg border border-slate-300 bg-white px-3 py-2 text-sm font-semibold text-slate-800 hover:bg-slate-50"
+    >
+      <Upload className="h-4 w-4" />
+      Upload Bukti
+    </button>
+  </div>
+</div>
                 {/* END BUKTI */}
               </>
             )}
@@ -1156,13 +1286,19 @@ const cleaned = raw.filter((s) => s.name || s.level || s.class);
       </section>
 
       {/* Modal Upload */}
-      <UploadBukti
+       <UploadBukti
         open={uploadOpen}
         onClose={() => setUploadOpen(false)}
         onUploaded={() =>
           user?.nisn && loadPayments(String(user.nisn))
         }
         nisn={String(user?.nisn || "")}
+      />
+
+      <TutorialPaymentModal
+        open={tutorialOpen}
+        onClose={() => setTutorialOpen(false)}
+        amount={effectiveTotalTagihan}
       />
 
       {/* Modal Pemberitahuan Anak PTK */}

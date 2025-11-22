@@ -88,6 +88,25 @@ function normalizeStatus(pLike) {
   }
 }
 
+/* ===== Klasifikasi metode pembayaran: OFFLINE (panitia) vs ONLINE (user) ===== */
+function resolvePaymentMethod(pLike) {
+  const method = String(pLike?.method || "").toUpperCase();
+  const source = String(pLike?.source || "").toUpperCase();
+
+  // Jika jelas ditandai OFFLINE atau dari panel admin → anggap offline
+  if (method === "OFFLINE" || source === "ADMIN_PANEL") {
+    return "OFFLINE";
+  }
+
+  // Kalau sudah ada flag ONLINE / GATEWAY, bisa kamu tambah di sini kalau perlu
+  if (["ONLINE", "GATEWAY", "VIRTUAL_ACCOUNT", "TRANSFER"].includes(method)) {
+    return "ONLINE";
+  }
+
+  // Default: anggap pembayaran dari user (online)
+  return "ONLINE";
+}
+
 /* ========= MODAL ========= */
 function ImageModal({ imageUrl, onClose }) {
   if (!imageUrl) return null;
@@ -135,6 +154,8 @@ function PaymentsVerificationPanel({ db, selectedNisn, headerSuffix = "" }) {
   const [confirmOpen, setConfirmOpen] = useState(false);
   const [confirmAction, setConfirmAction] = useState(null); 
   const [confirmRow, setConfirmRow] = useState(null);
+    const methodLabelConfirm = confirmRow ? resolvePaymentMethod(confirmRow) : null;
+  const isOfflineConfirm = methodLabelConfirm === "OFFLINE";
 
   useEffect(() => {
     const unsub = onAuthStateChanged(auth, (user) => {
@@ -431,9 +452,9 @@ if (typeof window !== "undefined") {
       const payload = {
         amount: amountNum,
         note: offlineNote || "Pembayaran offline (diinput admin)",
-        status: "PENDING", // tetap lewat alur Setujui/Tolak supaya sinkron dengan API
-        method: "OFFLINE",
-        source: "ADMIN_PANEL",
+        status: "PENDING",
+        method: "OFFLINE",        
+        source: "ADMIN_PANEL",     
         createdAt: serverTimestamp(),
         ...(downloadURL ? { downloadURL } : {}),
       };
@@ -458,69 +479,84 @@ if (typeof window !== "undefined") {
 
   return (
     <>
-   {confirmOpen && (
-  <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/80">
-    <div className="modal-appear bg-white rounded-2xl shadow-xl w-full max-w-md mx-4 overflow-hidden">
-      <div className="px-6 py-4 border-b border-slate-200">
-        <h2 className="text-base font-semibold text-slate-900 text-center">
-          Konfirmasi verifikasi pembayaran
-        </h2>
-      </div>
-
-      <div className="px-6 py-5 text-sm text-slate-700 space-y-3">
-        <p className="text-center leading-relaxed">
-  {confirmAction === "approve" ? (
-    <>
-      Apakah Anda yakin ingin{" "}
-      <span className="font-semibold">MENYETUJUI</span>{" "}
-      pembayaran ini dan mengirim WhatsApp ke wali?
-    </>
-  ) : (
-    <>
-      Apakah Anda yakin ingin{" "}
-      <span className="font-semibold">MENOLAK</span>{" "}
-      pembayaran ini dan mengirim WhatsApp ke wali?
-    </>
-  )}
-</p>
-
-        {confirmRow && (
-          <div className="rounded-lg bg-slate-50 px-4 py-3 text-xs text-slate-600 flex flex-col gap-1">
-            <div className="flex justify-between gap-2">
-              <span className="text-slate-500">Peserta</span>
-              <span className="font-semibold text-slate-900">
-                {confirmRow.student?.name || "-"} ({confirmRow.nisn})
-              </span>
+    {confirmOpen && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/70 px-4">
+          <div className="modal-appear w-full max-w-xl rounded-3xl bg-white shadow-2xl overflow-hidden">
+            <div className="px-8 py-5 border-b border-slate-200">
+              <h2 className="text-lg font-semibold text-slate-900 text-center">
+                Konfirmasi verifikasi pembayaran
+              </h2>
             </div>
-            <div className="flex justify-between gap-2">
-              <span className="text-slate-500">Jumlah</span>
-              <span className="font-semibold text-emerald-700">
-                {fmtIDR(confirmRow.amount || 0)}
-              </span>
+
+            <div className="px-8 py-6 text-base text-slate-700 space-y-4">
+              <p className="text-center leading-relaxed">
+                {confirmAction === "approve" ? (
+                  <>
+                    Apakah Anda yakin ingin{" "}
+                    <span className="font-semibold">MENYETUJUI</span>{" "}
+                    pembayaran ini dan mengirim WhatsApp ke wali?
+                  </>
+                ) : (
+                  <>
+                    Apakah Anda yakin ingin{" "}
+                    <span className="font-semibold">MENOLAK</span>{" "}
+                    pembayaran ini dan mengirim WhatsApp ke wali?
+                  </>
+                )}
+              </p>
+
+              {confirmRow && (
+                <div className="rounded-2xl bg-slate-50 px-5 py-4 text-sm text-slate-600 flex flex-col gap-2">
+                  <div className="flex justify-between gap-2">
+                    <span className="text-slate-500">Peserta</span>
+                    <span className="font-semibold text-slate-900">
+                      {confirmRow.student?.name || "-"} ({confirmRow.nisn})
+                    </span>
+                  </div>
+
+                  <div className="flex justify-between gap-2">
+                    <span className="text-slate-500">Jumlah</span>
+                    <span className="font-semibold text-emerald-700">
+                      {fmtIDR(confirmRow.amount || 0)}
+                    </span>
+                  </div>
+
+                  <div className="flex justify-between gap-2 items-center">
+                    <span className="text-slate-500">Metode</span>
+                    <span
+                      className={[
+                        "inline-flex items-center rounded-full px-3 py-1 text-[12px] font-semibold border",
+                        isOfflineConfirm
+                          ? "border-amber-300 bg-amber-50 text-amber-800"
+                          : "border-sky-300 bg-sky-50 text-sky-800",
+                      ].join(" ")}
+                    >
+                      {isOfflineConfirm ? "Offline (Panitia)" : "Online (User)"}
+                    </span>
+                  </div>
+                </div>
+              )}
+            </div>
+
+            <div className="px-8 py-5 border-t border-slate-200 flex items-center justify-center gap-4">
+              <button
+                type="button"
+                onClick={handleConfirmNo}
+                className="inline-flex items-center justify-center rounded-full border border-slate-300 bg-white px-5 py-2.5 text-sm font-medium text-slate-700 hover:bg-slate-50 transition-colors"
+              >
+                Batal
+              </button>
+              <button
+                type="button"
+                onClick={handleConfirmYes}
+                className="inline-flex items-center justify-center rounded-full bg-emerald-600 px-5 py-2.5 text-sm font-semibold text-white hover:bg-emerald-700 shadow-sm transition-colors"
+              >
+                Ya, lanjutkan
+              </button>
             </div>
           </div>
-        )}
-      </div>
-
-      <div className="px-6 py-4 border-t border-slate-200 flex items-center justify-center gap-3">
-        <button
-          type="button"
-          onClick={handleConfirmNo}
-          className="inline-flex items-center justify-center rounded-full border border-slate-300 bg-white px-4 py-1.5 text-xs font-medium text-slate-700 hover:bg-slate-50 transition-colors"
-        >
-          Batal
-        </button>
-        <button
-          type="button"
-          onClick={handleConfirmYes}
-          className="inline-flex items-center justify-center rounded-full bg-emerald-600 px-4 py-1.5 text-xs font-semibold text-white hover:bg-emerald-700 shadow-sm transition-colors"
-        >
-          Ya, lanjutkan
-        </button>
-      </div>
-    </div>
-  </div>
-)}
+        </div>
+      )}
 
 
       <div className="rounded-2xl border border-slate-200 bg-white shadow-sm overflow-hidden">
@@ -687,6 +723,8 @@ if (typeof window !== "undefined") {
               const showReviewer = s === "approved" && r.reviewer;
               const waAction =
     s === "approved" ? "approve" : s === "rejected" ? "reject" : null;
+    const methodLabel = resolvePaymentMethod(r);
+  const isOffline = methodLabel === "OFFLINE";
               return (
                 <div
                   key={`${r.nisn}-${r.id}`}
@@ -710,22 +748,42 @@ if (typeof window !== "undefined") {
 </div>
 
                   <div className="flex items-center justify-between text-sm">
-                    <div className="text-slate-700">
-                      Jumlah: <b>{fmtIDR(r.amount)}</b>
-                      {r.note ? (
-                        <span className="text-slate-500"> · {r.note}</span>
-                      ) : null}
-                    </div>
-                    {r.downloadURL ? (
-                      <button
-                        type="button"
-                        onClick={() => setViewImage(r.downloadURL)}
-                        className="inline-flex items-center gap-1 text-xs font-medium text-slate-700 hover:text-slate-900"
-                      >
-                        Lihat Bukti <ExternalLink className="h-3.5 w-3.5" />
-                      </button>
-                    ) : null}
-                  </div>
+  <div className="flex flex-col gap-1 text-slate-700">
+    <div className="flex items-center flex-wrap gap-2">
+      <span>
+        Jumlah: <b>{fmtIDR(r.amount)}</b>
+      </span>
+
+      {/* Badge metode pembayaran */}
+      <span
+        className={[
+          "inline-flex items-center rounded-full px-2.5 py-0.5 text-[11px] font-semibold border",
+          isOffline
+            ? "border-amber-300 bg-amber-50 text-amber-800"
+            : "border-sky-300 bg-sky-50 text-sky-800",
+        ].join(" ")}
+      >
+        {isOffline ? "Offline (Panitia)" : "Online (User)"}
+      </span>
+    </div>
+
+    {r.note ? (
+      <span className="text-[11px] text-slate-500">
+        Catatan: {r.note}
+      </span>
+    ) : null}
+  </div>
+
+  {r.downloadURL ? (
+    <button
+      type="button"
+      onClick={() => setViewImage(r.downloadURL)}
+      className="inline-flex items-center gap-1 text-xs font-medium text-slate-700 hover:text-slate-900"
+    >
+      Lihat Bukti <ExternalLink className="h-3.5 w-3.5" />
+    </button>
+  ) : null}
+</div>
 
                   <div className="flex items-center gap-2">
   <button

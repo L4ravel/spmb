@@ -45,6 +45,17 @@ function fmtIDR(n) {
     maximumFractionDigits: 0,
   });
 }
+
+function isPpsJenjang(jenjang) {
+  const j = (jenjang || "").toString().toLowerCase();
+  return (
+    j.includes("pps ula putra") ||
+    j.includes("pps ula putri") ||
+    j.includes("pps wustho") ||
+    j.includes("pps ulya")
+  );
+}
+
 async function getTotalFeeByLabel(db, label, cacheRef) {
   if (!label) return 0;
   const key = String(label);
@@ -325,6 +336,7 @@ export function NonPTKPanel({ db, jenjangFilter, pageSize = 10, onRowSelect }) {
     },
     [db, jenjangFilter]
   );
+  
 
   /* ====== Enrich untuk baris TABEL ====== */
   const enrichForTable = useCallback(
@@ -365,46 +377,75 @@ export function NonPTKPanel({ db, jenjangFilter, pageSize = 10, onRowSelect }) {
           }
 
           const totalFee = await getTotalFeeByLabel(
-            db,
-            level,
-            feeCacheRef
-          );
-          const meta = await getApprovedSumAndMeta(db, nisn);
-          const {
-            sumApproved,
-            totalDocs,
-            hasPending,
-            latestCreatedAt,
-            latestStatus,
-            latestNote,
-          } = meta;
+  db,
+  level,
+  feeCacheRef
+);
+const meta = await getApprovedSumAndMeta(db, nisn);
+const {
+  sumApproved,
+  totalDocs,
+  hasPending,
+  latestCreatedAt,
+  latestStatus,
+  latestNote,
+} = meta;
 
-          // baca saudaraNama resmi
-          const saudaraNamaOfficial = (
-            u?.saudaraNama ||
-            u?.namaSaudara ||
-            ""
-          )
-            .toString()
-            .trim();
+// baca saudaraNama resmi
+const saudaraNamaOfficial = (
+  u?.saudaraNama ||
+  u?.namaSaudara ||
+  ""
+)
+  .toString()
+  .trim();
 
-          // potongan NON_PTK
-          let discAmt = await getNonPTKDiscountAmount(db, nisn);
-          // RULE: jika saudaraNama kosong → diskon diabaikan
-          if (!saudaraNamaOfficial) {
-            discAmt = 0;
-          }
+// potongan NON_PTK
+let discAmt = await getNonPTKDiscountAmount(db, nisn);
+// RULE: jika saudaraNama kosong → diskon diabaikan
+if (!saudaraNamaOfficial) {
+  discAmt = 0;
+}
 
-          const effectiveTagihan = Math.max(
-            (Number(totalFee) || 0) - (Number(discAmt) || 0),
-            0
-          );
-          const tunggakan = Math.max(
-            effectiveTagihan - (Number(sumApproved) || 0),
-            0
-          );
-          const isLunas =
-            effectiveTagihan > 0 && tunggakan === 0;
+// tagihan dasar (sesudah diskon saudara)
+let baseTagihan = Math.max(
+  (Number(totalFee) || 0) - (Number(discAmt) || 0),
+  0
+);
+
+// === REVISI PPS: jika jenjang PPS & ayahIncome kosong → tagihan 0
+if (isPpsJenjang(level)) {
+  try {
+    const ppdbSnap = await getDoc(doc(db, "ppdb", nisn));
+    const ayahIncomeRaw = (
+      ppdbSnap.exists()
+        ? ppdbSnap.data()?.ayahIncome ?? ""
+        : ""
+    )
+      .toString()
+      .trim();
+
+    if (!ayahIncomeRaw) {
+      // tidak ada ayahIncome → tidak ada yang perlu dibayar
+      baseTagihan = 0;
+    }
+  } catch {
+    // kalau gagal baca, biarkan baseTagihan apa adanya
+  }
+}
+
+const effectiveTagihan = baseTagihan;
+const tunggakan = Math.max(
+  effectiveTagihan - (Number(sumApproved) || 0),
+  0
+);
+
+// STATUS LUNAS:
+// - kalau tagihan 0 → otomatis LUNAS
+// - atau tagihan > 0 & tunggakan 0
+const isLunas =
+  effectiveTagihan === 0 || tunggakan === 0;
+
 
           let statusDisplay = "BELUM LUNAS";
           if (isLunas) statusDisplay = "LUNAS";
@@ -594,46 +635,71 @@ export function NonPTKPanel({ db, jenjangFilter, pageSize = 10, onRowSelect }) {
               }
             } catch {}
 
-            const rawTagihan = await getTotalFeeByLabel(
-              db,
-              level,
-              feeCacheRef
-            );
+           const rawTagihan = await getTotalFeeByLabel(
+  db,
+  level,
+  feeCacheRef
+);
 
-            // saudaraNama resmi
-            const saudaraNamaOfficial = (
-              u?.saudaraNama ||
-              u?.namaSaudara ||
-              ""
-            )
-              .toString()
-              .trim();
+// saudaraNama resmi
+const saudaraNamaOfficial = (
+  u?.saudaraNama ||
+  u?.namaSaudara ||
+  ""
+)
+  .toString()
+  .trim();
 
-            let discAmt = await getNonPTKDiscountAmount(db, nisn);
-            if (!saudaraNamaOfficial) {
-              discAmt = 0;
-            }
+let discAmt = await getNonPTKDiscountAmount(db, nisn);
+if (!saudaraNamaOfficial) {
+  discAmt = 0;
+}
 
-            const tagihan = Math.max(
-              (Number(rawTagihan) || 0) - (Number(discAmt) || 0),
-              0
-            );
-            const { sumApproved } = await getApprovedSumAndMeta(
-              db,
-              nisn
-            );
-            const tunggakan = Math.max(
-              tagihan - (Number(sumApproved) || 0),
-              0
-            );
-            const lunas = tagihan > 0 && tunggakan === 0;
+// tagihan dasar sesudah diskon saudara
+let tagihan = Math.max(
+  (Number(rawTagihan) || 0) - (Number(discAmt) || 0),
+  0
+);
 
-            return {
-              tagihan,
-              pendapatan: Number(sumApproved) || 0,
-              tunggakan,
-              lunas,
-            };
+// === REVISI PPS: jika jenjang PPS & ayahIncome kosong → tagihan 0
+if (isPpsJenjang(level)) {
+  try {
+    const ppdbSnap = await getDoc(doc(db, "ppdb", nisn));
+    const ayahIncomeRaw = (
+      ppdbSnap.exists()
+        ? ppdbSnap.data()?.ayahIncome ?? ""
+        : ""
+    )
+      .toString()
+      .trim();
+
+    if (!ayahIncomeRaw) {
+      tagihan = 0;
+    }
+  } catch {
+    // kalau error baca, pakai tagihan awal
+  }
+}
+
+const { sumApproved } = await getApprovedSumAndMeta(
+  db,
+  nisn
+);
+const tunggakan = Math.max(
+  tagihan - (Number(sumApproved) || 0),
+  0
+);
+
+// hitung lunas global: tagihan 0 juga dihitung LUNAS
+const lunas = tagihan === 0 || tunggakan === 0;
+
+return {
+  tagihan,
+  pendapatan: Number(sumApproved) || 0,
+  tunggakan,
+  lunas,
+};
+
           });
 
           const out = await Promise.all(works);

@@ -19,7 +19,23 @@ export const EMAIL_ACCESS = {
   "panitia@spmb.com": [ "/admin/kuota",],    
   "riaruqoyyah16@gmail.com": [ "/admin/tes-wawancara",],  
   "heniherawati530@gmail.com": [ "/admin/tes-wawancara",],  
-  "rabiatuladwyh2612@gmail.com": [ "/admin/tes-wawancara",],    
+  "rabiatuladwyh2612@gmail.com": [ "/admin/tes-wawancara",],   
+  
+  //bendahara
+  "riskanefendi@smpia.com": [ 
+    "/admin/daftar-ulang",
+    "/admin/daftar-ulang",
+    "/admin/data-daftar-ulang",
+    "/admin/statistik-daftar-ulang",
+    "/admin/kelengkapan-berkas",
+  ],   
+   "aspar80@gmail.com": [ 
+    "/admin/daftar-ulang",
+    "/admin/daftar-ulang",
+    "/admin/data-daftar-ulang",
+    "/admin/statistik-daftar-ulang",
+    "/admin/kelengkapan-berkas",
+  ],   
 
   // Full Akses
   "user@admin.com": [ "*"  
