@@ -315,6 +315,11 @@ export function KonfirmasiPotonganPanel({
 
   /* ===== Derived biaya & potongan aktif ===== */
   const detail = useMemo(() => {
+    onst hasActiveDiscount = detail.totalPotonganAktif > 0;
+  const activeLabelParts: string[] = [];
+  if (detail.aktifBP3Amount > 0) activeLabelParts.push("BP3");
+  if (detail.aktifSPPAmount > 0) activeLabelParts.push("SPP");
+  const activeLabel = activeLabelParts.join(" + ");
     const spp = typeof fees?.spp === "number" ? fees.spp : 0;
     const pangkalObj =
       fees?.uangPangkal && typeof fees.uangPangkal === "object"
@@ -330,32 +335,44 @@ export function KonfirmasiPotonganPanel({
     const totalPangkal = pangkalEntries.reduce((a, b) => a + b.value, 0);
     const totalSebelumPotongan = totalPangkal + spp;
 
-    const aktifType = (currentDiscount?.type || "").toUpperCase();
-    const aktifAmount = Number(currentDiscount?.amount || 0);
     const maxPotBP3 = Number(pangkalObj?.bp3 || 0);
     const maxPotSPP = Number(spp || 0);
 
-    let totalSesudahPot = totalSebelumPotongan;
-    if (aktifType === "BP3")
-      totalSesudahPot = Math.max(
-        totalSebelumPotongan - Math.min(aktifAmount, maxPotBP3),
-        0
-      );
-    if (aktifType === "SPP")
-      totalSesudahPot = Math.max(
-        totalSebelumPotongan - Math.min(aktifAmount, maxPotSPP),
-        0
-      );
+    // Dukung skema lama (type + amount) dan skema baru (bp3Amount + sppAmount)
+    const rawType = (currentDiscount?.type || "").toUpperCase();
+    const rawAmount = Number(currentDiscount?.amount || 0);
+
+    const aktifBP3Amount =
+      Number(
+        currentDiscount?.bp3Amount ??
+          (rawType === "BP3" ? rawAmount : 0)
+      ) || 0;
+
+    const aktifSPPAmount =
+      Number(
+        currentDiscount?.sppAmount ??
+          (rawType === "SPP" ? rawAmount : 0)
+      ) || 0;
+
+    const potBP3 = Math.min(aktifBP3Amount, maxPotBP3);
+    const potSPP = Math.min(aktifSPPAmount, maxPotSPP);
+    const totalPotonganAktif = potBP3 + potSPP;
+
+    const totalSesudahPot = Math.max(
+      totalSebelumPotongan - totalPotonganAktif,
+      0
+    );
 
     return {
       spp,
       pangkalEntries,
       totalPangkal,
       totalSebelumPotongan,
-      aktifType,
-      aktifAmount,
       maxPotBP3,
       maxPotSPP,
+      aktifBP3Amount,
+      aktifSPPAmount,
+      totalPotonganAktif,
       totalSesudahPot,
     };
   }, [fees, currentDiscount]);
@@ -410,29 +427,58 @@ export function KonfirmasiPotonganPanel({
     try {
       setSaving(true);
       const discId = isNonPTK ? "nonptk_discount" : "ptk_discount";
-      const payload = {
-        type: choice,
-        amount,
+
+      const basePayload: any = {
         sourceFeeRef: fees?.id || null,
-        sourceKey: choice === "BP3" ? "uangPangkal.bp3" : "spp",
         registrationLevel: regLevel || "",
         siblingsCount: Number.isFinite(Number(siblingsCount))
           ? Number(siblingsCount)
           : 0,
         decidedAt: serverTimestamp(),
         decidedBy: "ADMIN",
-        note: isNonPTK
-          ? "Potongan NON_PTK (BP3) untuk yang bersaudara"
-          : "Potongan PTK oleh Admin (full discount komponen terpilih)",
       };
+
+      let payload: any;
+
+      if (isNonPTK) {
+        // NON_PTK tetap satu komponen: BP3
+        payload = {
+          ...basePayload,
+          type: "BP3",
+          amount,
+          sourceKey: "uangPangkal.bp3",
+          note: "Potongan NON_PTK (BP3) untuk yang bersaudara",
+          bp3Amount: amount,
+        };
+      } else {
+        // PTK: bisa simpan BP3 dan SPP dalam dokumen yang sama (apply satu-satu)
+        const sourceKey = choice === "BP3" ? "uangPangkal.bp3" : "spp";
+        payload = {
+          ...basePayload,
+          type: choice,
+          amount,
+          sourceKey,
+          note: "Potongan PTK oleh Admin (full discount komponen terpilih)",
+        };
+
+        if (choice === "BP3") {
+          payload.bp3Amount = amount;
+        } else if (choice === "SPP") {
+          payload.sppAmount = amount;
+        }
+      }
+
       await setDoc(
         doc(db, "users_app", selected.nisn, "re_registration", discId),
         payload,
         { merge: true }
       );
-      setCurrentDiscount(payload);
+
+      // Merge dengan potongan sebelumnya supaya bisa punya BP3 + SPP sekaligus
+      setCurrentDiscount((prev) => ({ ...(prev || {}), ...payload }));
+
       alert(`Potongan ${choice} diterapkan. (${fmtIDR(amount)})`);
-    } catch (e) {
+    } catch (e: any) {
       alert(e?.message || "Gagal menyimpan potongan.");
     } finally {
       setSaving(false);
@@ -706,10 +752,10 @@ export function KonfirmasiPotonganPanel({
               >
                 {statusLocal || "-"}
               </span>
-              {currentDiscount ? (
+              {hasActiveDiscount ? (
                 <span className="inline-flex items-center rounded-full border border-indigo-300 bg-indigo-50 px-2.5 py-0.5 text-[11px] font-semibold text-indigo-800">
-                  Potongan aktif: {currentDiscount.type}{" "}
-                  {fmtIDR(currentDiscount.amount || 0)}
+                  Potongan aktif: {activeLabel || "-"}{" "}
+                  {fmtIDR(detail.totalPotonganAktif)}
                 </span>
               ) : (
                 <span className="text-[11px] text-slate-700">
@@ -718,11 +764,11 @@ export function KonfirmasiPotonganPanel({
               )}
             </div>
           ) : (
-            <div className="mt-2">
-              {currentDiscount ? (
+             <div className="mt-2">
+              {hasActiveDiscount ? (
                 <span className="inline-flex items-center rounded-full border border-indigo-300 bg-indigo-50 px-2.5 py-0.5 text-[11px] font-semibold text-indigo-800">
-                  Potongan aktif: {currentDiscount.type}{" "}
-                  {fmtIDR(currentDiscount.amount || 0)}
+                  Potongan aktif: {activeLabel || "-"}{" "}
+                  {fmtIDR(detail.totalPotonganAktif)}
                 </span>
               ) : (
                 <span className="text-[11px] text-slate-700">
@@ -812,9 +858,9 @@ export function KonfirmasiPotonganPanel({
                   </div>
                   <div className="rounded-lg border border-emerald-300 bg-emerald-50 px-3 py-2">
                     <div className="text-xs text-emerald-800">
-                      Setelah Potongan Aktif{" "}
-                      {detail.aktifType ? `(${detail.aktifType})` : ""}
-                    </div>
+  Setelah Potongan Aktif{" "}
+  {hasActiveDiscount && activeLabel ? `(${activeLabel})` : ""}
+</div>
                     <div className="text-base font-bold text-emerald-900">
                       {fmtIDR(detail.totalSesudahPot)}
                     </div>
@@ -976,3 +1022,4 @@ export function KonfirmasiPotonganPanel({
 </div>
 );
 }
+
