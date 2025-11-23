@@ -4,7 +4,7 @@
 import {
   Home, Users, CreditCard, UserCheck, Trophy, Calendar,
   FileText, BarChart3, MessageSquare, CheckCircle2,
-  BookOpenCheck, Megaphone, KeyRound, LineChart, Wallet, ClipboardList, PieChart, MapPin, Table, MessageCircle
+  BookOpenCheck, Megaphone, KeyRound, LineChart, Wallet, ClipboardList, PieChart, MapPin, Table, MessageCircle, PlusCircle 
 } from "lucide-react";
 
 // Sumber menu tunggal (dipakai sidebar & bottom bar)
@@ -27,6 +27,7 @@ export const BASE_MENU_GROUPS = [
       { label: "Hasil Final", shortLabel: "Final", href: "/admin/hasil-final", icon: Trophy },
       { label: "Umumkan", shortLabel: "Umumkan", href: "/admin/hasil-final/umumkan", icon: Megaphone },
       { label: "WA Kelulusan", shortLabel: "WA", href: "/admin/wa-kelulusan", icon: MessageCircle },
+      { label: "Tambah WA Grup", shortLabel: "Add WA", href: "/admin/add-wa", icon: PlusCircle },
     ],
   },
   {
