@@ -235,8 +235,8 @@ const groupLink = groupCfg?.link || "";
       setLoadingSend(nisn);
 
       // Buka WA
-      const url = `https://wa.me/${phone}?text=${encodeURIComponent(message)}`;
-      window.open(url, "_blank");
+      const url = `https://web.whatsapp.com/send?phone=${phone}&text=${encodeURIComponent(message)}`;
+window.open(url, "_blank");
 
       // Simpan status undangan di Firestore
       await setDoc(
