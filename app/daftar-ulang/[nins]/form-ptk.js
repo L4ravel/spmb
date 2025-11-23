@@ -497,16 +497,39 @@ export default function FormPTK({
   }, [onBack, router]);
 
   /* ---------- Perhitungan total ala Non-PTK (tetap menghitung aturan PTK lebih dulu) ---------- */
-  const baseSPP = typeof fees?.spp === "number" ? fees.spp : 0;
+    const baseSPP = typeof fees?.spp === "number" ? fees.spp : 0;
   const totalPangkalBefore = Object.values(fees?.uangPangkal || {}).reduce(
     (a, n) => a + (typeof n === "number" ? n : 0),
     0
   );
-  const cutSPP = discount?.type === "SPP" ? discount?.amount || 0 : 0;
-  const cutPangkal = discount?.type === "BP3" ? discount?.amount || 0 : 0;
+
+  // Dukungan potongan ganda PTK: BP3, SPP, atau BP3+SPP
+  const discType = (discount?.type || "").toUpperCase();
+  const discAmount = Number(discount?.amount || 0);
+
+  // Ambil potongan BP3 & SPP:
+  // - kalau ada amountBP3 / amountSPP: pakai itu
+  // - kalau data lama (hanya BP3 *atau* SPP): pakai amount tunggal
+  const rawDiscBP3 =
+    discount?.amountBP3 ??
+    (discType.includes("BP3") && !discType.includes("SPP") ? discAmount : 0);
+
+  const rawDiscSPP =
+    discount?.amountSPP ??
+    (discType.includes("SPP") && !discType.includes("BP3") ? discAmount : 0);
+
+  const cutPangkal = Math.max(
+    0,
+    Math.min(totalPangkalBefore, Number(rawDiscBP3) || 0)
+  );
+  const cutSPP = Math.max(
+    0,
+    Math.min(baseSPP, Number(rawDiscSPP) || 0)
+  );
+
   const netSPP = Math.max(0, baseSPP - cutSPP);
   const netPangkal = Math.max(0, totalPangkalBefore - cutPangkal);
-  const totalPembayaran = netSPP + netPangkal;
+  const totalPembayaran = Math.max(0, netSPP + netPangkal);
 
   // hanya approved yang mengurangi
   const totalTerverifikasi = useMemo(
@@ -532,7 +555,10 @@ export default function FormPTK({
     ptk?.jenjang && !(ptk?.status === "APPROVED" || !!fees);
 
   const hasDiscount =
-    discount && Number(discount.amount || 0) > 0 && discount.type;
+    discount &&
+    (cutPangkal > 0 ||
+      cutSPP > 0 ||
+      (Number(discount.amount || 0) > 0 && discount.type));
 
   return (
     <section className="bg-white rounded-2xl border border-slate-200 shadow-sm">
