@@ -216,7 +216,7 @@ const groupLink = groupCfg?.link || "";
     const message = [
   "Bismillah.",
   "",
-  "Kami dari Panitia SPMB Pondok Pesantren Assunnah mengundang Bapak/Ibu orang tua/wali untuk bergabung ke grup WhatsApp resmi sesuai jenjang putra/putri.",
+  "Kami dari Panitia SPMB Pondok Pesantren Assunnah mengundang Bapak/Ibu orang tua/wali untuk bergabung ke grup WhatsApp resmi sesuai jenjang peserta.",
   "",
   `Jenjang pendaftaran: ${jenjang}`,
   "",
