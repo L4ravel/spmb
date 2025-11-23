@@ -319,7 +319,7 @@ export default function KelengkapanBerkasPage() {
       ").";
     const url =
       "https://web.whatsapp.com/send?phone=" + phone + "&text=" + text;
-    window.location.href = url;
+    window.open(url, "_blank", "noopener,noreferrer");
   };
 
   return (
