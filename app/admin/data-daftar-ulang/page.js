@@ -162,13 +162,18 @@ export default function AdminDataDaftarUlangPage() {
           r.level.toLowerCase().includes(s)
       );
     }
-
-    // filter jalur dari dropdown
+    
+     // filter jalur dari dropdown
     if (filterJalur === "PTK") {
       base = base.filter((r) => r.jalur === "PTK");
     } else if (filterJalur === "NON_PTK") {
       // NON_PTK = semua yang BUKAN PTK
       base = base.filter((r) => (r.jalur || "") !== "PTK");
+    } else if (filterJalur === "NON_PTK_DISC") {
+      // Non-PTK yang PUNYA diskon Non-PTK
+      base = base.filter(
+        (r) => (r.jalur || "") !== "PTK" && (Number(r.discNonPTK || 0) || 0) > 0
+      );
     }
 
     // filter jenjang
@@ -227,11 +232,15 @@ export default function AdminDataDaftarUlangPage() {
       );
     }
 
-    // filter jalur dari dropdown
+     // filter jalur dari dropdown
     if (filterJalur === "PTK") {
       base = base.filter((r) => r.jalur === "PTK");
     } else if (filterJalur === "NON_PTK") {
       base = base.filter((r) => (r.jalur || "") !== "PTK");
+    } else if (filterJalur === "NON_PTK_DISC") {
+      base = base.filter(
+        (r) => (r.jalur || "") !== "PTK" && (Number(r.discNonPTK || 0) || 0) > 0
+      );
     }
 
     // filter jenjang
@@ -326,37 +335,60 @@ export default function AdminDataDaftarUlangPage() {
 
         /* 3) Ambil semua dokumen potongan di subkoleksi re_registration */
         const reRegSnap = await getDocs(
-          query(collectionGroup(db, "re_registration"), limit(MAX_RE_REG_DOCS))
-        );
-        const discountsByNisn = {};
-        let totalDiscountPTK = 0;
-        let totalDiscountNonPTK = 0;
+  query(collectionGroup(db, "re_registration"), limit(MAX_RE_REG_DOCS))
+);
+const discountsByNisn = {};
+let totalDiscountPTK = 0;
+let totalDiscountNonPTK = 0;
 
-        reRegSnap.forEach((docSnap) => {
-          const docId = docSnap.id; // "ptk_discount" / "nonptk_discount" / lainnya
-          if (docId !== "ptk_discount" && docId !== "nonptk_discount") return;
+reRegSnap.forEach((docSnap) => {
+  const docId = docSnap.id; // "ptk_discount" / "nonptk_discount" / lainnya
+  if (docId !== "ptk_discount" && docId !== "nonptk_discount") return;
 
-          const data = docSnap.data() || {};
-          const amount = Number(data.amount || 0);
-          if (!Number.isFinite(amount) || amount <= 0) return;
+  const data = docSnap.data() || {};
+  const amount = Number(data.amount || 0);
+  if (!Number.isFinite(amount) || amount <= 0) return;
 
-          const parent = docSnap.ref.parent; // re_registration
-          const userRef = parent?.parent; // users_app/{nisn}
-          const nisn = userRef?.id || "";
-          if (!nisn) return;
+  const parent = docSnap.ref.parent; // re_registration
+  const userRef = parent?.parent; // users_app/{nisn}
+  const nisn = userRef?.id || "";
+  if (!nisn) return;
 
-          if (!discountsByNisn[nisn]) {
-            discountsByNisn[nisn] = { ptk: 0, nonptk: 0 };
-          }
+  const type = (data.type || "").toString().toUpperCase();
+  const siblingsCount = Number(data.siblingsCount || 0) || 0;
+  const amountBP3 = Number(data.amountBP3 || 0) || 0;
+  const amountSPP = Number(data.amountSPP || 0) || 0;
+  const sourceKey = (data.sourceKey || "").toString();
 
-          if (docId === "ptk_discount") {
-            discountsByNisn[nisn].ptk += amount;
-            totalDiscountPTK += amount;
-          } else if (docId === "nonptk_discount") {
-            discountsByNisn[nisn].nonptk += amount;
-            totalDiscountNonPTK += amount;
-          }
-        });
+  if (!discountsByNisn[nisn]) {
+    discountsByNisn[nisn] = {
+      ptk: 0,
+      nonptk: 0,
+      ptkMeta: null,
+      nonptkMeta: null,
+    };
+  }
+
+  if (docId === "ptk_discount") {
+    discountsByNisn[nisn].ptk += amount;
+    discountsByNisn[nisn].ptkMeta = {
+      type,
+      siblingsCount,
+      amountBP3,
+      amountSPP,
+      sourceKey,
+    };
+    totalDiscountPTK += amount;
+  } else if (docId === "nonptk_discount") {
+    discountsByNisn[nisn].nonptk += amount;
+    discountsByNisn[nisn].nonptkMeta = {
+      type,
+      siblingsCount,
+      sourceKey,
+    };
+    totalDiscountNonPTK += amount;
+  }
+});
 
         /* 4) Ambil semua payments (collectionGroup) */
         const paySnap = await getDocs(
@@ -468,36 +500,93 @@ export default function AdminDataDaftarUlangPage() {
           else statusDaftarUlang = "LUNAS";
 
           const jalur =
-            discPTK > 0
-              ? "PTK"
-              : discNonPTK > 0
-              ? "NON_PTK"
-              : ud.isPTK
-              ? "PTK"
-              : ud.isNonPTK
-              ? "NON_PTK"
-              : "";
+    discPTK > 0
+      ? "PTK"
+      : discNonPTK > 0
+      ? "NON_PTK"
+      : ud.isPTK
+      ? "PTK"
+      : ud.isNonPTK
+      ? "NON_PTK"
+      : "";
 
-          tmpRows.push({
-            nisn,
-            name,
-            level,
-            jalur,
-            phone,
-            baseSPP,
-            pangkalComponents,
-            totalPangkal,
-            totalAwal,
-            discPTK,
-            discNonPTK,
-            totalDisc,
-            netTagihan,
-            totalPaid,
-            sisa,
-            buktiCount: payAgg.count || 0,
-            lastPaidAt: payAgg.lastPaidAt,
-            statusDaftarUlang,
-          });
+  // Label keterangan potongan
+  let discountLabel = "";
+  if (discPTK > 0 && discInfo.ptkMeta) {
+    const meta = discInfo.ptkMeta;
+    const punyaSaudara = (meta.siblingsCount || 0) > 0;
+    const hasSPP =
+      (meta.amountSPP || 0) > 0 ||
+      meta.type === "SPP" ||
+      meta.type === "BP3+SPP";
+    const hasBP3 =
+      (meta.amountBP3 || 0) > 0 ||
+      meta.type === "BP3" ||
+      meta.type === "BP3+SPP";
+
+    if (punyaSaudara && hasSPP) {
+      // PTK punya saudara + dapat SPP
+      discountLabel = "PTK bersaudara + SPP";
+    } else if (punyaSaudara) {
+      // PTK bersaudara saja (tanpa SPP)
+      discountLabel = "PTK bersaudara";
+    } else if (!hasSPP && hasBP3) {
+      // PTK hanya BP3 → non SPP
+      discountLabel = "PTK non SPP (BP3)";
+    } else if (hasSPP && !hasBP3) {
+      // PTK cuma SPP
+      discountLabel = "PTK SPP";
+    } else if (hasSPP && hasBP3) {
+      // PTK dapat dua komponen (tanpa saudara)
+      discountLabel = "PTK SPP+BP3";
+    } else {
+      discountLabel = "PTK";
+    }
+  } else if(discNonPTK > 0 && discInfo.nonptkMeta) {
+    const meta = discInfo.nonptkMeta;
+    const punyaSaudara = (meta.siblingsCount || 0) > 0;
+    const sourceKey = (meta.sourceKey || "").toLowerCase();
+    const t = meta.type || "";
+    const isSPP =
+      t === "SPP" ||
+      sourceKey === "spp" ||
+      sourceKey.endsWith(".spp");
+    const isBP3 =
+      t === "BP3" ||
+      sourceKey.includes("bp3");
+
+    if (isSPP) {
+      // Skenario yatim: potongan SPP
+      discountLabel = "SPP yatim";
+    } else if (isBP3 || punyaSaudara) {
+      // Non-PTK saudara → BP3
+      discountLabel = "BP3 bersaudara";
+    } else {
+      discountLabel = "Non-PTK";
+    }
+  }
+
+  tmpRows.push({
+    nisn,
+    name,
+    level,
+    jalur,
+    phone,
+    baseSPP,
+    pangkalComponents,
+    totalPangkal,
+    totalAwal,
+    discPTK,
+    discNonPTK,
+    totalDisc,
+    netTagihan,
+    totalPaid,
+    sisa,
+    buktiCount: payAgg.count || 0,
+    lastPaidAt: payAgg.lastPaidAt,
+    statusDaftarUlang,
+    discountLabel, 
+  });
 
           statTotalTagihanNet += netTagihan;
           statTotalPaid += totalPaid;
@@ -554,11 +643,16 @@ export default function AdminDataDaftarUlangPage() {
     }
 
     if (filterJalur === "PTK") {
-  out = out.filter((r) => r.jalur === "PTK");
-} else if (filterJalur === "NON_PTK") {
-  // NON_PTK = semua yang BUKAN PTK
-  out = out.filter((r) => (r.jalur || "") !== "PTK");
-}
+      out = out.filter((r) => r.jalur === "PTK");
+    } else if (filterJalur === "NON_PTK") {
+      // NON_PTK = semua yang BUKAN PTK
+      out = out.filter((r) => (r.jalur || "") !== "PTK");
+    } else if (filterJalur === "NON_PTK_DISC") {
+      // Non-PTK yang dapat diskon Non-PTK
+      out = out.filter(
+        (r) => (r.jalur || "") !== "PTK" && (Number(r.discNonPTK || 0) || 0) > 0
+      );
+    }
 
     // filter jenjang
     if (filterLevel !== "ALL") {
@@ -583,6 +677,8 @@ export default function AdminDataDaftarUlangPage() {
     return filteredRows.slice(start, start + pageSize);
   }, [filteredRows, pageSafe, pageSize]);
 
+  const rowIndexStart = (pageSafe - 1) * pageSize;
+
   const pangkalLabelMap = {
     pakaian: "PAKAIAN",
     sarpras: "SARPRAS",
@@ -603,19 +699,20 @@ export default function AdminDataDaftarUlangPage() {
   // ====== Download Excel (.xls) ======
   const buildSummarySheetData = (data) => {
     const header = [
-      "NISN",
-      "Nama",
-      "Jenjang",
-      "Jalur",
-      "Tagihan Awal",
-      "Diskon",
-      "Tagihan Net",
-      "Terbayar",
-      "Sisa",
-      "Status",
-      "Bukti",
-      "Terakhir Bayar",   
-    ];
+  "NISN",
+  "Nama",
+  "Jenjang",
+  "Jalur",
+  "Tagihan Awal",
+  "Potongan",
+  "Keterangan Potongan",
+  "Tagihan Net",
+  "Terbayar",
+  "Sisa",
+  "Status",
+  "Bukti",
+  "Terakhir Bayar",
+];
 
     const rows = data.map((r) => {
       const totalAwalNum = Number(r.totalAwal || 0) || 0;
@@ -623,19 +720,20 @@ export default function AdminDataDaftarUlangPage() {
       const perluNum = Math.max(0, totalAwalNum - totalPaidNum);
 
       return [
-        r.nisn,
-        r.name,
-        r.level,
-        r.jalur || "",
-        totalAwalNum,
-        Number(r.totalDisc || 0) || 0,
-        Number(r.netTagihan || 0) || 0,
-        totalPaidNum,
-        Number(r.sisa || 0) || 0,
-        r.statusDaftarUlang,
-        r.buktiCount || 0,
-        formatDateTime(r.lastPaidAt),       
-      ];
+  r.nisn,
+  r.name,
+  r.level,
+  r.jalur || "",
+  totalAwalNum,
+  Number(r.totalDisc || 0) || 0,
+  r.discountLabel || "",
+  Number(r.netTagihan || 0) || 0,
+  totalPaidNum,
+  Number(r.sisa || 0) || 0,
+  r.statusDaftarUlang,
+  r.buktiCount || 0,
+  formatDateTime(r.lastPaidAt),
+];
     });
 
     return [header, ...rows];
@@ -644,21 +742,22 @@ export default function AdminDataDaftarUlangPage() {
   // data untuk mode KOMPONEN
   const buildComponentSheetData = (data) => {
     const header = [
-      "NISN",
-      "Nama",
-      "Jenjang",
-      "Jalur",
-      "SPP",
-      "Pakaian",
-      "Sarpras",
-      "Kasur",
-      "Kitab",
-      "BP3",
-      "Total Uang Pangkal",
-      "Total Dibayar (SPP+Pangkal)",
-      "Jumlah Dibayar (Approved)",
-      "Perlu Dibayar Lagi", // (SPP + pangkal) - jumlah dibayar
-    ];
+  "NISN",
+  "Nama",
+  "Jenjang",
+  "Jalur",
+  "Keterangan Potongan",
+  "SPP",
+  "Pakaian",
+  "Sarpras",
+  "Kasur",
+  "Kitab",
+  "BP3",
+  "Total Uang Pangkal",
+  "Total Dibayar (SPP+Pangkal)",
+  "Jumlah Dibayar (Approved)",
+  "Perlu Dibayar Lagi",
+];
 
     const rows = data.map((r) => {
       const pk = r.pangkalComponents || {};
@@ -674,21 +773,22 @@ export default function AdminDataDaftarUlangPage() {
       const perluNum = Math.max(0, totalAll - totalPaidNum);
 
       return [
-        r.nisn,
-        r.name,
-        r.level,
-        r.jalur || "",
-        baseSPPNum,
-        getPkValNum("pakaian"),
-        getPkValNum("sarpras"),
-        getPkValNum("kasur"),
-        getPkValNum("kitab"),
-        getPkValNum("bp3"),
-        totalPangkalNum,
-        totalAll,
-        totalPaidNum,
-        perluNum,
-      ];
+  r.nisn,
+  r.name,
+  r.level,
+  r.jalur || "",
+  r.discountLabel || "",
+  baseSPPNum,
+  getPkValNum("pakaian"),
+  getPkValNum("sarpras"),
+  getPkValNum("kasur"),
+  getPkValNum("kitab"),
+  getPkValNum("bp3"),
+  totalPangkalNum,
+  totalAll,
+  totalPaidNum,
+  perluNum,
+];
     });
 
     return [header, ...rows];
@@ -715,10 +815,10 @@ export default function AdminDataDaftarUlangPage() {
     const ws = XLSX.utils.aoa_to_sheet(sheetData);
     XLSX.utils.book_append_sheet(wb, ws, sheetName);
 
-    const filename = `data-daftar-ulang-${viewMode.toLowerCase()}-${ts}.xls`;
+    const filename = `data-daftar-ulang-${viewMode.toLowerCase()}-${ts}.xlsx`;
 
-    // tulis sebagai file .xls asli
-    XLSX.writeFile(wb, filename, { bookType: "xls" });
+// tulis sebagai file .xlsx (default font Excel = Calibri)
+XLSX.writeFile(wb, filename, { bookType: "xlsx" });
   };
 
   return (
@@ -807,17 +907,18 @@ export default function AdminDataDaftarUlangPage() {
             <div className="flex items-center gap-2">
               {/* Filter jalur */}
               <select
-                value={filterJalur}
-                onChange={(e) => {
-                  setFilterJalur(e.target.value);
-                  setPage(1);
-                }}
-                className="rounded-lg border border-slate-200 bg-white px-2 py-1 text-xs text-slate-900"
-              >
-                <option value="ALL">Semua Jalur</option>
-                <option value="PTK">PTK</option>
-                <option value="NON_PTK">Non-PTK</option>
-              </select>
+  value={filterJalur}
+  onChange={(e) => {
+    setFilterJalur(e.target.value);
+    setPage(1);
+  }}
+  className="rounded-lg border border-slate-200 bg-white px-2 py-1 text-xs text-slate-900"
+>
+  <option value="ALL">Semua Jalur</option>
+  <option value="PTK">PTK</option>
+  <option value="NON_PTK">Non-PTK</option>
+  <option value="NON_PTK_DISC">Non-PTK (dapat potongan)</option>
+</select>
 
               {/* Filter jenjang */}
               <select
@@ -924,59 +1025,67 @@ export default function AdminDataDaftarUlangPage() {
               /* ---------- MODE 1: REKAP ---------- */
               <table className="min-w-full text-xs md:text-sm">
                 <thead className="bg-slate-50 border-b border-slate-200">
-                  {/* baris header 1: grup TAGIHAN */}
-                  <tr className="text-left text-[11px] font-semibold uppercase tracking-wide text-slate-500">
-                    <th className="px-3 py-2" rowSpan={2}>
-                      NISN
-                    </th>
-                    <th className="px-3 py-2" rowSpan={2}>
-                      Nama
-                    </th>
-                    <th className="px-3 py-2" rowSpan={2}>
-                      Jenjang
-                    </th>
-                    <th className="px-3 py-2" rowSpan={2}>
-                      Status
-                    </th>
-                    <th className="px-3 py-2 text-center" colSpan={5}>
-                      TAGIHAN
-                    </th>
-                    <th className="px-3 py-2" rowSpan={2}>
-                      Status
-                    </th>
-                    <th className="px-3 py-2 text-center" rowSpan={2}>
-                      Bukti
-                    </th>
-                    <th className="px-3 py-2" rowSpan={2}>
-                      Terakhir Bayar
-                    </th>
-                  </tr>
-                  {/* baris header 2: sub kolom TAGIHAN */}
-                  <tr className="text-left text-[11px] font-semibold uppercase tracking-wide text-slate-500">
-                    <th className="px-3 py-1 text-right">Tagihan Awal</th>
-                    <th className="px-3 py-1 text-right">Diskon</th>
-                    <th className="px-3 py-1 text-right">Tagihan Net</th>
-                    <th className="px-3 py-1 text-right">Terbayar</th>
-                    <th className="px-3 py-1 text-right">Sisa</th>
-                  </tr>
-                </thead>
+  {/* baris header 1: grup TAGIHAN */}
+  <tr className="text-left text-[11px] font-semibold uppercase tracking-wide text-slate-500">
+    <th className="px-3 py-2" rowSpan={2}>
+      No
+    </th>
+    <th className="px-3 py-2" rowSpan={2}>
+      NISN
+    </th>
+    <th className="px-3 py-2" rowSpan={2}>
+      Nama
+    </th>
+    <th className="px-3 py-2" rowSpan={2}>
+      Jenjang
+    </th>
+    <th className="px-3 py-2" rowSpan={2}>
+      Status
+    </th>
+    <th className="px-3 py-2 text-center" colSpan={5}>
+      TAGIHAN
+    </th>
+    <th className="px-3 py-2" rowSpan={2}>
+      Status
+    </th>
+    <th className="px-3 py-2 text-center" rowSpan={2}>
+      Bukti
+    </th>
+    <th className="px-3 py-2" rowSpan={2}>
+      Terakhir Bayar
+    </th>
+  </tr>
+  {/* baris header 2: sub kolom TAGIHAN */}
+  <tr className="text-left text-[11px] font-semibold uppercase tracking-wide text-slate-500">
+    <th className="px-3 py-1 text-right">Tagihan Awal</th>
+    <th className="px-3 py-1 text-right">Potongan</th>
+    <th className="px-3 py-1 text-right">Tagihan Net</th>
+    <th className="px-3 py-1 text-right">Terbayar</th>
+    <th className="px-3 py-1 text-right">Sisa</th>
+  </tr>
+</thead>
 
                 <tbody className="divide-y divide-slate-100">
-                  {paginatedRows.map((r) => (
-                    <tr key={r.nisn} className="hover:bg-slate-50">
-                      <td className="px-3 py-2 font-mono text-[11px] text-slate-800">
-                        {r.nisn}
-                      </td>
-                      <td className="px-3 py-2">
-                        <div className="font-semibold text-slate-900">
-                          {r.name}
-                        </div>
-                        {r.phone ? (
-                          <div className="text-[11px] text-slate-500">
-                            {r.phone}
-                          </div>
-                        ) : null}
-                      </td>
+  {paginatedRows.map((r, idx) => (
+    <tr key={r.nisn} className="hover:bg-slate-50">
+      {/* NO */}
+      <td className="px-3 py-2 text-[11px] font-semibold text-slate-800">
+        {rowIndexStart + idx + 1}
+      </td>
+      {/* NISN */}
+      <td className="px-3 py-2 font-mono text-[11px] text-slate-800">
+        {r.nisn}
+      </td>
+      <td className="px-3 py-2">
+        <div className="font-semibold text-slate-900">
+          {r.name}
+        </div>
+        {r.phone ? (
+          <div className="text-[11px] text-slate-500">
+            {r.phone}
+          </div>
+        ) : null}
+      </td>
                       <td className="px-3 py-2 text-slate-800">{r.level}</td>
                       <td className="px-3 py-2">
                         {r.jalur ? (
@@ -996,9 +1105,23 @@ export default function AdminDataDaftarUlangPage() {
                       <td className="px-3 py-2 text-right tabular-nums text-slate-900">
                         {fmtIDR(r.totalAwal)}
                       </td>
-                      <td className="px-3 py-2 text-right tabular-nums text-slate-900">
-                        {r.totalDisc > 0 ? fmtIDR(r.totalDisc) : "—"}
-                      </td>
+                     <td className="px-3 py-2 text-center tabular-nums text-slate-900">
+  {r.totalDisc > 0 ? (
+    <div className="flex flex-col items-center gap-0.5">
+      <span>{fmtIDR(r.totalDisc)}</span>
+
+      {r.discountLabel && (
+        <span
+          className="inline-flex items-center rounded-full px-2 py-0.5 text-[9px] font-semibold border border-violet-200 bg-violet-50 text-violet-700"
+        >
+          {r.discountLabel}
+        </span>
+      )}
+    </div>
+  ) : (
+    "—"
+  )}
+</td>
                       <td className="px-3 py-2 text-right tabular-nums text-slate-900">
                         {fmtIDR(r.netTagihan)}
                       </td>
@@ -1008,19 +1131,19 @@ export default function AdminDataDaftarUlangPage() {
                       <td className="px-3 py-2 text-right tabular-nums text-slate-900">
                         {fmtIDR(r.sisa)}
                       </td>
-                      <td className="px-3 py-2">
-                        <span
-                          className={`inline-flex items-center rounded-full px-2 py-0.5 text-[10px] font-semibold border ${
-                            r.statusDaftarUlang === "LUNAS"
-                              ? "bg-emerald-50 border-emerald-200 text-emerald-700"
-                              : r.statusDaftarUlang === "SEBAGIAN"
-                              ? "bg-amber-50 border-amber-200 text-amber-700"
-                              : "bg-rose-50 border-rose-200 text-rose-700"
-                          }`}
-                        >
-                          {r.statusDaftarUlang}
-                        </span>
-                      </td>
+                     <td className="px-3 py-2">
+  <span
+    className={`inline-flex items-center rounded-full px-2 py-0.5 text-[10px] font-semibold border ${
+      r.statusDaftarUlang === "LUNAS"
+        ? "bg-emerald-50 border-emerald-200 text-emerald-700"
+        : r.statusDaftarUlang === "SEBAGIAN"
+        ? "bg-amber-50 border-amber-200 text-amber-700"
+        : "bg-rose-50 border-rose-200 text-rose-700"
+    }`}
+  >
+    {r.statusDaftarUlang}
+  </span>
+</td>
                       <td className="px-3 py-2 text-center text-[11px] text-slate-800">
                         {r.buktiCount || 0}
                       </td>
@@ -1037,21 +1160,24 @@ export default function AdminDataDaftarUlangPage() {
                 <thead className="bg-slate-50 border-b border-slate-200">
                   {/* baris header 1: group UANG PANGKAL */}
                   <tr className="text-left text-[11px] font-semibold uppercase tracking-wide text-slate-500">
-                    <th className="px-3 py-2" rowSpan={2}>
-                      NISN
-                    </th>
-                    <th className="px-3 py-2" rowSpan={2}>
-                      Nama
-                    </th>
-                    <th className="px-3 py-2" rowSpan={2}>
-                      Jenjang
-                    </th>
-                    <th className="px-3 py-2" rowSpan={2}>
-                      Status
-                    </th>
-                    <th className="px-3 py-2 text-right" rowSpan={2}>
-                      SPP
-                    </th>
+  <th className="px-3 py-2" rowSpan={2}>
+    No
+  </th>
+  <th className="px-3 py-2" rowSpan={2}>
+    NISN
+  </th>
+  <th className="px-3 py-2" rowSpan={2}>
+    Nama
+  </th>
+  <th className="px-3 py-2" rowSpan={2}>
+    Jenjang
+  </th>
+  <th className="px-3 py-2" rowSpan={2}>
+    Status
+  </th>
+  <th className="px-3 py-2 text-right" rowSpan={2}>
+    SPP
+  </th>
                     <th className="px-3 py-2 text-center" colSpan={6}>
                       UANG PANGKAL
                     </th>
@@ -1074,21 +1200,26 @@ export default function AdminDataDaftarUlangPage() {
                   </tr>
                 </thead>
                 <tbody className="divide-y divide-slate-100">
-                  {paginatedRows.map((r) => {
-                    const pk = r.pangkalComponents || {};
+  {paginatedRows.map((r, idx) => {
+    const pk = r.pangkalComponents || {};
                     const getPkVal = (key) => {
                       const val = Number(pk?.[key] || 0);
                       return Number.isFinite(val) && val > 0 ? fmtIDR(val) : "–";
                     };
                     return (
                       <tr key={r.nisn} className="hover:bg-slate-50 align-top">
-                        <td className="px-3 py-2 font-mono text-[11px] text-slate-800">
-                          {r.nisn}
-                        </td>
-                        <td className="px-3 py-2">
-                          <div className="font-semibold text-slate-900">
-                            {r.name}
-                          </div>
+        {/* NO */}
+        <td className="px-3 py-2 text-[11px] font-semibold text-slate-800">
+          {rowIndexStart + idx + 1}
+        </td>
+        {/* NISN */}
+        <td className="px-3 py-2 font-mono text-[11px] text-slate-800">
+          {r.nisn}
+        </td>
+        <td className="px-3 py-2">
+          <div className="font-semibold text-slate-900">
+            {r.name}
+          </div>
                           {r.phone ? (
                             <div className="text-[11px] text-slate-500">
                               {r.phone}

@@ -6,7 +6,7 @@ import Link from 'next/link';
 import {
   Users, CreditCard, UserCheck, Calendar, FileText, BarChart3, MessageSquare,
   BookOpenCheck, DollarSign, Megaphone, KeyRound, LineChart, Wallet, ClipboardList,
-  PieChart, MapPin, Table, RefreshCw, MessageCircle,
+  PieChart, MapPin, Table, RefreshCw, MessageCircle, PlusCircle
 } from 'lucide-react';
 
 import { db } from '@/lib/firebase';
@@ -123,6 +123,7 @@ export default function AdminDashboard() {
         { label: 'Hasil Final', href: '/admin/hasil-final', icon: Table },
         { label: 'Umumkan', href: '/admin/hasil-final/umumkan', icon: Megaphone },
         { label: "WA Kelulusan", shortLabel: "WA", href: "/admin/wa-kelulusan", icon: MessageCircle },
+        { label: "Tambah WA Grup", shortLabel: "Add WA", href: "/admin/add-wa", icon: PlusCircle },
       ],
     },
     {

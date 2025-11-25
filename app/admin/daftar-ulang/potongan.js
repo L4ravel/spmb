@@ -81,6 +81,7 @@ export function KonfirmasiPotonganPanel({
   const [parentName, setParentName] = useState("");
   const [parentRole, setParentRole] = useState("");
   const [siblingsCount, setSiblingsCount] = useState(0);
+  const [isAyahIncomeEmpty, setIsAyahIncomeEmpty] = useState(false);
 
   // Loading aksi approve/reject agar tombol tidak hilang tiba-tiba (khusus PTK)
   const [isApproving, setIsApproving] = useState(false);
@@ -90,7 +91,9 @@ export function KonfirmasiPotonganPanel({
   // - PTK: harus APPROVED + fees ada
   // - NON_PTK: fees ada + ada saudara (siblingsCount > 0)
   const canApply = isNonPTK
-    ? !!selected?.nisn && !!fees && Number(siblingsCount) > 0
+    ? !!selected?.nisn &&
+      !!fees &&
+      (Number(siblingsCount) > 0 || isAyahIncomeEmpty)
     : !!selected?.nisn && !!fees && statusLocal === "APPROVED";
 
   /* 1) Load registrationLevel, potongan aktif, & data orang tua / saudara */
@@ -105,6 +108,7 @@ export function KonfirmasiPotonganPanel({
       setParentName("");
       setParentRole("");
       setSiblingsCount(0);
+      setIsAyahIncomeEmpty(false);
 
       if (!selected?.nisn) return;
       try {
@@ -168,6 +172,7 @@ export function KonfirmasiPotonganPanel({
 
         // Hitung jumlah saudara:
         let sc = 0;
+        let ayahIncomeEmpty = false;
 
         // Sumber data PTK
         if (ptkData) {
@@ -240,12 +245,28 @@ export function KonfirmasiPotonganPanel({
           if (!saudaraNama) {
             sc = 0;
           }
+          // Baca ayahIncome dari ppdb untuk rule yatim NON_PTK
+          try {
+            const ppdbSnap = await getDoc(doc(db, "ppdb", selected.nisn));
+            const ayahIncomeRaw = (
+              ppdbSnap.exists()
+                ? ppdbSnap.data()?.ayahIncome ?? ""
+                : ""
+            )
+              .toString()
+              .trim();
+
+            ayahIncomeEmpty = !ayahIncomeRaw;
+          } catch {
+            ayahIncomeEmpty = false;
+          }
         }
 
         if (!alive) return;
         setParentName((pName || "").toString());
         setParentRole((pRole || "").toString());
         setSiblingsCount(sc);
+        setIsAyahIncomeEmpty(ayahIncomeEmpty);
       } catch (e) {
         console.error(e);
       }
@@ -409,14 +430,26 @@ export function KonfirmasiPotonganPanel({
       if (!selected?.nisn) return alert("Pilih siswa dulu.");
       if (!fees) return alert("Data biaya belum tersedia.");
 
-      if (isNonPTK) {
-        // NON_PTK: hanya BP3, tanpa perlu APPROVED, wajib ada saudara
-        if (Number(siblingsCount) <= 0)
-          return alert(
-            "Potongan NON_PTK hanya untuk yang memiliki saudara terdaftar."
-          );
-        if (choice !== "BP3")
-          return alert("NON_PTK hanya boleh potong BP3 (bukan SPP).");
+      if (isNonPTK) {        
+        if (!isAyahIncomeEmpty) {
+          // Bukan yatim: harus punya saudara
+          if (Number(siblingsCount) <= 0) {
+            return alert(
+              "Potongan NON_PTK hanya untuk yang memiliki saudara terdaftar."
+            );
+          }
+          // Bukan yatim: hanya boleh BP3 (pakai alert lama)
+          if (choice !== "BP3") {
+            return alert("NON_PTK hanya boleh potong BP3 (bukan SPP).");
+          }
+        } else {
+          // Yatim: hanya boleh SPP
+          if (choice !== "SPP") {
+            return alert(
+              "BP3 Hanya Untuk Non PTK dengan Saudara."
+            );
+          }
+        }
       } else {
         // PTK
         if (statusLocal !== "APPROVED")
@@ -434,21 +467,21 @@ export function KonfirmasiPotonganPanel({
         let payload;
 
         if (isNonPTK) {
-          // NON_PTK tetap hanya BP3 (seperti sebelumnya)
-          payload = {
-            type: choice,
-            amount,
-            sourceFeeRef: fees?.id || null,
-            sourceKey: "uangPangkal.bp3",
-            registrationLevel: regLevel || "",
-            siblingsCount: Number.isFinite(Number(siblingsCount))
-              ? Number(siblingsCount)
-              : 0,
-            decidedAt: serverTimestamp(),
-            decidedBy: "ADMIN",
-            note: "Potongan NON_PTK (BP3) untuk yang bersaudara",
-          };
-        } else {
+  // NON_PTK: BP3 ATAU SPP (satu komponen)
+  payload = {
+    type: choice,
+    amount, // sudah otomatis di-set dari useEffect (BP3 atau SPP)
+    sourceFeeRef: fees?.id || null,
+    sourceKey: choice === "BP3" ? "uangPangkal.bp3" : "spp",
+    registrationLevel: regLevel || "",
+    siblingsCount: Number.isFinite(Number(siblingsCount))
+      ? Number(siblingsCount)
+      : 0,
+    decidedAt: serverTimestamp(),
+    decidedBy: "ADMIN",
+    note: "Potongan NON_PTK (BP3 atau SPP) untuk yang bersaudara",
+  };
+} else  {
           // PTK bisa BP3 saja, SPP saja, atau keduanya
           const bp3Nominal =
             choice === "BP3" || choice === "BOTH"
@@ -511,6 +544,7 @@ export function KonfirmasiPotonganPanel({
       siblingsCount,
       statusLocal,
       isNonPTK,
+      isAyahIncomeEmpty,
     ]
   );
 
@@ -704,13 +738,23 @@ export function KonfirmasiPotonganPanel({
   };
 
   const handleSelectSPP = () => {
-    if (isNonPTK) return;
-    setChoice((prev) => computeNextChoice(prev || "", "SPP"));
-  };
+  if (isNonPTK) {
+    // NON_PTK: cuma satu komponen saja, langsung set ke SPP
+    setChoice("SPP");
+    return;
+  }
+  // PTK: bisa toggle BP3 / SPP / BOTH
+  setChoice((prev) => computeNextChoice(prev || "", "SPP"));
+};
 
   /* ==== KHUSUS NON_PTK: jika tidak ada saudara ⇒ panel potongan tidak muncul ==== */
-  if (isNonPTK && selected?.nisn && Number(siblingsCount) <= 0) {
-    // Tidak render apa pun untuk NON_PTK tanpa saudara
+ if (
+    isNonPTK &&
+    selected?.nisn &&
+    Number(siblingsCount) <= 0 &&
+    !isAyahIncomeEmpty
+  ) {
+    // Tidak render apa pun untuk NON_PTK tanpa saudara dan bukan yatim
     return null;
   }
 
@@ -851,7 +895,7 @@ export function KonfirmasiPotonganPanel({
                     {/* SPP */}
                     <div className="flex items-center justify-between py-1">
                       <span className="text-sm text-slate-900">
-                        SPP per bulan
+                        SPP per semester
                       </span>
                       <span className="text-sm font-semibold text-slate-900">
                         {fmtIDR(detail.spp)}
@@ -923,10 +967,10 @@ export function KonfirmasiPotonganPanel({
             {/* Kelola Potongan */}
             <div className="mt-4 rounded-xl border border-slate-200">
               <div className="px-3 py-2 border-b border-slate-200 bg-slate-50/60 text-sm font-semibold text-slate-900">
-                {isNonPTK
-                  ? "Potongan (NON-PTK — hanya BP3)"
-                  : "Kelola Potongan (pilih satu)"}
-              </div>
+  {isNonPTK
+    ? "Potongan (NON-PTK — pilih BP3 atau SPP)"
+    : "Kelola Potongan (BP3, SPP, atau keduanya)"}
+</div>
 
               <div className="p-3 grid grid-cols-1 md:grid-cols-2 gap-2">
                 {/* BP3 selalu ada */}
@@ -955,31 +999,30 @@ export function KonfirmasiPotonganPanel({
                 </button>
 
                 {/* SPP hanya untuk PTK */}
-                {!isNonPTK && (
-                  <button
-                    type="button"
-                    disabled={!fees}
-                    onClick={handleSelectSPP}
-                    className={`text-left rounded-xl border px-4 py-3 transition ${
-                      choice === "SPP" || choice === "BOTH"
-                        ? "border-violet-600 bg-violet-50 text-violet-900"
-                        : "border-slate-200 bg-white text-slate-900 hover:bg-slate-50"
-                    } disabled:opacity-60`}
-                  >
-                    <div className="flex items-center justify-between">
-                      <div className="font-semibold">Potong SPP</div>
-                      {choice === "SPP" || choice === "BOTH" ? (
-                        <CheckCircle2 className="h-4 w-4" />
-                      ) : null}
-                    </div>
-                    <div className="text-[12px] text-slate-900 mt-0.5">
-                      Komponen: <b>SPP</b>
-                    </div>
-                    <div className="mt-1 text-sm">
-                      {fees ? fmtIDR(fees?.spp) : "—"}
-                    </div>
-                  </button>
-                )}
+                {/* SPP: PTK bisa digabung dengan BP3, NON_PTK hanya salah satu */}
+<button
+  type="button"
+  disabled={!fees}
+  onClick={handleSelectSPP}
+  className={`text-left rounded-xl border px-4 py-3 transition ${
+    choice === "SPP" || choice === "BOTH"
+      ? "border-violet-600 bg-violet-50 text-violet-900"
+      : "border-slate-200 bg-white text-slate-900 hover:bg-slate-50"
+  } disabled:opacity-60`}
+>
+  <div className="flex items-center justify-between">
+    <div className="font-semibold">Potong SPP</div>
+    {choice === "SPP" || choice === "BOTH" ? (
+      <CheckCircle2 className="h-4 w-4" />
+    ) : null}
+  </div>
+  <div className="text-[12px] text-slate-900 mt-0.5">
+    Komponen: <b>SPP</b>
+  </div>
+  <div className="mt-1 text-sm">
+    {fees ? fmtIDR(fees?.spp) : "—"}
+  </div>
+</button>
               </div>
 
               <div className="px-3 pb-3">

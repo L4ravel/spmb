@@ -392,6 +392,7 @@ const {
 } = meta;
 
 // baca saudaraNama resmi
+// baca saudaraNama resmi
 const saudaraNamaOfficial = (
   u?.saudaraNama ||
   u?.namaSaudara ||
@@ -400,38 +401,40 @@ const saudaraNamaOfficial = (
   .toString()
   .trim();
 
+// baca ayahIncome dari ppdb (untuk rule yatim NON_PTK + PPS)
+let ayahIncomeRaw = "";
+try {
+  const ppdbSnap = await getDoc(doc(db, "ppdb", nisn));
+  ayahIncomeRaw = (
+    ppdbSnap.exists()
+      ? ppdbSnap.data()?.ayahIncome ?? ""
+      : ""
+  )
+    .toString()
+    .trim();
+} catch {
+  ayahIncomeRaw = "";
+}
+
 // potongan NON_PTK
 let discAmt = await getNonPTKDiscountAmount(db, nisn);
-// RULE: jika saudaraNama kosong → diskon diabaikan
-if (!saudaraNamaOfficial) {
+// RULE BARU: diskon diabaikan HANYA jika
+// - tidak punya saudara, DAN
+// - ayahIncome TIDAK kosong
+if (!saudaraNamaOfficial && ayahIncomeRaw) {
   discAmt = 0;
 }
 
-// tagihan dasar (sesudah diskon saudara)
+// tagihan dasar (sesudah diskon saudara / yatim)
 let baseTagihan = Math.max(
   (Number(totalFee) || 0) - (Number(discAmt) || 0),
   0
 );
 
-// === REVISI PPS: jika jenjang PPS & ayahIncome kosong → tagihan 0
-if (isPpsJenjang(level)) {
-  try {
-    const ppdbSnap = await getDoc(doc(db, "ppdb", nisn));
-    const ayahIncomeRaw = (
-      ppdbSnap.exists()
-        ? ppdbSnap.data()?.ayahIncome ?? ""
-        : ""
-    )
-      .toString()
-      .trim();
-
-    if (!ayahIncomeRaw) {
-      // tidak ada ayahIncome → tidak ada yang perlu dibayar
-      baseTagihan = 0;
-    }
-  } catch {
-    // kalau gagal baca, biarkan baseTagihan apa adanya
-  }
+// === PPS: jika jenjang PPS & ayahIncome kosong → tagihan 0
+if (isPpsJenjang(level) && !ayahIncomeRaw) {
+  // tidak ada ayahIncome → tidak ada yang perlu dibayar
+  baseTagihan = 0;
 }
 
 const effectiveTagihan = baseTagihan;
@@ -635,7 +638,7 @@ const isLunas =
               }
             } catch {}
 
-           const rawTagihan = await getTotalFeeByLabel(
+          const rawTagihan = await getTotalFeeByLabel(
   db,
   level,
   feeCacheRef
@@ -650,41 +653,45 @@ const saudaraNamaOfficial = (
   .toString()
   .trim();
 
+// baca ayahIncome dari ppdb
+let ayahIncomeRaw = "";
+try {
+  const ppdbSnap = await getDoc(doc(db, "ppdb", nisn));
+  ayahIncomeRaw = (
+    ppdbSnap.exists()
+      ? ppdbSnap.data()?.ayahIncome ?? ""
+      : ""
+  )
+    .toString()
+    .trim();
+} catch {
+  ayahIncomeRaw = "";
+}
+
 let discAmt = await getNonPTKDiscountAmount(db, nisn);
-if (!saudaraNamaOfficial) {
+// RULE BARU: diskon diabaikan HANYA jika
+// - tidak punya saudara, DAN
+// - ayahIncome TIDAK kosong
+if (!saudaraNamaOfficial && ayahIncomeRaw) {
   discAmt = 0;
 }
 
-// tagihan dasar sesudah diskon saudara
+// tagihan dasar sesudah diskon saudara / yatim
 let tagihan = Math.max(
   (Number(rawTagihan) || 0) - (Number(discAmt) || 0),
   0
 );
 
-// === REVISI PPS: jika jenjang PPS & ayahIncome kosong → tagihan 0
-if (isPpsJenjang(level)) {
-  try {
-    const ppdbSnap = await getDoc(doc(db, "ppdb", nisn));
-    const ayahIncomeRaw = (
-      ppdbSnap.exists()
-        ? ppdbSnap.data()?.ayahIncome ?? ""
-        : ""
-    )
-      .toString()
-      .trim();
-
-    if (!ayahIncomeRaw) {
-      tagihan = 0;
-    }
-  } catch {
-    // kalau error baca, pakai tagihan awal
-  }
+// === PPS: jika jenjang PPS & ayahIncome kosong → tagihan 0
+if (isPpsJenjang(level) && !ayahIncomeRaw) {
+  tagihan = 0;
 }
 
 const { sumApproved } = await getApprovedSumAndMeta(
   db,
   nisn
 );
+
 const tunggakan = Math.max(
   tagihan - (Number(sumApproved) || 0),
   0
