@@ -124,7 +124,7 @@ export default function SectionsPPDB() {
           subtitle="Mengenal lebih dekat Pondok Pesantren Assunnah"
         />
         <div className="mt-12">
-          <Youtube url="https://www.youtube.com/watch?v=T_Nwg_-GTNo" />
+         <Youtube url="https://www.youtube.com/watch?v=T_6j_q5pWpI" />
         </div>
       </Section>
 
