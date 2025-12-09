@@ -189,7 +189,7 @@ export default function HasilFinalPage() {
 
         users.push({ id: d.id, ...data });
       });
-      setHasNext(users.length === PAGE_SIZE);
+      setHasNext(snap.size === PAGE_SIZE);
       if (users.length > 0) {
         const last = snap.docs[snap.docs.length - 1];
         setAnchors((prev) => {

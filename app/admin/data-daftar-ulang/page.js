@@ -10,6 +10,8 @@ import {
   query,
   where,
   limit,
+  doc,
+  getDoc,
 } from "firebase/firestore";
 import {
   Loader2,
@@ -43,6 +45,7 @@ const PAGE_SIZES = [10, 25, 50];
 const MAX_FINAL = 500; // berapa banyak peserta LULUS yang diambil
 const MAX_RE_REG_DOCS = 2000;
 const MAX_PAYMENTS_DOCS = 5000;
+const MAX_PPDB_DOCS = 3000;
 
 function fmtIDR(n) {
   const v = Number(n || 0);
@@ -86,8 +89,14 @@ function normalizeStatus(pLike) {
   }
 }
 
-function isApproved(p) {
-  return normalizeStatus(p) === "approved";
+function isPpsJenjang(jenjang) {
+  const j = (jenjang || "").toString().toLowerCase();
+  return (
+    j.includes("pps ula putra") ||
+    j.includes("pps ula putri") ||
+    j.includes("pps wustho") ||
+    j.includes("pps ulya")
+  );
 }
 
 /* ====== Komponen kecil ====== */
@@ -333,7 +342,16 @@ export default function AdminDataDaftarUlangPage() {
           };
         });
 
-        /* 3) Ambil semua dokumen potongan di subkoleksi re_registration */
+          /* 3) Ambil data PPDB (ayahIncome) sekali saja */
+        const ppdbSnap = await getDocs(
+          query(collection(db, "ppdb"), limit(MAX_PPDB_DOCS))
+        );
+        const ppdbById = {};
+        ppdbSnap.forEach((d) => {
+          ppdbById[d.id] = d.data() || {};
+        });
+
+        /* 4) Ambil semua dokumen potongan di subkoleksi re_registration */
         const reRegSnap = await getDocs(
   query(collectionGroup(db, "re_registration"), limit(MAX_RE_REG_DOCS))
 );
@@ -461,7 +479,7 @@ reRegSnap.forEach((docSnap) => {
             ud.noWa || ud.whatsapp || ud.phone || ud.hp || ud.noHP || "";
 
           // Biaya dasar dari label/jenjang
-          const fee = feesByLabel[level] || null;
+            const fee = feesByLabel[level] || null;
           const baseSPP = fee?.spp || 0;
 
           let pangkalComponents = {};
@@ -483,7 +501,19 @@ reRegSnap.forEach((docSnap) => {
             (Number.isFinite(discPTK) ? discPTK : 0) +
             (Number.isFinite(discNonPTK) ? discNonPTK : 0);
 
-          const netTagihan = Math.max(0, totalAwal - totalDisc);
+          // --- NEW: baca ayahIncome dari ppdb/{nisn} untuk rule PPS yatim ---
+          const ppdbData = ppdbById[nisn] || {};
+          const ayahIncomeRaw = (ppdbData.ayahIncome ?? "")
+            .toString()
+            .trim();
+
+          // Tagihan net awal (setelah potongan)
+          let netTagihan = Math.max(0, totalAwal - totalDisc);
+
+          // PPS + yatim (ayahIncome kosong) => GRATIS
+          if (isPpsJenjang(level) && !ayahIncomeRaw) {
+            netTagihan = 0;
+          }
 
           // Aggregasi pembayaran
           const payAgg = payAggByNisn[nisn] || {
@@ -494,99 +524,108 @@ reRegSnap.forEach((docSnap) => {
           const totalPaid = payAgg.totalApproved || 0;
           const sisa = Math.max(0, netTagihan - totalPaid);
 
+          // Status daftar ulang:
+          // - kalau netTagihan 0 → LUNAS (gratis) walaupun belum bayar
+          // - selain itu ikut totalPaid vs netTagihan
           let statusDaftarUlang = "BELUM BAYAR";
-          if (totalPaid <= 0) statusDaftarUlang = "BELUM BAYAR";
-          else if (totalPaid < netTagihan) statusDaftarUlang = "SEBAGIAN";
-          else statusDaftarUlang = "LUNAS";
+          if (netTagihan === 0) {
+            statusDaftarUlang = "LUNAS";
+          } else if (totalPaid <= 0) {
+            statusDaftarUlang = "BELUM BAYAR";
+          } else if (totalPaid < netTagihan) {
+            statusDaftarUlang = "SEBAGIAN";
+          } else {
+            statusDaftarUlang = "LUNAS";
+          }
 
           const jalur =
-    discPTK > 0
-      ? "PTK"
-      : discNonPTK > 0
-      ? "NON_PTK"
-      : ud.isPTK
-      ? "PTK"
-      : ud.isNonPTK
-      ? "NON_PTK"
-      : "";
+            discPTK > 0
+              ? "PTK"
+              : discNonPTK > 0
+              ? "NON_PTK"
+              : ud.isPTK
+              ? "PTK"
+              : ud.isNonPTK
+              ? "NON_PTK"
+              : "";
 
-  // Label keterangan potongan
-  let discountLabel = "";
-  if (discPTK > 0 && discInfo.ptkMeta) {
-    const meta = discInfo.ptkMeta;
-    const punyaSaudara = (meta.siblingsCount || 0) > 0;
-    const hasSPP =
-      (meta.amountSPP || 0) > 0 ||
-      meta.type === "SPP" ||
-      meta.type === "BP3+SPP";
-    const hasBP3 =
-      (meta.amountBP3 || 0) > 0 ||
-      meta.type === "BP3" ||
-      meta.type === "BP3+SPP";
+          // Label keterangan potongan (SAMA seperti punyamu tadi)
+          let discountLabel = "";
+          if (discPTK > 0 && discInfo.ptkMeta) {
+            const meta = discInfo.ptkMeta;
+            const punyaSaudara = (meta.siblingsCount || 0) > 0;
+            const hasSPP =
+              (meta.amountSPP || 0) > 0 ||
+              meta.type === "SPP" ||
+              meta.type === "BP3+SPP";
+            const hasBP3 =
+              (meta.amountBP3 || 0) > 0 ||
+              meta.type === "BP3" ||
+              meta.type === "BP3+SPP";
 
-    if (punyaSaudara && hasSPP) {
-      // PTK punya saudara + dapat SPP
-      discountLabel = "PTK bersaudara + SPP";
-    } else if (punyaSaudara) {
-      // PTK bersaudara saja (tanpa SPP)
-      discountLabel = "PTK bersaudara";
-    } else if (!hasSPP && hasBP3) {
-      // PTK hanya BP3 → non SPP
-      discountLabel = "PTK non SPP (BP3)";
-    } else if (hasSPP && !hasBP3) {
-      // PTK cuma SPP
-      discountLabel = "PTK SPP";
-    } else if (hasSPP && hasBP3) {
-      // PTK dapat dua komponen (tanpa saudara)
-      discountLabel = "PTK SPP+BP3";
-    } else {
-      discountLabel = "PTK";
-    }
-  } else if(discNonPTK > 0 && discInfo.nonptkMeta) {
-    const meta = discInfo.nonptkMeta;
-    const punyaSaudara = (meta.siblingsCount || 0) > 0;
-    const sourceKey = (meta.sourceKey || "").toLowerCase();
-    const t = meta.type || "";
-    const isSPP =
-      t === "SPP" ||
-      sourceKey === "spp" ||
-      sourceKey.endsWith(".spp");
-    const isBP3 =
-      t === "BP3" ||
-      sourceKey.includes("bp3");
+            if (punyaSaudara && hasSPP) {
+              // PTK punya saudara + dapat SPP
+              discountLabel = "PTK bersaudara + SPP";
+            } else if (punyaSaudara) {
+              // PTK bersaudara saja (tanpa SPP)
+              discountLabel = "PTK bersaudara";
+            } else if (!hasSPP && hasBP3) {
+              // PTK hanya BP3 → non SPP
+              discountLabel = "PTK non SPP (BP3)";
+            } else if (hasSPP && !hasBP3) {
+              // PTK cuma SPP
+              discountLabel = "PTK SPP";
+            } else if (hasSPP && hasBP3) {
+              // PTK dapat dua komponen (tanpa saudara)
+              discountLabel = "PTK SPP+BP3";
+            } else {
+              discountLabel = "PTK";
+            }
+          } else if (discNonPTK > 0 && discInfo.nonptkMeta) {
+            const meta = discInfo.nonptkMeta;
+            const punyaSaudara = (meta.siblingsCount || 0) > 0;
+            const sourceKey = (meta.sourceKey || "").toLowerCase();
+            const t = meta.type || "";
+            const isSPP =
+              t === "SPP" ||
+              sourceKey === "spp" ||
+              sourceKey.endsWith(".spp");
+            const isBP3 =
+              t === "BP3" ||
+              sourceKey.includes("bp3");
 
-    if (isSPP) {
-      // Skenario yatim: potongan SPP
-      discountLabel = "SPP yatim";
-    } else if (isBP3 || punyaSaudara) {
-      // Non-PTK saudara → BP3
-      discountLabel = "BP3 bersaudara";
-    } else {
-      discountLabel = "Non-PTK";
-    }
-  }
+            if (isSPP) {
+              // Skenario yatim: potongan SPP
+              discountLabel = "SPP yatim";
+            } else if (isBP3 || punyaSaudara) {
+              // Non-PTK saudara → BP3
+              discountLabel = "BP3 bersaudara";
+            } else {
+              discountLabel = "Non-PTK";
+            }
+          }
 
-  tmpRows.push({
-    nisn,
-    name,
-    level,
-    jalur,
-    phone,
-    baseSPP,
-    pangkalComponents,
-    totalPangkal,
-    totalAwal,
-    discPTK,
-    discNonPTK,
-    totalDisc,
-    netTagihan,
-    totalPaid,
-    sisa,
-    buktiCount: payAgg.count || 0,
-    lastPaidAt: payAgg.lastPaidAt,
-    statusDaftarUlang,
-    discountLabel, 
-  });
+          tmpRows.push({
+            nisn,
+            name,
+            level,
+            jalur,
+            phone,
+            baseSPP,
+            pangkalComponents,
+            totalPangkal,
+            totalAwal,
+            discPTK,
+            discNonPTK,
+            totalDisc,
+            netTagihan,
+            totalPaid,
+            sisa,
+            buktiCount: payAgg.count || 0,
+            lastPaidAt: payAgg.lastPaidAt,
+            statusDaftarUlang,
+            discountLabel,
+          });
 
           statTotalTagihanNet += netTagihan;
           statTotalPaid += totalPaid;
