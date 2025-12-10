@@ -377,35 +377,33 @@ export default function VerifikasiUjian() {
       const username = String(nisn);
       const password = String(nisn);
 
-      const lines = [
-  "Bismillah.",
-  "Panitia SPMB Ponpes As-Sunnah",
-  "",
-  "Kepada Yth. Bapak/Ibu Orang Tua/Wali Peserta,",
-  `Nama   : ${nama}`,
-  `NISN   : ${nisnText}`,
-  "",
-  "Undangan Pelaksanaan Ujian SPMB (Jenjang SD/TK)",
-  `Hari/Tanggal : ${hariTanggal}`,
-  `Waktu        : ${waktu}`,
-  "Tempat       : Lantai 2 Masjid, Ponpes As-Sunnah",
-  "",
-  "Pelaksanaan ujian untuk jenjang SD dan TK dilakukan secara offline (langsung di lokasi).",
-  "",
-  "Peserta wajib hadir bersama wali yang sesuai",
-  "(Peserta putra bersama wali putra dan peserta putri bersama wali putri),",
-  "datang tepat waktu, serta berpakaian rapi dan sopan.",
-  "Dianjurkan hadir 10–15 menit lebih awal.",
-  "",
-  "Apabila terdapat informasi yang belum jelas,",
-  "silakan menghubungi panitia.",
-  "",
-  "Jazakumullahu khairan.",
-  "Panitia SPMB Ponpes As-Sunnah",
-];
-
-const pesan = lines.join("\n");
-
+       const lines = [
+        "Bismillah.",
+        "Panitia SPMB Ponpes As-Sunnah",
+        "",
+        "Kepada Yth. Bapak/Ibu Orang Tua/Wali Peserta,",
+        `Nama   : ${name || "—"}`,
+        `NISN   : ${nisn}`,
+        "",
+        "Undangan Pelaksanaan Ujian SPMB (Jenjang SD/TK):",
+        jadwal ? `Hari/Tanggal : ${jadwal.hari}, ${jadwal.tanggal}` : "Hari/Tanggal : -",
+        jadwal ? `Waktu        : ${jadwal.waktu}` : "Waktu        : -",
+        "Tempat       : Lantai 2 Masjid, Ponpes As-Sunnah",
+        "",
+        "Pelaksanaan ujian untuk jenjang SD dan TK dilakukan secara offline (langsung di lokasi).",
+        "",
+        "Peserta wajib hadir bersama wali yang sesuai",
+        "(peserta putra bersama wali putra dan peserta putri bersama wali putri),",
+        "datang tepat waktu serta berpakaian rapi dan sopan.",
+        "Dianjurkan hadir 10–15 menit lebih awal.",
+        "",
+        "Apabila terdapat informasi yang belum jelas,",
+        "silakan menghubungi panitia.",
+        "",
+        "Jazakumullahu khairan.",
+        "Panitia SPMB Ponpes As-Sunnah",
+      ];
+      const pesan = lines.join("\n");
 
       let ua = "";
       try { ua = navigator?.userAgent || ""; } catch {}
@@ -962,4 +960,3 @@ const pesan = lines.join("\n");
     </div>
   );
 }
-
