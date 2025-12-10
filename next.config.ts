@@ -5,10 +5,6 @@ const nextConfig: NextConfig = {
   compress: true,
   poweredByHeader: false,
 
-  // 🔓 Lewatkan lint saat build (sementara). Kembalikan ke false setelah kode bersih.
-  eslint: {
-    ignoreDuringBuilds: true,
-  },
 
   // 🔓 Lewatkan error TypeScript saat build (sementara).
   typescript: {
@@ -20,13 +16,6 @@ const nextConfig: NextConfig = {
     // remotePatterns: [
     //   { protocol: "https", hostname: "images.example.com" },
     // ],
-  },
-
-  modularizeImports: {
-    "lucide-react": {
-      transform: "lucide-react/icons/{{member}}",
-      skipDefaultConversion: true,
-    },
   },
 
   output: "standalone",
