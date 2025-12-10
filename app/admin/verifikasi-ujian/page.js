@@ -378,39 +378,34 @@ export default function VerifikasiUjian() {
       const password = String(nisn);
 
       const lines = [
-        "Bismillah.",
-        "Panitia SPMB Ponpes As-Sunnah",
-        "",
-        "Kepada Yth. Orang Tua/Wali Peserta,",
-        `Nama   : ${name || "—"}`,
-        `NISN   : ${nisn}`,
-        "",
-        "Undangan Pelaksanaan Ujian SPMB:",
-        jadwal ? `Hari/Tanggal : ${jadwal.hari}, ${jadwal.tanggal}` : "Hari/Tanggal : -",
-        jadwal ? `Waktu        : ${jadwal.waktu}` : "Waktu        : -",
-        "Tempat       : Ponpes Assunnah",
-        "",
-        "Akses Akun Peserta:",
-        `Username    : ${username}`,
-        `Password    : ${password}`,
-        `Login       : ${loginUrl}`,
-        "",
-        "Runtutan Ujian:",
-        "1) Tes Akademik (online—membawa HP/ponsel, baterai cukup & kuota).",
-        "2) Baca Al-Qur’an.",
-        "3) Tes Wawancara.",
-        "4) Pengukuran baju/seragam.",
-        "",
-        "Peserta wajib hadir bersama wali yang sesuai (Peserta putra bersama wali putra dan Peserta putri bersama wali putri), tepat waktu, dan berpakaian rapi. Dianjurkan tiba 10–15 menit lebih awal.",
-        "",
-        "(Catatan: Bagi yang berada di luar daerah, silakan konfirmasi kepada panitia untuk pelaksanaan ujian secara online.)",
-        "",
-        "Terkait informasi yang belum jelas, silahkan hubungi panitia.",
-        "",
-        "Jazakumullahu khairan.",
-        "Panitia SPMB Ponpes As-Sunnah",
-      ];
-      const pesan = lines.join("\n");
+  "Bismillah.",
+  "Panitia SPMB Ponpes As-Sunnah",
+  "",
+  "Kepada Yth. Bapak/Ibu Orang Tua/Wali Peserta,",
+  Nama   : ${name || "—"},
+  NISN   : ${nisn},
+  "",
+  "Undangan Pelaksanaan Ujian SPMB (Jenjang SD/TK)",
+  jadwal ? Hari/Tanggal : ${jadwal.hari}, ${jadwal.tanggal} : "Hari/Tanggal : -",
+  jadwal ? Waktu        : ${jadwal.waktu} : "Waktu        : -",
+  "Tempat       : Lantai 2 Masjid, Ponpes As-Sunnah",
+  "",
+  "Pelaksanaan ujian untuk jenjang SD dan TK dilakukan secara offline (langsung di lokasi).",
+  "",
+  "Peserta wajib hadir bersama wali yang sesuai",
+  "(Peserta putra bersama wali putra dan peserta putri bersama wali putri),",
+  "datang tepat waktu, serta berpakaian rapi dan sopan.",
+  "Dianjurkan hadir 10–15 menit lebih awal.",
+  "",
+  "Apabila terdapat informasi yang belum jelas,",
+  "silakan menghubungi panitia.",
+  "",
+  "Jazakumullahu khairan.",
+  "Panitia SPMB Ponpes As-Sunnah",
+];
+
+const pesan = lines.join("\n");
+
 
       let ua = "";
       try { ua = navigator?.userAgent || ""; } catch {}
@@ -967,3 +962,4 @@ export default function VerifikasiUjian() {
     </div>
   );
 }
+
