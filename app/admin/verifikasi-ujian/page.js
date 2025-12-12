@@ -372,22 +372,22 @@ export default function VerifikasiUjian() {
       const jadwal = fmtJadwalSurat(localWs, localWe);
 
       let origin = "";
-      try { origin = window?.location?.origin || ""; } catch {}
-      const loginUrl = origin ? `${origin}/login` : "/login";
-      const username = String(nisn);
-      const password = String(nisn);
+try { origin = window?.location?.origin || ""; } catch {}
+const loginUrl = origin ? `${origin}/login` : "/login";
+const username = String(nisn || "");
+const password = String(nisn || "");
 
-       const lines = [
+const lines = [
   "Bismillah.",
   "Panitia SPMB Ponpes As-Sunnah",
   "",
   "Kepada Yth. Bapak/Ibu Orang Tua/Wali Peserta,",
-  Nama   : ${name || "—"},
-  NISN   : ${nisn || "—"},
+  `Nama   : ${name || "—"}`,
+  `NISN   : ${nisn || "—"}`,
   "",
   "Informasi Pelaksanaan Tes SPMB:",
-  jadwal ? Hari/Tanggal : ${jadwal.hari}, ${jadwal.tanggal} : "Hari/Tanggal : -",
-  jadwal ? Waktu        : ${jadwal.waktu} : "Waktu        : -",
+  jadwal ? `Hari/Tanggal : ${jadwal.hari}, ${jadwal.tanggal}` : "Hari/Tanggal : -",
+  jadwal ? `Waktu        : ${jadwal.waktu}` : "Waktu        : -",
   "Tempat       : Lantai 2 Masjid, Ponpes As-Sunnah",
   "",
   "Perlu kami sampaikan bahwa terdapat penyesuaian penting terkait pendamping peserta ujian.",
@@ -402,6 +402,7 @@ export default function VerifikasiUjian() {
   "",
   "Panitia SPMB Ponpes As-Sunnah",
 ];
+
 const pesan = lines.join("\n");
 
       let ua = "";
@@ -959,4 +960,5 @@ const pesan = lines.join("\n");
     </div>
   );
 }
+
 
