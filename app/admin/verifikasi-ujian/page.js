@@ -378,32 +378,31 @@ export default function VerifikasiUjian() {
       const password = String(nisn);
 
        const lines = [
-        "Bismillah.",
-        "Panitia SPMB Ponpes As-Sunnah",
-        "",
-        "Kepada Yth. Bapak/Ibu Orang Tua/Wali Peserta,",
-        `Nama   : ${name || "—"}`,
-        `NISN   : ${nisn}`,
-        "",
-        "Undangan Pelaksanaan Ujian SPMB (Jenjang SD/TK):",
-        jadwal ? `Hari/Tanggal : ${jadwal.hari}, ${jadwal.tanggal}` : "Hari/Tanggal : -",
-        jadwal ? `Waktu        : ${jadwal.waktu}` : "Waktu        : -",
-        "Tempat       : Lantai 2 Masjid, Ponpes As-Sunnah",
-        "",
-        "Pelaksanaan ujian untuk jenjang SD dan TK dilakukan secara offline (langsung di lokasi).",
-        "",
-        "Peserta wajib hadir bersama wali yang sesuai",
-        "(peserta putra bersama wali putra dan peserta putri bersama wali putri),",
-        "datang tepat waktu serta berpakaian rapi dan sopan.",
-        "Dianjurkan hadir 10–15 menit lebih awal.",
-        "",
-        "Apabila terdapat informasi yang belum jelas,",
-        "silakan menghubungi panitia.",
-        "",
-        "Jazakumullahu khairan.",
-        "Panitia SPMB Ponpes As-Sunnah",
-      ];
-      const pesan = lines.join("\n");
+  "Bismillah.",
+  "Panitia SPMB Ponpes As-Sunnah",
+  "",
+  "Kepada Yth. Bapak/Ibu Orang Tua/Wali Peserta,",
+  Nama   : ${name || "—"},
+  NISN   : ${nisn || "—"},
+  "",
+  "Informasi Pelaksanaan Tes SPMB:",
+  jadwal ? Hari/Tanggal : ${jadwal.hari}, ${jadwal.tanggal} : "Hari/Tanggal : -",
+  jadwal ? Waktu        : ${jadwal.waktu} : "Waktu        : -",
+  "Tempat       : Lantai 2 Masjid, Ponpes As-Sunnah",
+  "",
+  "Perlu kami sampaikan bahwa terdapat penyesuaian penting terkait pendamping peserta ujian.",
+  "",
+  "Pendamping peserta ujian *diharuskan* bersama wali perempuan atau ibunya,",
+  "dikarenakan penguji adalah Ustadzah dan akan dilaksanakan pula sesi wawancara orang tua.",
+  "",
+  "Dengan demikian, seluruh peserta ujian diharuskan hadir bersama wali perempuan atau ibunya.",
+  "",
+  "Demikian informasi ini kami sampaikan.",
+  "Atas perhatian dan kerja samanya kami ucapkan, Jazakumullahu khairan.",
+  "",
+  "Panitia SPMB Ponpes As-Sunnah",
+];
+const pesan = lines.join("\n");
 
       let ua = "";
       try { ua = navigator?.userAgent || ""; } catch {}
@@ -960,3 +959,4 @@ export default function VerifikasiUjian() {
     </div>
   );
 }
+
