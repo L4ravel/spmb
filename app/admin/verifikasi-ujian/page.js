@@ -372,38 +372,45 @@ export default function VerifikasiUjian() {
       const jadwal = fmtJadwalSurat(localWs, localWe);
 
       let origin = "";
-try { origin = window?.location?.origin || ""; } catch {}
-const loginUrl = origin ? `${origin}/login` : "/login";
-const username = String(nisn || "");
-const password = String(nisn || "");
+      try { origin = window?.location?.origin || ""; } catch {}
+      const loginUrl = origin ? `${origin}/login` : "/login";
+      const username = String(nisn);
+      const password = String(nisn);
 
-const lines = [
-  "Bismillah.",
-  "Panitia SPMB Ponpes As-Sunnah",
-  "",
-  "Kepada Yth. Bapak/Ibu Orang Tua/Wali Peserta,",
-  `Nama   : ${name || "—"}`,
-  `NISN   : ${nisn || "—"}`,
-  "",
-  "Informasi Pelaksanaan Tes SPMB:",
-  jadwal ? `Hari/Tanggal : ${jadwal.hari}, ${jadwal.tanggal}` : "Hari/Tanggal : -",
-  jadwal ? `Waktu        : ${jadwal.waktu}` : "Waktu        : -",
-  "Tempat       : Lantai 2 Masjid, Ponpes As-Sunnah",
-  "",
-  "Perlu kami sampaikan bahwa terdapat penyesuaian penting terkait pendamping peserta ujian.",
-  "",
-  "Pendamping peserta ujian *diharuskan* bersama wali perempuan atau ibunya,",
-  "dikarenakan penguji adalah Ustadzah dan akan dilaksanakan pula sesi wawancara orang tua.",
-  "",
-  "Dengan demikian, seluruh peserta ujian diharuskan hadir bersama wali perempuan atau ibunya.",
-  "",
-  "Demikian informasi ini kami sampaikan.",
-  "Atas perhatian dan kerja samanya kami ucapkan, Jazakumullahu khairan.",
-  "",
-  "Panitia SPMB Ponpes As-Sunnah",
-];
-
-const pesan = lines.join("\n");
+      const lines = [
+        "Bismillah.",
+        "Panitia SPMB Ponpes As-Sunnah",
+        "",
+        "Kepada Yth. Orang Tua/Wali Peserta,",
+        `Nama   : ${name || "—"}`,
+        `NISN   : ${nisn}`,
+        "",
+        "Undangan Pelaksanaan Ujian SPMB:",
+        jadwal ? `Hari/Tanggal : ${jadwal.hari}, ${jadwal.tanggal}` : "Hari/Tanggal : -",
+        jadwal ? `Waktu        : ${jadwal.waktu}` : "Waktu        : -",
+        "Tempat       : Ponpes Assunnah",
+        "",
+        "Akses Akun Peserta:",
+        `Username    : ${username}`,
+        `Password    : ${password}`,
+        `Login       : ${loginUrl}`,
+        "",
+        "Runtutan Ujian:",
+        "1) Tes Akademik (online—membawa HP/ponsel, baterai cukup & kuota).",
+        "2) Baca Al-Qur’an.",
+        "3) Tes Wawancara.",
+        "4) Pengukuran baju/seragam.",
+        "",
+        "Peserta wajib hadir bersama wali yang sesuai (Peserta putra bersama wali putra dan Peserta putri bersama wali putri), tepat waktu, dan berpakaian rapi. Dianjurkan tiba 10–15 menit lebih awal.",
+        "",
+        "(Catatan: Bagi yang berada di luar daerah, silakan konfirmasi kepada panitia untuk pelaksanaan ujian secara online.)",
+        "",
+        "Terkait informasi yang belum jelas, silahkan hubungi panitia.",
+        "",
+        "Jazakumullahu khairan.",
+        "Panitia SPMB Ponpes As-Sunnah",
+      ];
+      const pesan = lines.join("\n");
 
       let ua = "";
       try { ua = navigator?.userAgent || ""; } catch {}
@@ -960,5 +967,3 @@ const pesan = lines.join("\n");
     </div>
   );
 }
-
-
