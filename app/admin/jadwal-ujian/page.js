@@ -45,36 +45,43 @@ const fmtWITA = (ms) =>
 /* ====== Preset ====== */
 function buildPreset(key, base = new Date()) {
   const d = new Date(base);
+
   const mk = (offset, sh, sm, eh, em) => {
     const s = new Date(d);
     s.setDate(d.getDate() + offset);
     s.setHours(sh, sm, 0, 0);
+
     const e = new Date(d);
     e.setDate(d.getDate() + offset);
     e.setHours(eh, em, 0, 0);
-    return { start: Timestamp.fromMillis(s.getTime()), end: Timestamp.fromMillis(e.getTime()) };
+
+    return {
+      start: Timestamp.fromMillis(s.getTime()),
+      end: Timestamp.fromMillis(e.getTime()),
+    };
   };
+
+  // helper: cari offset hari ke depan (Senin=1, Selasa=2)
+  const nextDayOffset = (targetDay) => {
+    const today = d.getDay();
+    const diff = (targetDay - today + 7) % 7;
+    return diff === 0 ? 7 : diff;
+  };
+
   switch (key) {
-    case "todayAM": return mk(0, 8, 0, 10, 0);
-    case "todayPM": return mk(0, 13, 30, 15, 30);
-    case "tomorrowAM": return mk(1, 8, 0, 10, 0);
-    case "weekend": {
-      const day = d.getDay();
-      const toSat = ((6 - day + 7) % 7) || 7;
-      const s = new Date(d); s.setDate(d.getDate() + toSat); s.setHours(8, 0, 0, 0);
-      const e = new Date(d); e.setDate(d.getDate() + toSat); e.setHours(12, 0, 0, 0);
-      return { start: Timestamp.fromMillis(s.getTime()), end: Timestamp.fromMillis(e.getTime()) };
-    }
-    case "nextWeekMonAM": {
-      const day = d.getDay();
-      const toMon = ((1 - day + 7) % 7) || 7;
-      const s = new Date(d); s.setDate(d.getDate() + toMon); s.setHours(8, 0, 0, 0);
-      const e = new Date(d); e.setDate(d.getDate() + toMon); e.setHours(12, 0, 0, 0);
-      return { start: Timestamp.fromMillis(s.getTime()), end: Timestamp.fromMillis(e.getTime()) };
-    }
-    default: return { start: null, end: null };
+    case "presetMon":
+      // Senin depan 08:30 - 12:00 WITA
+      return mk(nextDayOffset(1), 8, 30, 12, 0);
+
+    case "presetTue":
+      // Selasa depan 08:30 - 12:00 WITA
+      return mk(nextDayOffset(2), 8, 30, 12, 0);
+
+    default:
+      return { start: null, end: null };
   }
 }
+
 
 /* ====== Normalizer kandidat untuk field 'tingkat' (underscore) ====== */
 function buildTingkatUnderscoreCandidates(label) {
@@ -338,12 +345,9 @@ export default function JadwalUjianPage() {
         <div className="mt-5 flex flex-wrap gap-2">
           <span className="text-xs md:text-sm text-slate-600 mr-1">Preset cepat:</span>
           {[
-            ["todayAM", "Hari ini 08:00–10:00"],
-            ["todayPM", "Hari ini 13:30–15:30"],
-            ["tomorrowAM", "Besok 08:00–10:00"],
-            ["weekend", "Akhir Pekan 08:00–12:00"],
-            ["nextWeekMonAM", "Senin Depan 08:00–12:00"],
-          ].map(([k, label]) => (
+  ["presetMon", "Senin Depan 08:30–12:00"],
+  ["presetTue", "Selasa Depan 08:30–12:00"],
+].map(([k, label]) => (
             <button
               key={k}
               onClick={() => {
