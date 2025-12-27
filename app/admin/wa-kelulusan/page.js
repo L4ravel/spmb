@@ -96,14 +96,13 @@ export default function AdminWaKelulusanPage() {
     async function load() {
       setLoading(true);
       setErrorMsg("");
-      try {
-        // 1. Ambil semua peserta LULUS dari users_app
+      try {        
         const usersSnap = await getDocs(
-          query(
-            collection(db, "users_app"),
-            where("finalDecision", "==", "LULUS")
-          )
-        );
+  query(
+    collection(db, "users_app"),
+    where("finalDecision", "in", ["LULUS", "TIDAK_LULUS"])
+  )
+);
 
         const tmpRows = [];
 
@@ -489,6 +488,7 @@ export default function AdminWaKelulusanPage() {
     </main>
   );
 }
+
 
 
 
