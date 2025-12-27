@@ -65,9 +65,9 @@ function buildWaMessage(row) {
 
     "Untuk login ke akun SPMB, silakan gunakan data berikut:\n" +
     `• Nama Peserta: ${name}\n` +
-     `• Jenjang: ${level}\n\n` +
+     `• Jenjang: ${level}\n` +
     `• Username: ${nisn}\n` +
-    `• Password: ${nisn}\n` +   
+    `• Password: ${nisn}\n\n` +   
 
     "Jadwal daftar ulang dapat dilakukan dengan cara offline dengan datang ke ponpes As Sunnah " +
     "atau melalui akun SPMB masing-masing pada:\n" +
@@ -489,5 +489,6 @@ export default function AdminWaKelulusanPage() {
     </main>
   );
 }
+
 
 
