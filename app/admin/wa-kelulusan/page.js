@@ -71,7 +71,7 @@ function buildWaMessage(row) {
 
     "Jadwal daftar ulang dapat dilakukan dengan cara offline dengan datang ke ponpes As Sunnah " +
     "atau melalui akun SPMB masing-masing pada:\n" +
-    "• 28 Desember 2025 s.d. 10 Januari 2025\n\n" +
+    "• 28 Desember 2025 s.d. 10 Januari 2026\n\n" +
 
     "Apabila memerlukan bantuan lebih lanjut, peserta dapat menghubungi panitia melalui nomor WhatsApp resmi 087720242025.\n\n" +
     "Demikian informasi ini kami sampaikan.\n" +
@@ -489,6 +489,7 @@ export default function AdminWaKelulusanPage() {
     </main>
   );
 }
+
 
 
 
