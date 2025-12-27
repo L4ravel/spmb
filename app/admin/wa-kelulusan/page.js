@@ -50,22 +50,27 @@ function cleanWaNumber(raw) {
 /* ===== Template pesan WA ===== */
 function buildWaMessage(row) {
   const nisn = row.nisn || "-";
+  const name = row.name || "-";
+  const level = row.level || "-";
 
   return (
     "PENGUMUMAN KELULUSAN\n" +
-    "SPMB TP. 2026/2027 – TAHAP 3, 4 & TAHAP 5\n\n" +
+    "SPMB TP. 2026/2027\n\n" +
 
     "Dengan ini kami sampaikan bahwa hasil kelulusan SPMB Tahun Pelajaran 2026/2027 " +
-    "untuk Tahap 3, 4 dan Tahap 5 telah diumumkan pada tanggal 27 Desember 2025.\n\n" +
+    "telah diumumkan pada tanggal 27 Desember 2025.\n\n" +
 
     "Peserta dipersilakan untuk mengecek hasil kelulusan melalui laman berikut:\n" +
     "👉 https://spmb.pontrenassunnah.com/login\n\n" +
 
     "Untuk login ke akun SPMB, silakan gunakan data berikut:\n" +
+    `• Nama Peserta: ${name}\n` +
+     `• Jenjang: ${level}\n\n` +
     `• Username: ${nisn}\n` +
-    `• Password: ${nisn}\n\n` +
+    `• Password: ${nisn}\n` +   
 
-    "Jadwal daftar ulang dapat dilakukan dengan cara offline dengan datang ke ponpes as sunnah atau melalui akun SPMB masing-masing pada:\n" +
+    "Jadwal daftar ulang dapat dilakukan dengan cara offline dengan datang ke ponpes As Sunnah " +
+    "atau melalui akun SPMB masing-masing pada:\n" +
     "• 28 Desember 2025 s.d. 10 Januari 2025\n\n" +
 
     "Apabila memerlukan bantuan lebih lanjut, peserta dapat menghubungi panitia melalui nomor WhatsApp resmi 087720242025.\n\n" +
@@ -484,4 +489,5 @@ export default function AdminWaKelulusanPage() {
     </main>
   );
 }
+
 
