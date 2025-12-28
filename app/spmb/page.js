@@ -129,12 +129,29 @@ export default function PPDBPage() {
     }
   }, []);
 
-  const handle = (e) => {
+const handle = (e) => {
   const { name, value } = e.target;
   let v = value;
+
   // Jika field nomor → keep digits saja & batasi 13
   if (PHONE_FIELDS.has(name)) v = clampPhoneDigits(value);
-  setForm((s) => ({ ...s, [name]: v }));
+
+  setForm((s) => {
+    // 🔑 KHUSUS STATUS AYAH
+    if (name === "ayahStatus" && v === "meninggal") {
+      return {
+        ...s,
+        ayahStatus: v,
+
+        // reset otomatis
+        ayahKerja: "",
+        ayahIncome: "",
+        ayahDidik: "",
+      };
+    }
+
+    return { ...s, [name]: v };
+  });
 };
   const handleFormKeyDown = (e) => {
     if (e.key === "Enter") {
