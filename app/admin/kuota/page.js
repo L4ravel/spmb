@@ -253,7 +253,7 @@ const pct = Math.min(100, Math.max(0, percentOverall));
         <div className="mb-5 flex items-start justify-between gap-4 flex-wrap">
           <div>
             <h1 className="text-2xl md:text-3xl font-bold text-slate-900 mb-1">
-              Jumlah Peserta Lulus dan Kuota PPDB
+              Jumlah Peserta Lulus dan Kuota SPMB
             </h1>            
           </div>
           <div className="flex rounded-xl border-2 border-slate-300 overflow-hidden shadow-sm bg-white">
