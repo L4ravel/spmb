@@ -292,10 +292,10 @@ const pct = Math.min(100, Math.max(0, percentOverall));
           </div>
 
           <div className="relative overflow-hidden rounded-lg border-l-4 border-indigo-500 bg-slate-50 p-4 shadow-sm">
-  <p className="text-xs font-medium text-slate-600">Terdaftar</p>
+  <p className="text-xs font-medium text-slate-600">Lulus</p>
 
   <div className="mt-1 flex items-center justify-between gap-3">
-    {/* Kiri: jumlah terdaftar + badge % di sampingnya */}
+    {/* Kiri: jumlah lulus + badge % di sampingnya */}
     <div className="min-w-0">
       <div className="flex items-baseline gap-2">
         <span className="text-2xl md:text-3xl font-extrabold text-indigo-700">
@@ -347,7 +347,7 @@ const pct = Math.min(100, Math.max(0, percentOverall));
             <p className="text-xs text-slate-600 font-medium">Melebihi</p>
             <p className="text-2xl font-bold text-purple-700 mt-0.5">{human(totalExcess)}</p>
             <p className="text-[11px] text-slate-600 mt-1">
-              Terdaftar di atas kuota
+              Lulus di atas kuota
             </p>
           </div>
         </div>
@@ -463,7 +463,7 @@ const pct = Math.min(100, Math.max(0, percentOverall));
                       {/* Main Stats */}
                       <div className="flex items-center justify-between mb-2">
                         <div>
-                          <p className="text-[9px] text-slate-500 font-medium uppercase tracking-wide">Terdaftar / Target</p>
+                          <p className="text-[9px] text-slate-500 font-medium uppercase tracking-wide">Lulus / Target</p>
                           <div className="flex items-baseline gap-1">
                             <p className="text-xl font-black text-slate-900">{human(used)}</p>
                             <p className="text-xs text-slate-500 font-medium">/ {human(limit)}</p>
@@ -531,7 +531,7 @@ const pct = Math.min(100, Math.max(0, percentOverall));
                       <th className="px-4 py-4 text-left text-sm font-bold">Key</th>
                       <th className="px-4 py-4 text-center text-sm font-bold">Status</th>
                       <th className="px-4 py-4 text-right text-sm font-bold">Limit</th>
-                      <th className="px-4 py-4 text-right text-sm font-bold">Terdaftar</th>
+                      <th className="px-4 py-4 text-right text-sm font-bold">Lulus</th>
                       <th className="px-4 py-4 text-right text-sm font-bold">Melebihi</th>
                       <th className="px-4 py-4 text-right text-sm font-bold">% Persentase</th>
                       <th className="px-4 py-4 text-left text-sm font-bold">Progress</th>
