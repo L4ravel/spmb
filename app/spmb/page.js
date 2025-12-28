@@ -41,35 +41,12 @@ const toSafeUpperSnake = (s) =>
   (s || "LAINNYA").toString().trim().toUpperCase().replace(/[^\w-]/g, "_");
 
 /* ===== Kuota ===== */
-async function claimQuota(jenjangLabel) {
-  const key = toSafeUpperSnake(jenjangLabel);
-  const ref = doc(db, "quotas", key);
-  await runTransaction(db, async (tx) => {
-    const snap = await tx.get(ref);
-    if (!snap.exists()) throw new Error("Kuota untuk jenjang ini belum diset admin.");
-    const q = snap.data();
-    const limit = Number(q.limit || 0);
-    const used = Number(q.used || 0);
-    const open = !!q.open;
-    if (!open) throw new Error("Pendaftaran untuk jenjang ini sedang DITUTUP.");
-    if (!(limit > 0)) throw new Error("Limit kuota belum diatur (>0).");
-    if (used >= limit) throw new Error("Kuota untuk jenjang ini sudah PENUH.");
-    tx.update(ref, { used: used + 1, updatedAt: serverTimestamp() });
-  });
-  return { key };
+async function claimQuota() {
+  return;
 }
-async function releaseQuota(jenjangLabel) {
-  const key = toSafeUpperSnake(jenjangLabel);
-  const ref = doc(db, "quotas", key);
-  await runTransaction(db, async (tx) => {
-    const snap = await tx.get(ref);
-    if (!snap.exists()) return;
-    const q = snap.data();
-    const used = Math.max(0, Number(q.used || 0) - 1);
-    tx.update(ref, { used, updatedAt: serverTimestamp() });
-  });
+async function releaseQuota() {
+  return;
 }
-
 function scrollToAnchor(anchor) {
   if (!anchor) return;
   const el =
