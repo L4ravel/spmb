@@ -95,11 +95,15 @@ export default function KuotaPage() {
 
       const existingIds = new Set();
       const countByLevel = new Map();
-      usersSnap.forEach((u) => {
-        existingIds.add(u.id);
-        const lvl = (u.data()?.registrationLevel || "").trim();
-        if (lvl) countByLevel.set(lvl, (countByLevel.get(lvl) || 0) + 1);
-      });
+     usersSnap.forEach((u) => {
+  const data = u.data();
+  const lvl = (data?.registrationLevel || "").trim();
+  const decision = data?.finalDecision;
+
+  if (lvl && decision === "LULUS") {
+    countByLevel.set(lvl, (countByLevel.get(lvl) || 0) + 1);
+  }
+});
 
       const list = quotaSnap.docs.map((d) => {
         const q = { id: d.id, ...d.data() };
