@@ -41,7 +41,7 @@ export const HIERARCHY = {
       ],
     },
     { key: "Wustho", label: "PPS Wustho", values: [{ value: "PPS Wustho", label: "PPS Wustho" }] },
-    { key: "Ulya", label: "PPS Ulya", values: [{ value: "PPS Ulya", label: "PPS Ulya" }] },
+    // { key: "Ulya", label: "PPS Ulya", values: [{ value: "PPS Ulya", label: "PPS Ulya" }] },
   ],
 
   "STIT / MA'HAD ALY": [
@@ -364,3 +364,4 @@ export default function JenjangPicker({
     </div>
   );
 }
+
