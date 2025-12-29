@@ -259,19 +259,23 @@ const UploudDokumen = forwardRef(function UploudDokumen(props, ref) {
             desc="Pilih salah satu (Wajib). Dokumen yang diminta akan menyesuaikan pilihan."
           >
             <div className="md:col-span-2 grid grid-cols-2 gap-3">
-              <button
-                type="button"
-                onClick={() => onPickBenefit("dhuafa")}
-                className={[
-                  "rounded-xl border px-4 py-3 text-left",
-                  benefitType === "dhuafa"
-                    ? "border-emerald-600 bg-emerald-50 font-semibold"
-                    : "border-slate-300 bg-white hover:border-emerald-400",
-                ].join(" ")}
-              >
-                <div className="text-slate-900">Dhuafa</div>
-                <div className="text-xs text-slate-600">Mengunggah SKTM & PKH/DTKS</div>
-              </button>
+              {jenjang !== "PPS Ulya" && (
+  <button
+    type="button"
+    onClick={() => onPickBenefit("dhuafa")}
+    className={[
+      "rounded-xl border px-4 py-3 text-left",
+      benefitType === "dhuafa"
+        ? "border-emerald-600 bg-emerald-50 font-semibold"
+        : "border-slate-300 bg-white hover:border-emerald-400",
+    ].join(" ")}
+  >
+    <div className="text-slate-900">Dhuafa</div>
+    <div className="text-xs text-slate-600">
+      Mengunggah SKTM & PKH/DTKS
+    </div>
+  </button>
+)}
 
               <button
                 type="button"
@@ -351,3 +355,4 @@ const UploudDokumen = forwardRef(function UploudDokumen(props, ref) {
 });
 
 export default UploudDokumen;
+
