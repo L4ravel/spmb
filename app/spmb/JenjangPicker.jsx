@@ -1,7 +1,7 @@
 "use client";
 import React, { useEffect, useMemo, useState } from "react";
 
-/** Hierarki jenjang (3 kelompok: Sekolah, LKSA, Ma'had Aly) */
+/** Hierarki jenjang (3 kelompok: Sekolah, LKSA, Ma'had Aly) */ 
 export const HIERARCHY = {
   REGULER: [
     { key: "TK", label: "TK", values: [{ value: "TK", label: "TK" }] },
@@ -364,5 +364,6 @@ export default function JenjangPicker({
     </div>
   );
 }
+
 
 
