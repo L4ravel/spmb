@@ -482,6 +482,11 @@ const [ayahIncomeEmpty, setAyahIncomeEmpty] = useState(false);
   const [savingSibling, setSavingSibling] = useState(false);
   const [savedSiblingAt, setSavedSiblingAt] = useState(0);
 
+  const isTK = useMemo(() => {
+  const lv = (user?.registrationLevel || "").toLowerCase();
+  return lv.includes("tk");
+}, [user?.registrationLevel]);
+
   const getFirebaseDb = () => getFirestore(getFirebaseApp());
 
   const loadPayments = useCallback(async (nisn) => {
@@ -1003,7 +1008,8 @@ const cleaned = raw.filter((s) => s.name || s.level || s.class);
                 </div>
 
                 {/* ===== Data Saudara (Opsional, MULTI) ===== */}
-                <div className="rounded-xl border border-slate-200 bg-white p-4 md:p-5 mb-6">
+                {!isTK && (
+  <div className="rounded-xl border border-slate-200 bg-white p-4 md:p-5 mb-6">
                   <div className="flex items-center justify-between gap-2">
                     <div className="inline-flex items-center gap-2 text-slate-900">
                       <div className="inline-flex h-9 w-9 items-center justify-center rounded-lg bg-slate-100 border border-slate-200">
@@ -1187,6 +1193,8 @@ const cleaned = raw.filter((s) => s.name || s.level || s.class);
                     </div>
                   )}
                 </div>
+
+                )}
                 {/* ===== /Data Saudara ===== */}
 
                 <div className="grid grid-cols-1 md:grid-cols-2 gap-3 md:gap-4">

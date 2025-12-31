@@ -179,6 +179,11 @@ export default function ConfirmPTKPage() {
   const [eJabatan, setEJabatan] = useState("");
   const [siblingsClassErr, setSiblingsClassErr] = useState({}); // {index: "error msg"}
 
+  const isTK = useMemo(() => {
+  const v = String(jenjang || "").toLowerCase();
+  return v.includes("tk");
+}, [jenjang]);
+
   // Load & prefill
   useEffect(() => {
     let alive = true;
@@ -441,7 +446,8 @@ export default function ConfirmPTKPage() {
             </div>
 
             {/* ====== Data Saudara (dinamis) ====== */}
-            <div className="rounded-xl border border-slate-200 p-4 space-y-4">
+            {!isTK && (
+  <div className="rounded-xl border border-slate-200 p-4 space-y-4">
               <div className="text-sm font-semibold text-slate-900">Data Saudara</div>
 
               {/* Jumlah Saudara */}
@@ -511,7 +517,9 @@ export default function ConfirmPTKPage() {
                 })}
               </div>           
             </div>
+            )}
           </div>
+          
 
           {/* Footer */}
           <div className="flex items-center justify-end gap-2 border-t border-slate-200 px-4 py-3 md:px-6">
@@ -534,5 +542,7 @@ export default function ConfirmPTKPage() {
         </div>
       </div>
     </div>
+
+    
   );
 }
