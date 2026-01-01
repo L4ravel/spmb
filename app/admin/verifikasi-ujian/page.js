@@ -297,8 +297,117 @@ export default function VerifikasiUjian() {
     }
   };
 
+  /* ====== WA Message Builder ====== */
+function buildPesanUjian({
+  jenjang,
+  name,
+  nisn,
+  jadwal,
+}) {
+  const baseHeader = [
+  "Bismillah.",
+  "Panitia SPMB Ponpes As-Sunnah",
+  "",
+  "Kepada Yth. Bapak/Ibu Orang Tua/Wali Peserta,",
+  `Nama    : ${name || "—"}`,
+  `NISN    : ${nisn || "—"}`,
+  `Jenjang : ${jenjang || "—"}`,
+  "",
+];
+
+  // ================== TK ==================
+  if (jenjang === "TK") {
+    return [
+      ...baseHeader,
+      "Informasi Pelaksanaan Tes SPMB:",
+      jadwal
+        ? `Hari/Tanggal : ${jadwal.hari}, ${jadwal.tanggal}`
+        : "Hari/Tanggal : -",
+      jadwal
+        ? `Waktu        : ${jadwal.waktu}`
+        : "Waktu        : -",
+      "Tempat       : Bangunan TK",
+      "",
+      "Perlu kami sampaikan bahwa terdapat penyesuaian penting terkait pendamping peserta ujian.",
+      "",
+      "Pendamping peserta ujian diharuskan bersama wali perempuan atau ibunya,",
+      "dikarenakan penguji adalah Ustadzah dan akan dilaksanakan pula sesi wawancara orang tua.",      
+      "",
+      "Demikian informasi ini kami sampaikan.",
+      "Atas perhatian dan kerja samanya kami ucapkan, Jazakumullahu khairan.",
+      "",
+      "Panitia SPMB Ponpes As-Sunnah",
+    ].join("\n");
+  }
+
+  // ================== SD & PPS ULA ==================
+  if (
+    jenjang === "SD Putra" ||
+    jenjang === "SD Putri" ||
+    jenjang === "PPS Ula Putra" ||
+    jenjang === "PPS Ula Putri"
+  ) {
+    return [
+      ...baseHeader,
+      "Informasi Pelaksanaan Tes SPMB:",
+      jadwal
+        ? `Hari/Tanggal : ${jadwal.hari}, ${jadwal.tanggal}`
+        : "Hari/Tanggal : -",
+      jadwal
+        ? `Waktu        : ${jadwal.waktu}`
+        : "Waktu        : -",
+      "Tempat       : Lantai 2 Masjid, Ponpes As-Sunnah",
+      "",
+      "Perlu kami sampaikan bahwa terdapat penyesuaian penting terkait pendamping peserta ujian.",
+      "",
+      "Pendamping peserta ujian diharuskan bersama wali perempuan atau ibunya,",
+      "dikarenakan penguji adalah Ustadzah dan akan dilaksanakan pula sesi wawancara orang tua.",     
+      "",
+      "Demikian informasi ini kami sampaikan.",
+      "Atas perhatian dan kerja samanya kami ucapkan, Jazakumullahu khairan.",
+      "",
+      "Panitia SPMB Ponpes As-Sunnah",
+    ].join("\n");
+  }
+
+  // ================== JENJANG LAIN ==================
+  return [
+    ...baseHeader,
+    "Undangan Pelaksanaan Ujian SPMB:",
+    jadwal
+      ? `Hari/Tanggal : ${jadwal.hari}, ${jadwal.tanggal}`
+      : "Hari/Tanggal : -",
+    jadwal
+      ? `Waktu        : ${jadwal.waktu}`
+      : "Waktu        : -",
+    "Tempat       : Lantai 2 Masjid, Ponpes As-Sunnah",
+    "",
+    "Akses Akun Peserta:",
+    `Username    : ${nisn || "—"}`,
+    `Password    : ${nisn || "—"}`,
+    "Login       : https://spmb.pontrenassunnah.com/login",
+    "",
+    "Runtutan Ujian:",
+    "1) Tes Akademik (online—membawa HP/ponsel disertai pesan ini, baterai cukup & kuota).",
+    "2) Baca Al-Qur’an.",
+    "3) Tes Wawancara.",
+    "4) Pengukuran baju/seragam.",
+    "",
+    "Peserta wajib hadir bersama wali yang sesuai (Peserta putra bersama wali putra dan Peserta putri bersama wali putri), tepat waktu, dan berpakaian rapi. Dianjurkan tiba 10–15 menit lebih awal.",
+    "",
+    "(Catatan: Bagi yang berada di luar daerah, silakan konfirmasi kepada panitia untuk pelaksanaan ujian secara online.)",
+    "",
+    "Terkait informasi yang belum jelas, silahkan hubungi panitia.",
+    "",
+    "Jazakumullahu khairan.",
+    "Panitia SPMB Ponpes As-Sunnah",
+  ].join("\n");
+}
+
+
+
   /* ====== WA Cell ====== */
-  function WaCell({ nisn, name, wsMs, weMs, scheduleId }) {
+  function WaCell({ nisn, name, jenjang, wsMs, weMs, scheduleId }) {
     const [loading, setLoading] = useState(true);
     const [phoneRaw, setPhoneRaw] = useState("");
     const [hasPhone, setHasPhone] = useState(false);
@@ -364,93 +473,86 @@ export default function VerifikasiUjian() {
     }, [nisn, scheduleId, wsMs, weMs]);
 
     // === Mobile intent WA (tanpa web) + sinkron flag global ===
-    const handleSend = async () => {
-      if (!hasPhone) return;
-      const phone = normalizePhoneID(phoneRaw);
-      if (!phone) return;
+const handleSend = async () => {
+  if (!hasPhone) return;
 
-      const jadwal = fmtJadwalSurat(localWs, localWe);
+  const phone = normalizePhoneID(phoneRaw);
+  if (!phone) return;
 
-      let origin = "";
-      try { origin = window?.location?.origin || ""; } catch {}
-      const loginUrl = origin ? `${origin}/login` : "/login";
-      const username = String(nisn);
-      const password = String(nisn);
+  // ===== Bentuk jadwal (INI YANG SEBELUMNYA TIDAK PERNAH DIPAKAI) =====
+  const jadwal = fmtJadwalSurat(localWs, localWe);
 
-      const lines = [
-        "Bismillah.",
-        "Panitia SPMB Ponpes As-Sunnah",
-        "",
-        "Kepada Yth. Orang Tua/Wali Peserta,",
-        `Nama   : ${name || "—"}`,
-        `NISN   : ${nisn}`,
-        "",
-        "Undangan Pelaksanaan Ujian SPMB:",
-        jadwal ? `Hari/Tanggal : ${jadwal.hari}, ${jadwal.tanggal}` : "Hari/Tanggal : -",
-        jadwal ? `Waktu        : ${jadwal.waktu}` : "Waktu        : -",
-        "Tempat       : Ponpes Assunnah",
-        "",
-        "Akses Akun Peserta:",
-        `Username    : ${username}`,
-        `Password    : ${password}`,
-        `Login       : ${loginUrl}`,
-        "",
-        "Runtutan Ujian:",
-        "1) Tes Akademik (online—membawa HP/ponsel, baterai cukup & kuota).",
-        "2) Baca Al-Qur’an.",
-        "3) Tes Wawancara.",
-        "4) Pengukuran baju/seragam.",
-        "",
-        "Peserta wajib hadir bersama wali yang sesuai (Peserta putra bersama wali putra dan Peserta putri bersama wali putri), tepat waktu, dan berpakaian rapi. Dianjurkan tiba 10–15 menit lebih awal.",
-        "",
-        "(Catatan: Bagi yang berada di luar daerah, silakan konfirmasi kepada panitia untuk pelaksanaan ujian secara online.)",
-        "",
-        "Terkait informasi yang belum jelas, silahkan hubungi panitia.",
-        "",
-        "Jazakumullahu khairan.",
-        "Panitia SPMB Ponpes As-Sunnah",
-      ];
-      const pesan = lines.join("\n");
+  // ===== Bangun pesan via SATU SUMBER KEBENARAN =====
+  const pesan = buildPesanUjian({
+    jenjang,
+    name,
+    nisn,
+    jadwal,
+  });
 
-      let ua = "";
-      try { ua = navigator?.userAgent || ""; } catch {}
-      const isMobile = /Android|iPhone|iPad|iPod|webOS|BlackBerry|IEMobile|Windows Phone/i.test(ua);
+  // ===== Deteksi device =====
+  let ua = "";
+  try {
+    ua = navigator?.userAgent || "";
+  } catch {}
+  const isMobile =
+    /Android|iPhone|iPad|iPod|webOS|BlackBerry|IEMobile|Windows Phone/i.test(ua);
 
-      const waWeb = `https://web.whatsapp.com/send?phone=${phone}&text=${encodeURIComponent(pesan)}`;
-      const waScheme = `whatsapp://send?phone=${phone}&text=${encodeURIComponent(pesan)}`;
-      const waBizScheme = `whatsapp-business://send?phone=${phone}&text=${encodeURIComponent(pesan)}`;
-      const waIntent = `intent://send/?phone=${phone}&text=${encodeURIComponent(pesan)}#Intent;scheme=whatsapp;end`;
+  // ===== URL WhatsApp =====
+  const waWeb = `https://web.whatsapp.com/send?phone=${phone}&text=${encodeURIComponent(
+    pesan
+  )}`;
+  const waScheme = `whatsapp://send?phone=${phone}&text=${encodeURIComponent(
+    pesan
+  )}`;
+  const waBizScheme = `whatsapp-business://send?phone=${phone}&text=${encodeURIComponent(
+    pesan
+  )}`;
+  const waIntent = `intent://send/?phone=${phone}&text=${encodeURIComponent(
+    pesan
+  )}#Intent;scheme=whatsapp;end`;
 
+  try {
+    if (isMobile) {
       try {
-        if (isMobile) {
-          try { window.location.href = waIntent; } catch {}
-          setTimeout(() => { try { window.location.href = waScheme; } catch {} }, 200);
-          setTimeout(() => { try { window.location.href = waBizScheme; } catch {} }, 450);
-        } else {
-          window.open(waWeb, "_blank", "noopener,noreferrer");
-        }
-
-        // === [ADD] tandai global di Firestore agar terlihat lintas akun ===
+        window.location.href = waIntent;
+      } catch {}
+      setTimeout(() => {
         try {
-          await updateDoc(doc(db, "ppdb", String(nisn)), {
-            waNotified: true,
-            waNotifiedAt: serverTimestamp(),
-          });
-        } catch (e) {
-          console.warn("Gagal update flag waNotified:", e);
-        }
-
-        // Legacy lokal
-        setSent(true);
-        try {
-          const map = JSON.parse(localStorage.getItem("wa_sent_flags") || "{}");
-          map[nisn] = true;
-          localStorage.setItem("wa_sent_flags", JSON.stringify(map));
+          window.location.href = waScheme;
         } catch {}
-      } catch (e) {
-        console.error("Open WhatsApp link failed:", e);
-      }
-    };
+      }, 200);
+      setTimeout(() => {
+        try {
+          window.location.href = waBizScheme;
+        } catch {}
+      }, 450);
+    } else {
+      window.open(waWeb, "_blank", "noopener,noreferrer");
+    }
+
+    // ===== Tandai terkirim (global) =====
+    try {
+      await updateDoc(doc(db, "ppdb", String(nisn)), {
+        waNotified: true,
+        waNotifiedAt: serverTimestamp(),
+      });
+    } catch (e) {
+      console.warn("Gagal update flag waNotified:", e);
+    }
+
+    // ===== Legacy lokal =====
+    setSent(true);
+    try {
+      const map = JSON.parse(localStorage.getItem("wa_sent_flags") || "{}");
+      map[nisn] = true;
+      localStorage.setItem("wa_sent_flags", JSON.stringify(map));
+    } catch {}
+  } catch (e) {
+    console.error("Open WhatsApp link failed:", e);
+  }
+};
+
 
     if (loading) return <span className="text-slate-500">Memuat…</span>;
     if (!hasPhone) {
@@ -893,12 +995,13 @@ export default function VerifikasiUjian() {
                       </td>
                       <td className="px-3 py-2">
                         <WaCell
-                          nisn={r.id}
-                          name={name}
-                          wsMs={wsMs}
-                          weMs={weMs}
-                          scheduleId={r.examScheduleId || ""}
-                        />
+  nisn={r.id}
+  name={name}
+  jenjang={(r.registrationLevel || "").toString().trim()}
+  wsMs={wsMs}
+  weMs={weMs}
+  scheduleId={r.examScheduleId || ""}
+/>
                       </td>
                     </tr>
                   );
@@ -948,12 +1051,13 @@ export default function VerifikasiUjian() {
 
                     <div className="mt-3">
                       <WaCell
-                        nisn={r.id}
-                        name={name}
-                        wsMs={wsMs}
-                        weMs={weMs}
-                        scheduleId={r.examScheduleId || ""}
-                      />
+  nisn={r.id}
+  name={name}
+  jenjang={(r.registrationLevel || "").toString().trim()}
+  wsMs={wsMs}
+  weMs={weMs}
+  scheduleId={r.examScheduleId || ""}
+/>
                     </div>
                   </li>
                 );

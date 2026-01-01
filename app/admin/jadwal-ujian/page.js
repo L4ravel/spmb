@@ -61,25 +61,26 @@ function buildPreset(key, base = new Date()) {
     };
   };
 
-  // helper: cari offset hari ke depan (Senin=1, Selasa=2)
-  const nextDayOffset = (targetDay) => {
-    const today = d.getDay();
-    const diff = (targetDay - today + 7) % 7;
-    return diff === 0 ? 7 : diff;
-  };
+ // helper: cari offset hari ke depan (Sabtu=6, Ahad=0)
+const nextDayOffset = (targetDay) => {
+  const today = d.getDay();
+  const diff = (targetDay - today + 7) % 7;
+  return diff === 0 ? 7 : diff;
+};
 
-  switch (key) {
-    case "presetMon":
-      // Senin depan 08:30 - 12:00 WITA
-      return mk(nextDayOffset(1), 8, 30, 12, 0);
+switch (key) {
+  case "presetSat":
+  // Sabtu depan 08:00 - 12:00 WITA
+  return mk(nextDayOffset(6), 8, 0, 12, 0);
 
-    case "presetTue":
-      // Selasa depan 08:30 - 12:00 WITA
-      return mk(nextDayOffset(2), 8, 30, 12, 0);
+case "presetSun":
+  // Ahad depan 08:00 - 12:00 WITA
+  return mk(nextDayOffset(0), 8, 0, 12, 0);
 
-    default:
-      return { start: null, end: null };
-  }
+  default:
+    return { start: null, end: null };
+}
+
 }
 
 
@@ -345,8 +346,8 @@ export default function JadwalUjianPage() {
         <div className="mt-5 flex flex-wrap gap-2">
           <span className="text-xs md:text-sm text-slate-600 mr-1">Preset cepat:</span>
           {[
-  ["presetMon", "Senin Depan 08:30–12:00"],
-  ["presetTue", "Selasa Depan 08:30–12:00"],
+  ["presetSat", "Sabtu Depan 08:00–12:00"],
+  ["presetSun", "Ahad Depan 08:00–12:00"],
 ].map(([k, label]) => (
             <button
               key={k}
