@@ -326,7 +326,7 @@ function buildPesanUjian({
       jadwal
         ? `Waktu        : ${jadwal.waktu}`
         : "Waktu        : -",
-      "Tempat       : Bangunan TK",
+      "Tempat       : TK Islam Assunnah",
       "",
       "Perlu kami sampaikan bahwa terdapat penyesuaian penting terkait pendamping peserta ujian.",
       "",
