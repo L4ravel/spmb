@@ -263,9 +263,9 @@ function TutorialPaymentModal({ open, onClose, amount }) {
                 <span className="font-semibold text-slate-900">
                   {fmtIDR(Number(amount || 0))}
                 </span>{" "}
-                <span className="text-slate-600 italic">
+                {/* <span className="text-slate-600 italic">
                   (Jika belum bisa bayar lunas, silahkan konfirmasi terlebih dahulu ke pantia untuk membuat perjanjian).
-                </span>
+                </span> */}
               </li>
               <li>
                 Simpan struk / screenshot bukti pembayaran dari ATM /
