@@ -176,7 +176,7 @@ export default function HasilFinalPage() {
   const [levelFilter, setLevelFilter]       = useState("ALL");
   const [statusFilter, setStatusFilter]     = useState("ALL"); // ALL | LENGKAP
   const [decisionFilter, setDecisionFilter] = useState("ALL"); // ALL | LULUS | TIDAK | BELUM
-  const [sortMode, setSortMode]             = useState("RANKING"); // RANKING | NISN
+  const [sortMode, setSortMode] = useState("NAMA"); // RANKING | NISN
   // nilai threshold
   const [minAka, setMinAka]     = useState(0);
   const [minTah, setMinTah]     = useState(0);
@@ -281,7 +281,15 @@ export default function HasilFinalPage() {
       const snap = await getDocs(qBase);
 
       const users = [];
-      snap.forEach((d) => users.push({ id: d.id, ...(d.data() || {}) }));
+snap.forEach((d) => {
+  const data = d.data() || {};
+  const examScheduleId = String(data.examScheduleId || "").trim();
+
+  // ❌ Jangan tampilkan jika belum punya jadwal ujian
+  if (examScheduleId === "") return;
+
+  users.push({ id: d.id, ...data });
+});
       setHasNext(users.length === PAGE_SIZE);
       if (users.length > 0) {
         const last = snap.docs[snap.docs.length - 1];
@@ -381,18 +389,26 @@ export default function HasilFinalPage() {
 
     // urut
     if (sortMode === "RANKING") {
-      filtered.sort((x,y) =>
-        (y.total - x.total) ||
-        ((y.wawancara ?? -1) - (x.wawancara ?? -1)) ||
-        ((y.tahfidz  ?? -1) - (x.tahfidz  ?? -1)) ||
-        ((y.akademik ?? -1) - (x.akademik ?? -1)) ||
-        String(x.nisn).localeCompare(String(y.nisn))
-      );
-      filtered = filtered.map((r, i) => ({ ...r, rank: i + 1 }));
-    } else {
-      filtered.sort((x,y)=> String(x.nisn).localeCompare(String(y.nisn)));
-      filtered = filtered.map((r) => ({ ...r, rank: "-" }));
-    }
+  filtered.sort((x,y) =>
+    (y.total - x.total) ||
+    ((y.wawancara ?? -1) - (x.wawancara ?? -1)) ||
+    ((y.tahfidz  ?? -1) - (x.tahfidz  ?? -1)) ||
+    ((y.akademik ?? -1) - (x.akademik ?? -1)) ||
+    String(x.name).localeCompare(String(y.name))
+  );
+  filtered = filtered.map((r, i) => ({ ...r, rank: i + 1 }));
+} 
+else if (sortMode === "NAMA") {
+  filtered.sort((a, b) =>
+    String(a.name).localeCompare(String(b.name), "id", { sensitivity: "base" })
+  );
+  filtered = filtered.map((r) => ({ ...r, rank: "-" }));
+}
+else {
+  filtered.sort((x,y)=> String(x.nisn).localeCompare(String(y.nisn)));
+  filtered = filtered.map((r) => ({ ...r, rank: "-" }));
+}
+
 
     setRows(filtered);
     // sinkronkan seleksi
@@ -520,7 +536,9 @@ function handleExportView() {
         const snap = await getDocs(qBase);
         if (snap.empty) break;
 
-        const users = snap.docs.map(d => ({ id: d.id, ...(d.data() || {}) }));
+        const users = snap.docs
+  .map(d => ({ id: d.id, ...(d.data() || {}) }))
+  .filter(u => String(u.examScheduleId || "").trim() !== "");
         // merge skor paralel
         const merged = await Promise.all(users.map((u, i) => mergeScores(u, collected.length + i + 1)));
         collected.push(...merged);
@@ -600,11 +618,11 @@ downloadXls(filename, xml);
     }
     return (
       <ul className="md:hidden mt-4 space-y-3">
-        {rows.map((r) => (
+        {rows.map((r, idx) => (
           <li key={`m-${r.nisn}-${r.no}`} className="rounded-xl border border-slate-200 bg-white p-4">
             <div className="flex items-start justify-between gap-3">
               <div>
-                <div className="text-xs text-slate-500">No {r.no} • Rank {r.rank ?? "-"}</div>
+               <div className="text-xs text-slate-500">No {idx + 1} • Rank {r.rank ?? "-"}</div>
                 <div className="mt-0.5 font-semibold text-slate-900">{r.name}</div>
                 <div className="font-mono text-sm text-slate-700">{r.nisn}</div>
                 <div className="mt-1"><Pill text={r.level} tone="violet" /></div>
@@ -742,6 +760,7 @@ downloadXls(filename, xml);
               >
                 <option value="RANKING">Ranking (Total tertinggi)</option>
                 <option value="NISN">Urut NISN</option>
+                <option value="NAMA">Urut Nama (A–Z)</option>
               </select>
 
               {/* Keputusan */}
@@ -940,7 +959,7 @@ downloadXls(filename, xml);
                 </td></tr>
               )}
 
-              {!loading && rows.length > 0 && rows.map((r) => (
+              {!loading && rows.length > 0 && rows.map((r, idx) => (
                 <tr key={`${r.nisn}-${r.no}`} className="border-t">
                   <td className="px-2 py-2">
                     <input
@@ -950,7 +969,7 @@ downloadXls(filename, xml);
                       aria-label={`Pilih ${r.nisn}`}
                     />
                   </td>
-                  <td className="px-2 py-2">{r.no}</td>
+                  <td className="px-2 py-2">{idx + 1}</td>
                   <td className="px-2 py-2 font-mono">{r.nisn}</td>
                   <td className="px-2 py-2">{r.name}</td>
                   <td className="px-2 py-2">{r.level}</td>

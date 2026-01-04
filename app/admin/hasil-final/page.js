@@ -86,6 +86,14 @@ export default function HasilFinalPage() {
   /* ------ Download Excel ------ */
   const [downloading, setDownloading] = useState(false);
 
+  const EXCLUDED_LEVELS = [
+  "SD Putra",
+  "SD Putri",
+  "TK",
+  "PPS Ula Putra",
+  "PPS Ula Putri",
+];
+
   /* ===== Ambil daftar jenjang ===== */
   useEffect(() => {
     (async () => {
@@ -170,147 +178,160 @@ export default function HasilFinalPage() {
     return qBase;
   }
 
-  /* ===== Ambil 1 halaman + merge nilai + urut peringkat ===== */
-  async function fetchPage(targetIndex) {
-    setLoading(true);
-    setErrMsg("");
-    try {
-      const afterDoc =
-        targetIndex === 0 ? null : anchors[targetIndex - 1] || null;
-      const snap = await getDocs(buildUsersQuery(afterDoc));
+async function fetchPage(targetIndex) {
+  setLoading(true);
+  setErrMsg("");
 
-      const users = [];
+  try {
+    let collected = [];
+    let lastDoc =
+      targetIndex === 0 ? null : anchors[targetIndex - 1] || null;
+
+    let safety = 0; // pengaman infinite loop
+
+    while (collected.length < PAGE_SIZE && safety < 10) {
+      safety++;
+
+      const snap = await getDocs(buildUsersQuery(lastDoc));
+      if (snap.empty) break;
+
       snap.forEach((d) => {
+        if (collected.length >= PAGE_SIZE) return;
+
         const data = d.data() || {};
         const finalDecision = String(data.finalDecision || "").toUpperCase();
+const examScheduleId = String(data.examScheduleId || "").trim();
+const level = String(data.registrationLevel || "").trim();
 
-        // Skip yang sudah LULUS
-        if (finalDecision === "LULUS") return;
+        // FILTER UTAMA
+        if (
+  finalDecision === "LULUS" ||
+  finalDecision === "TIDAK_LULUS" ||
+  examScheduleId === "" ||
+  EXCLUDED_LEVELS.includes(level)
+) {
+  return;
+}
 
-        users.push({ id: d.id, ...data });
-      });
-      setHasNext(snap.size === PAGE_SIZE);
-      if (users.length > 0) {
-        const last = snap.docs[snap.docs.length - 1];
-        setAnchors((prev) => {
-          const c = [...prev];
-          c[targetIndex] = last;
-          return c;
-        });
-      }
-
-      const merged = await Promise.all(
-        users.map(async (u, i) => {
-          const nisn = getIdOr(u) || u.id;
-          const [tahfDoc, ivDoc, ppdbDoc] = await Promise.all([
-            getDoc(doc(db, TAHFIDZ_COLL, String(nisn))),
-            getDoc(doc(db, INTERVIEW_COLL, String(nisn))),
-            getDoc(doc(db, "ppdb", String(nisn))),
-          ]);
-
-          const pData = ppdbDoc.exists() ? ppdbDoc.data() : null;
-
-// kalau field kosong → dianggap yatim / piatu
-const ayahIncome = (pData?.ayahIncome ?? "").toString().trim();
-const ibuIncome  = (pData?.ibuIncome ?? "").toString().trim();
-
-const isYatim = ayahIncome.length === 0;
-const isPiatu = ibuIncome.length === 0;
-
-          // Akademik
-          let akademik = null;
-          if (typeof u.examScorePercent === "number")
-            akademik = u.examScorePercent;
-          else if (
-            typeof u.examScoreBenar === "number" &&
-            typeof u.examScoreTotal === "number"
-          ) {
-            const b = Number(u.examScoreBenar || 0),
-              t = Number(u.examScoreTotal || 0);
-            akademik = t ? Math.round((b / t) * 1000) / 10 : null;
-          }
-
-          // Tahfidz
-          const tData = tahfDoc.exists() ? tahfDoc.data() : null;
-          const tahfidz = tData?.score ?? null;
-          const tahfidzExaminer = tData?.examinerName || tData?.penguji || null;
-          const tahfidzRecommendation = tData?.recommendation || null;
-          const memorizedCount = tData?.memorizedCount ?? null;
-
-          // Wawancara
-          const wData = ivDoc.exists() ? ivDoc.data() : null;
-          const wawancara = wData?.total100 ?? null;
-          const wawancaraExaminer = wData?.examinerName || null;
-
-          // === total jadi rata-rata ketat (dibagi 3) ===
-          const total = strictAvg(akademik, tahfidz, wawancara);
-          const complete =
-            akademik != null && tahfidz != null && wawancara != null;
-
-          return {
-            no: targetIndex * PAGE_SIZE + (i + 1),
-            nisn,
-            name: getName(u),
-            level: getLevel(u),
-            akademik,
-            tahfidz,
-            memorizedCount,
-            tahfidzExaminer,
-            tahfidzRecommendation,
-            wawancara,
-            wawancaraExaminer,
-            isYatim,
-            isPiatu,
-            total,
-            complete,
-          };
-        })
-      );
-
-      // Filter “LENGKAP”
-      const filtered =
-        statusFilter === "LENGKAP"
-          ? merged.filter((r) => r.complete)
-          : merged;
-
-      // Urut peringkat
-      const sorted = filtered.sort((a, b) => {
-        const diff =
-          (b.total ?? -1) - (a.total ?? -1) ||
-          (b.wawancara ?? -1) - (a.wawancara ?? -1) ||
-          (b.tahfidz ?? -1) - (a.tahfidz ?? -1) ||
-          (b.akademik ?? -1) - (a.akademik ?? -1) ||
-          String(a.nisn).localeCompare(String(b.nisn));
-        return rankDirection === "DESC" ? diff : -diff;
+        collected.push({ id: d.id, ...data });
       });
 
-      const totalCount = sorted.length;
-      const ranked = sorted.map((r, idx) => ({
-        ...r,
-        rank: rankDirection === "DESC" ? idx + 1 : totalCount - idx,
-      }));
-
-      setRows(ranked);
-
-      // Union levels
-      if (ranked.length) {
-        const union = new Set(levels);
-        ranked.forEach((r) => r.level && union.add(r.level));
-        setLevels(sortLevels(Array.from(union)));
-      }
-
-      setPageIndex(targetIndex);
-    } catch (e) {
-      console.error(e);
-      setErrMsg(
-        "Gagal memuat hasil final. Cek index komposit untuk (registrationPaymentStatus in [...]) + orderBy(documentId())."
-      );
-      setRows([]);
-      setHasNext(false);
-    } finally {
-      setLoading(false);
+      lastDoc = snap.docs[snap.docs.length - 1];
+      if (snap.size < PAGE_SIZE) break;
     }
+
+    // simpan anchor halaman
+    if (lastDoc) {
+      setAnchors((prev) => {
+        const c = [...prev];
+        c[targetIndex] = lastDoc;
+        return c;
+      });
+    }
+
+    setHasNext(collected.length === PAGE_SIZE);
+
+    /* ===== JOIN NILAI ===== */
+    const merged = await Promise.all(
+      collected.map(async (u, i) => {
+        const nisn = getIdOr(u) || u.id;
+        const [tahfDoc, ivDoc, ppdbDoc] = await Promise.all([
+          getDoc(doc(db, TAHFIDZ_COLL, String(nisn))),
+          getDoc(doc(db, INTERVIEW_COLL, String(nisn))),
+          getDoc(doc(db, "ppdb", String(nisn))),
+        ]);
+
+        const pData = ppdbDoc.exists() ? ppdbDoc.data() : null;
+
+        const ayahIncome = (pData?.ayahIncome ?? "").toString().trim();
+        const ibuIncome = (pData?.ibuIncome ?? "").toString().trim();
+
+        const isYatim = ayahIncome.length === 0;
+        const isPiatu = ibuIncome.length === 0;
+
+        let akademik = null;
+        if (typeof u.examScorePercent === "number") {
+          akademik = u.examScorePercent;
+        } else if (
+          typeof u.examScoreBenar === "number" &&
+          typeof u.examScoreTotal === "number"
+        ) {
+          akademik = u.examScoreTotal
+            ? Math.round((u.examScoreBenar / u.examScoreTotal) * 1000) / 10
+            : null;
+        }
+
+        const tData = tahfDoc.exists() ? tahfDoc.data() : null;
+        const wData = ivDoc.exists() ? ivDoc.data() : null;
+
+        const tahfidz = tData?.score ?? null;
+        const memorizedCount = tData?.memorizedCount ?? null;
+        const tahfidzExaminer =
+          tData?.examinerName || tData?.penguji || null;
+        const tahfidzRecommendation = tData?.recommendation || null;
+
+        const wawancara = wData?.total100 ?? null;
+        const wawancaraExaminer = wData?.examinerName || null;
+
+        const total = strictAvg(akademik, tahfidz, wawancara);
+        const complete =
+          akademik != null && tahfidz != null && wawancara != null;
+
+        return {
+          no: targetIndex * PAGE_SIZE + (i + 1),
+          nisn,
+          name: getName(u),
+          level: getLevel(u),
+          akademik,
+          tahfidz,
+          memorizedCount,
+          tahfidzExaminer,
+          tahfidzRecommendation,
+          wawancara,
+          wawancaraExaminer,
+          isYatim,
+          isPiatu,
+          total,
+          complete,
+        };
+      })
+    );
+
+    const filtered =
+      statusFilter === "LENGKAP"
+        ? merged.filter((r) => r.complete)
+        : merged;
+
+    filtered.sort((a, b) => {
+      const diff =
+        (b.total ?? -1) - (a.total ?? -1) ||
+        (b.wawancara ?? -1) - (a.wawancara ?? -1) ||
+        (b.tahfidz ?? -1) - (a.tahfidz ?? -1) ||
+        (b.akademik ?? -1) - (a.akademik ?? -1) ||
+        String(a.nisn).localeCompare(String(b.nisn));
+      return rankDirection === "DESC" ? diff : -diff;
+    });
+
+    const ranked = filtered.map((r, idx) => ({
+      ...r,
+      rank:
+        rankDirection === "DESC"
+          ? idx + 1
+          : filtered.length - idx,
+    }));
+
+    setRows(ranked);
+    setPageIndex(targetIndex);
+  } catch (e) {
+    console.error(e);
+    setErrMsg("Gagal memuat hasil final.");
+    setRows([]);
+    setHasNext(false);
+  } finally {
+    setLoading(false);
   }
+}
+
 
   useEffect(() => {
     setAnchors([]);
@@ -352,14 +373,22 @@ const isPiatu = ibuIncome.length === 0;
         if (snap.empty) break;
 
         snap.forEach((d) => {
-          const data = d.data() || {};
-          const finalDecision = String(data.finalDecision || "").toUpperCase();
+  const data = d.data() || {};
+  const finalDecision = String(data.finalDecision || "").toUpperCase();
+  const examScheduleId = String(data.examScheduleId || "").trim();
 
-          // Skip yang sudah LULUS
-          if (finalDecision === "LULUS") return;
+  // Skip: sudah diputus atau belum punya jadwal ujian
+  if (
+    finalDecision === "LULUS" ||
+    finalDecision === "TIDAK_LULUS" ||
+    examScheduleId === ""
+  ) {
+    return;
+  }
 
-          users.push({ id: d.id, ...data });
-        });
+  users.push({ id: d.id, ...data });
+});
+
 
         if (snap.size < EXPORT_BATCH) break;
 
