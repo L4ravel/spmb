@@ -36,6 +36,20 @@ export const EMAIL_ACCESS = {
     "/admin/statistik-daftar-ulang",
     "/admin/kelengkapan-berkas",
   ],   
+   "mzkyzakky@gmail.com": [ 
+    "/admin/daftar-ulang",
+    "/admin/daftar-ulang",
+    "/admin/data-daftar-ulang",
+    "/admin/statistik-daftar-ulang",
+    "/admin/kelengkapan-berkas",
+  ],  
+   "zul@spmb.com": [ 
+    "/admin/daftar-ulang",
+    "/admin/daftar-ulang",
+    "/admin/data-daftar-ulang",
+    "/admin/statistik-daftar-ulang",
+    "/admin/kelengkapan-berkas",
+  ],  
 
   // Full Akses
   "user@admin.com": [ "*"  
