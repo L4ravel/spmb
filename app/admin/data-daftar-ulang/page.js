@@ -157,6 +157,18 @@ export default function AdminDataDaftarUlangPage() {
   const [filterLevel, setFilterLevel] = useState("ALL");
   const [sentWA, setSentWA] = useState({});
 
+  function normalizeWaNumber(raw) {
+  if (!raw) return "";
+  let n = raw.toString().replace(/\D/g, ""); // buang selain angka
+
+  if (n.startsWith("0")) n = "62" + n.slice(1);
+  if (!n.startsWith("62")) n = "62" + n;
+
+  return n;
+}
+
+
+
   // Aggregasi untuk stat card sesuai scope (ALL / PTK / NON_PTK)
   const scopedStats = useMemo(() => {
     // mulai dari semua rows
@@ -863,6 +875,8 @@ const waliWa = (ppdbData.waliWa || "").toString().trim();
 XLSX.writeFile(wb, filename, { bookType: "xlsx" });
   };
 
+  
+
   return (
     <main className="p-4 md:p-6 space-y-4">
       <div className="flex flex-col gap-2 md:flex-row md:items-center md:justify-between">
@@ -1198,25 +1212,29 @@ XLSX.writeFile(wb, filename, { bookType: "xlsx" });
                       <td className="px-3 py-2 text-center">
   {(r.statusDaftarUlang === "BELUM BAYAR" ||
     r.statusDaftarUlang === "SEBAGIAN") &&
-  r.waliWa ? (
-   <a
-  href={`https://web.whatsapp.com/send?phone=${r.waliWa}&text=${encodeURIComponent(
-    `Bismillah..\n\nDiberitahukan kepada Yth. Wali Santri dari *${r.name}*, bahwa proses *daftar ulang* masih *belum diselesaikan*.\n\nJumlah daftar ulang yang perlu diselesaikan: *${fmtIDR(r.sisa)}*.\n\nMengingat *besok merupakan hari terakhir konfirmasi*, mohon agar proses tersebut dapat segera dituntaskan.\n\nUntuk informasi lebih lanjut, silakan menghubungi panitia di nomor *0877 2024 2025*.\n\nTerima kasih atas perhatian dan kerja samanya.\nSyukron jazakumullahu khairan.\n\n— Panitia SPMB`
-  )}`}
-  target="_blank"
-  rel="noopener noreferrer"
-  onClick={() =>
-    setSentWA((prev) => ({ ...prev, [r.nisn]: true }))
-  }
-  className={`inline-flex items-center gap-1 rounded-md px-2 py-1 text-[11px] font-semibold text-white ${
-    sentWA[r.nisn]
-      ? "bg-slate-400 cursor-default"
-      : "bg-green-600 hover:bg-green-700"
-  }`}
->
-  {sentWA[r.nisn] ? "Hubungi WA ✓" : "Hubungi WA"}
-</a>
-  ) : (
+  r.waliWa ? (() => {
+    const waNumber = normalizeWaNumber(r.waliWa);
+
+    return (
+      <a
+         href={`https://web.whatsapp.com/send?phone=${waNumber}&text=${encodeURIComponent(
+          `Bismillah..\n\nDiberitahukan kepada Yth. Wali Santri dari *${r.name}*, bahwa proses *daftar ulang* masih *belum diselesaikan*.\n\nJumlah daftar ulang yang perlu diselesaikan: *${fmtIDR(r.sisa)}*.\n\nMengingat *besok merupakan hari terakhir konfirmasi*, mohon agar proses tersebut dapat segera dituntaskan.\n\nTerima kasih atas perhatian dan kerja samanya.\n\n— Panitia SPMB`
+        )}`}
+        target="_blank"
+        rel="noopener noreferrer"
+        onClick={() =>
+          setSentWA((prev) => ({ ...prev, [r.nisn]: true }))
+        }
+        className={`inline-flex items-center gap-1 rounded-md px-2 py-1 text-[11px] font-semibold text-white ${
+          sentWA[r.nisn]
+            ? "bg-slate-400 cursor-default"
+            : "bg-green-600 hover:bg-green-700"
+        }`}
+      >
+        {sentWA[r.nisn] ? "Hubungi WA ✓" : "Hubungi WA"}
+      </a>
+    );
+  })() : (
     <span className="text-[11px] text-slate-400">—</span>
   )}
 </td>
