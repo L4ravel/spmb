@@ -228,7 +228,7 @@ function LoginInner() {
     "wirasandilalu12@gmail.com",
     "zul@spmb.com",
     "bahaudin@smpb.com",
-    "amrizkaul@gmail.com",
+    "alfarisyyazid@gmail.com",
     "ekasastrawijaya@spmb.com",
     "rahmah@spmb.com",
     "yulianti@spmb.com",
