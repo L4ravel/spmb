@@ -155,6 +155,7 @@ export default function AdminDataDaftarUlangPage() {
   const [viewMode, setViewMode] = useState("SUMMARY"); // SUMMARY | COMPONENT
   const [statScope, setStatScope] = useState("ALL");
   const [filterLevel, setFilterLevel] = useState("ALL");
+  const [sentWA, setSentWA] = useState({});
 
   // Aggregasi untuk stat card sesuai scope (ALL / PTK / NON_PTK)
   const scopedStats = useMemo(() => {
@@ -503,6 +504,7 @@ reRegSnap.forEach((docSnap) => {
 
           // --- NEW: baca ayahIncome dari ppdb/{nisn} untuk rule PPS yatim ---
           const ppdbData = ppdbById[nisn] || {};
+const waliWa = (ppdbData.waliWa || "").toString().trim();
           const ayahIncomeRaw = (ppdbData.ayahIncome ?? "")
             .toString()
             .trim();
@@ -611,6 +613,7 @@ reRegSnap.forEach((docSnap) => {
             level,
             jalur,
             phone,
+            waliWa,
             baseSPP,
             pangkalComponents,
             totalPangkal,
@@ -1091,8 +1094,11 @@ XLSX.writeFile(wb, filename, { bookType: "xlsx" });
       Bukti
     </th>
     <th className="px-3 py-2" rowSpan={2}>
-      Terakhir Bayar
-    </th>
+  Terakhir Bayar
+</th>
+<th className="px-3 py-2" rowSpan={2}>
+  Hubungi
+</th>
   </tr>
   {/* baris header 2: sub kolom TAGIHAN */}
   <tr className="text-left text-[11px] font-semibold uppercase tracking-wide text-slate-500">
@@ -1189,6 +1195,31 @@ XLSX.writeFile(wb, filename, { bookType: "xlsx" });
                       <td className="px-3 py-2 text-[11px] text-slate-700">
                         {formatDateTime(r.lastPaidAt)}
                       </td>
+                      <td className="px-3 py-2 text-center">
+  {(r.statusDaftarUlang === "BELUM BAYAR" ||
+    r.statusDaftarUlang === "SEBAGIAN") &&
+  r.waliWa ? (
+    <a
+  href={`https://web.whatsapp.com/send?phone=6287720242025&text=${encodeURIComponent(
+    `Bismillah..\n\nDiberitahukan kepada Yth. Wali Santri dari *${r.name}*, bahwa proses *daftar ulang* masih *belum diselesaikan*.\n\nJumlah daftar ulang yang perlu diselesaikan: *${fmtIDR(r.sisa)}*.\n\nMengingat *besok merupakan hari terakhir konfirmasi*, mohon agar proses tersebut dapat segera dituntaskan.\n\nUntuk informasi lebih lanjut, silakan menghubungi panitia di nomor *0877 2024 2025*.\n\nTerima kasih atas perhatian dan kerja samanya.\nSyukron jazakumullahu khairan.\n\n— Panitia SPMB`
+  )}`}
+  target="_blank"
+  rel="noopener noreferrer"
+  onClick={() =>
+    setSentWA((prev) => ({ ...prev, [r.nisn]: true }))
+  }
+  className={`inline-flex items-center gap-1 rounded-md px-2 py-1 text-[11px] font-semibold text-white ${
+    sentWA[r.nisn]
+      ? "bg-slate-400 cursor-default"
+      : "bg-green-600 hover:bg-green-700"
+  }`}
+>
+  {sentWA[r.nisn] ? "Hubungi WA ✓" : "Hubungi WA"}
+</a>
+  ) : (
+    <span className="text-[11px] text-slate-400">—</span>
+  )}
+</td>
                     </tr>
                   ))}
                 </tbody>

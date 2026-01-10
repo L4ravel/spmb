@@ -58,7 +58,7 @@ export const EMAIL_ACCESS = {
   "hisyam.salafy@gmail.com": ["*"],
   "abdurrahman.man.88@gmail.com": ["*"],  
   "wirasandilalu12@gmail.com": ["*"],
-  "amrizkaul@gmail.com": ["*"],
+  "alfarisyyazid@gmail.com": ["*"],
 
    
 };
