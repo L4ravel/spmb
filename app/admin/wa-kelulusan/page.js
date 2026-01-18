@@ -48,6 +48,7 @@ function cleanWaNumber(raw) {
 }
 
 /* ===== Template pesan WA ===== */
+/* ===== Template pesan WA ===== */
 function buildWaMessage(row) {
   const nisn = row.nisn || "-";
   const name = row.name || "-";
@@ -57,27 +58,35 @@ function buildWaMessage(row) {
     "PENGUMUMAN KELULUSAN\n" +
     "SPMB TP. 2026/2027\n\n" +
 
-    "Dengan ini kami sampaikan bahwa hasil kelulusan SPMB Tahun Pelajaran 2026/2027 " +
-    "telah diumumkan pada tanggal 27 Desember 2025.\n\n" +
+    "Dengan ini kami menyampaikan bahwa peserta atas nama berikut:\n\n" +
+    `Nama Peserta : ${name}\n` +
+    `Jenjang      : ${level}\n` +
+    `NISN         : ${nisn}\n\n` +
 
-    "Peserta dipersilakan untuk mengecek hasil kelulusan melalui laman berikut:\n" +
+    "DINYATAKAN **LULUS** pada Seleksi Penerimaan Murid Baru (SPMB) " +
+    "Tahun Pelajaran 2026/2027 di Pondok Pesantren As Sunnah.\n\n" +
+
+    "Hasil kelulusan resmi diumumkan pada tanggal 19 Januari 2025 dan " +
+    "dapat diakses melalui laman berikut:\n" +
     "👉 https://spmb.pontrenassunnah.com/login\n\n" +
 
-    "Untuk login ke akun SPMB, silakan gunakan data berikut:\n" +
-    `• Nama Peserta: ${name}\n` +
-     `• Jenjang: ${level}\n` +
+    "Akun login SPMB:\n" +
     `• Username: ${nisn}\n` +
-    `• Password: ${nisn}\n\n` +   
+    `• Password: ${nisn}\n\n` +
 
-    "Jadwal daftar ulang dapat dilakukan dengan cara offline dengan datang ke ponpes As Sunnah " +
-    "atau melalui akun SPMB masing-masing pada:\n" +
-    "• 28 Desember 2025 s.d. 10 Januari 2026\n\n" +
+    "Selanjutnya, peserta yang dinyatakan LULUS wajib melakukan daftar ulang " +
+    "secara offline dengan datang langsung ke Pondok Pesantren As Sunnah atau " +
+    "melalui akun SPMB masing-masing pada:\n" +
+    "• 20 Januari 2025 s.d. 3 Februari 2026\n\n" +
 
-    "Apabila memerlukan bantuan lebih lanjut, peserta dapat menghubungi panitia melalui nomor WhatsApp resmi 087720242025.\n\n" +
-    "Demikian informasi ini kami sampaikan.\n" +
-    "Atas perhatian dan kerjasamanya, kami ucapkan terima kasih."
+    "Untuk informasi lebih lanjut, silakan hubungi panitia melalui WhatsApp resmi:\n" +
+    "0877-2024-2025\n\n" +
+
+    "Demikian pengumuman ini kami sampaikan.\n" +
+    "Terima kasih atas perhatian dan kerja samanya."
   );
 }
+
 
 export default function AdminWaKelulusanPage() {
   const [rows, setRows] = useState([]);
@@ -488,7 +497,6 @@ export default function AdminWaKelulusanPage() {
     </main>
   );
 }
-
 
 
 
