@@ -1,7 +1,7 @@
 "use client";
 import React, { useEffect, useMemo, useState } from "react";
 
-/** Hierarki jenjang (3 kelompok: Sekolah, LKSA, Ma'had Aly) */ 
+/** Hierarki jenjang (3 kelompok: Sekolah, LKSA, Ma'had Aly) */
 export const HIERARCHY = {
   REGULER: [
     { key: "TK", label: "TK", values: [{ value: "TK", label: "TK" }] },
@@ -47,7 +47,7 @@ export const HIERARCHY = {
   "STIT / MA'HAD ALY": [
     {
       key: "PGMI",
-      label: "PGMI (S1)",
+      label: "PGMI (S1) - Asrama",
       values: [
         { value: "PGMI Putra (S1)", label: "Putra" },
         { value: "PGMI Putri (S1)", label: "Putri" },
@@ -55,7 +55,7 @@ export const HIERARCHY = {
     },
     {
       key: "MPI",
-      label: "MPI (S1)",
+      label: "MPI (S1) - Asrama",
       values: [
         { value: "MPI Putra (S1)", label: "Putra" },
         { value: "MPI Putri (S1)", label: "Putri" },
@@ -63,12 +63,37 @@ export const HIERARCHY = {
     },
     {
       key: "PIAUD",
-      label: "PIAUD (S1)",
+      label: "PIAUD (S1) - Asrama",
       values: [
         { value: "PIAUD Putra (S1)", label: "Putra" },
         { value: "PIAUD Putri (S1)", label: "Putri" },
       ],
     },
+
+    {
+    key: "PGMI_NON",
+    label: "PGMI (S1) – Non Asrama",
+    values: [
+      { value: "PGMI Putra (S1) Non Asrama", label: "Putra" },
+      { value: "PGMI Putri (S1) Non Asrama", label: "Putri" },
+    ],
+  },
+  {
+    key: "MPI_NON",
+    label: "MPI (S1) – Non Asrama",
+    values: [
+      { value: "MPI Putra (S1) Non Asrama", label: "Putra" },
+      { value: "MPI Putri (S1) Non Asrama", label: "Putri" },
+    ],
+  },
+  {
+    key: "PIAUD_NON",
+    label: "PIAUD (S1) – Non Asrama",
+    values: [
+      { value: "PIAUD Putra (S1) Non Asrama", label: "Putra" },
+      { value: "PIAUD Putri (S1) Non Asrama", label: "Putri" },
+    ],
+  },
   ],
 };
 
@@ -364,6 +389,3 @@ export default function JenjangPicker({
     </div>
   );
 }
-
-
-
