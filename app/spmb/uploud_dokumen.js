@@ -33,6 +33,12 @@ const UNIVERSITY = new Set([
   "MPI Putri (S1)",
   "PIAUD Putra (S1)",
   "PIAUD Putri (S1)",
+  "PGMI Putra (S1) Non Asrama",
+  "PGMI Putri (S1) Non Asrama",
+  "MPI Putra (S1) Non Asrama",
+  "MPI Putri (S1) Non Asrama",
+  "PIAUD Putra (S1) Non Asrama",
+  "PIAUD Putri (S1) Non Asrama",
 ]);
 
 /** Jenjang yang TIDAK perlu unggah Ijazah/Suket Sekolah */
