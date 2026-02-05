@@ -1218,7 +1218,7 @@ XLSX.writeFile(wb, filename, { bookType: "xlsx" });
     return (
       <a
          href={`https://web.whatsapp.com/send?phone=${waNumber}&text=${encodeURIComponent(
-          `Bismillah..\n\nDiberitahukan kepada Yth. Wali Santri dari *${r.name}*, bahwa proses *daftar ulang* masih *belum diselesaikan*.\n\nJumlah daftar ulang yang perlu diselesaikan: *${fmtIDR(r.sisa)}*.\n\nMengingat *besok merupakan hari terakhir konfirmasi*, mohon agar proses tersebut dapat segera dituntaskan.\n\nUntuk informasi lebih lanjut, silakan menghubungi panitia di nomor *0877 2024 2025*.\n\nTerima kasih atas perhatian dan kerja samanya.\nSyukron jazakumullahu khairan.\n\n— Panitia SPMB`
+          `Bismillah..\n\nDiberitahukan kepada Yth. Wali Santri dari *${r.name}*, bahwa proses *daftar ulang* masih *belum diselesaikan*.\n\nJumlah daftar ulang yang perlu diselesaikan: *${fmtIDR(r.sisa)}*.\n\nMmohon agar proses tersebut dapat segera dituntaskan.\n\nUntuk informasi lebih lanjut, silakan menghubungi panitia di nomor *0877 2024 2025*.\n\nTerima kasih atas perhatian dan kerja samanya.\nSyukron jazakumullahu khairan.\n\n— Panitia SPMB`
         )}`}
         target="_blank"
         rel="noopener noreferrer"
