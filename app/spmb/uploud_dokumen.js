@@ -19,7 +19,8 @@ const getExt = (name, fb="bin") => {
 
 /** Jenjang yang WAJIB paket Dhuafa / Yatim-Piatu */
 const BENEFIT_ELIGIBLE = new Set([
-  "PPS RA",
+  "PPS RA Putra",
+  "PPS RA Putri",
   "PPS Ula Putra",
   "PPS Ula Putri",
   "PPS Wustho",
@@ -45,7 +46,8 @@ const UNIVERSITY = new Set([
 /** Jenjang yang TIDAK perlu unggah Ijazah/Suket Sekolah */
 const NO_IJAZAH = new Set([
   "TK",
-  "PPS RA",
+  "PPS RA Putra",
+  "PPS RA Putri",
   "SD Putra",
   "SD Putri",
   "PPS Ula Putra",

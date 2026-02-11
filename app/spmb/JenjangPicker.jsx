@@ -32,13 +32,14 @@ export const HIERARCHY = {
   ],
 
   LKSA: [
-     {
-    key: "RA",
-    label: "PPS RA",
-    values: [
-      { value: "PPS RA", label: "PPS RA" }
-    ],
-  },
+   {
+  key: "RA",
+  label: "PPS RA",
+  values: [
+    { value: "PPS RA Putra", label: "Putra" },
+    { value: "PPS RA Putri", label: "Putri" },
+  ],
+},
     {
       key: "UlaIta",
       label: "PPS Ula",
