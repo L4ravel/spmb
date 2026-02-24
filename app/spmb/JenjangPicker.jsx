@@ -48,7 +48,7 @@ export const HIERARCHY = {
         { value: "PPS Ula Putri", label: "Putri" },
       ],
     },
-    { key: "Wustho", label: "PPS Wustho", values: [{ value: "PPS Wustho", label: "PPS Wustho" }] },
+    // { key: "Wustho", label: "PPS Wustho", values: [{ value: "PPS Wustho", label: "PPS Wustho" }] },
     { key: "Ulya", label: "PPS Ulya", values: [{ value: "PPS Ulya", label: "PPS Ulya" }] },
   ],
 
