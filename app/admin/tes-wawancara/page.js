@@ -23,6 +23,8 @@ const USERS_COLLECTION = "users_app";
 // Default koleksi Paket 1 tetap sama agar kompatibel data lama:
 const QCOLL_P1 = "interview_questions";
 const QCOLL_P2 = "interview_questions_p2";
+const QCOLL_P3 = "interview_questions_p3"; // ✅ paket 3
+const QCOLL_P4 = "interview_questions_p4"; // ✅ paket 4
 const SCORE_COLL = "interview_scores";
 const PAGE_SIZE = 50; // maksimal 50 per halaman
 const EXPORT_BATCH = 500; // batch ambil data saat export
@@ -32,17 +34,21 @@ function getNisn(u) {
   return u?.username || u?.nisn || u?.id || "";
 }
 function getName(u) {
-  return u?.fullName || u?.fullname || u?.displayName || u?.name || "Tanpa Nama";
+  return (
+    u?.fullName || u?.fullname || u?.displayName || u?.name || "Tanpa Nama"
+  );
 }
 function normTo50(sum, max) {
   if (!max || max <= 0) return 0;
   return Math.round((sum / max) * 50 * 10) / 10;
 }
 function sortLevels(arr) {
-  const rest = arr.filter((x) => x !== "ALL").sort((a, b) => String(a).localeCompare(String(b)));
+  const rest = arr
+    .filter((x) => x !== "ALL")
+    .sort((a, b) => String(a).localeCompare(String(b)));
   return ["ALL", ...rest];
 }
-const COLL_BY_PAKET = { p1: QCOLL_P1, p2: QCOLL_P2 };
+const COLL_BY_PAKET = { p1: QCOLL_P1, p2: QCOLL_P2, p3: QCOLL_P3, p4: QCOLL_P4 }; // ✅ paket 4
 
 export default function TesWawancaraPage() {
   /* ======= Filters ======= */
@@ -69,7 +75,7 @@ export default function TesWawancaraPage() {
   const [currentStudent, setCurrentStudent] = useState(null);
 
   // Paket aktif dalam modal
-  const [activePaket, setActivePaket] = useState("p1"); // "p1" | "p2"
+  const [activePaket, setActivePaket] = useState("p1"); // "p1" | "p2" | "p3" | "p4"
 
   // Pertanyaan yang sedang aktif (tergantung paket)
   const [qsStudent, setQsStudent] = useState([]);
@@ -94,7 +100,8 @@ export default function TesWawancaraPage() {
     });
   }, [items, globalResults, tableQuery]);
 
-  const useScoresSource = statusFilter === "SELESAI" || sortMode === "NILAI_TERTINGGI";
+  const useScoresSource =
+    statusFilter === "SELESAI" || sortMode === "NILAI_TERTINGGI";
   const isLoggedIn = Boolean(graderId);
 
   /* ======= Examiner from Auth (auto) + fallback localStorage ======= */
@@ -104,7 +111,8 @@ export default function TesWawancaraPage() {
       const v = localStorage.getItem("tahfidz_examiner_name");
       if (v) setExaminerName(v);
       const p = localStorage.getItem("interview_active_paket");
-      if (p === "p1" || p === "p2") setActivePaket(p);
+      if (p === "p1" || p === "p2" || p === "p3" || p === "p4")
+        setActivePaket(p);
     }
 
     // ambil dari akun login
@@ -151,7 +159,12 @@ export default function TesWawancaraPage() {
             });
             if (snap.size < 200) break;
             const last = snap.docs[snap.docs.length - 1];
-            qLv = query(colRef, where("role", "==", "siswa"), startAfter(last), limit(200));
+            qLv = query(
+              colRef,
+              where("role", "==", "siswa"),
+              startAfter(last),
+              limit(200)
+            );
           }
         }
         // 2) Dari interview_scores
@@ -167,7 +180,12 @@ export default function TesWawancaraPage() {
             });
             if (snap.size < 200) break;
             const last = snap.docs[snap.docs.length - 1];
-            qLv2 = query(colRef, orderBy("level", "asc"), startAfter(last), limit(200));
+            qLv2 = query(
+              colRef,
+              orderBy("level", "asc"),
+              startAfter(last),
+              limit(200)
+            );
           }
         }
       } catch (e) {
@@ -181,10 +199,26 @@ export default function TesWawancaraPage() {
   /* ======= Query builder (dua sumber: USERS atau SCORES) ======= */
   function buildUsersQuery(afterDoc) {
     const colRef = collection(db, USERS_COLLECTION);
-    const clauses = [where("role", "==", "siswa"), where("registrationPaymentStatus", "==", "verified")];
-    if (levelFilter !== "ALL") clauses.push(where("registrationLevel", "==", levelFilter));
-    let qBase = query(colRef, ...clauses, orderBy("username", "asc"), limit(PAGE_SIZE));
-    if (afterDoc) qBase = query(colRef, ...clauses, orderBy("username", "asc"), startAfter(afterDoc), limit(PAGE_SIZE));
+    const clauses = [
+      where("role", "==", "siswa"),
+      where("registrationPaymentStatus", "==", "verified"),
+    ];
+    if (levelFilter !== "ALL")
+      clauses.push(where("registrationLevel", "==", levelFilter));
+    let qBase = query(
+      colRef,
+      ...clauses,
+      orderBy("username", "asc"),
+      limit(PAGE_SIZE)
+    );
+    if (afterDoc)
+      qBase = query(
+        colRef,
+        ...clauses,
+        orderBy("username", "asc"),
+        startAfter(afterDoc),
+        limit(PAGE_SIZE)
+      );
     return qBase;
   }
 
@@ -195,7 +229,13 @@ export default function TesWawancaraPage() {
     // sort
     let qBase = null;
     if (sortMode === "NILAI_TERTINGGI") {
-      qBase = query(colRef, ...clauses, orderBy("total100", "desc"), orderBy("nisn", "asc"), limit(PAGE_SIZE));
+      qBase = query(
+        colRef,
+        ...clauses,
+        orderBy("total100", "desc"),
+        orderBy("nisn", "asc"),
+        limit(PAGE_SIZE)
+      );
       if (afterDoc) {
         qBase = query(
           colRef,
@@ -208,9 +248,20 @@ export default function TesWawancaraPage() {
       }
     } else {
       // default urut nisn asc
-      qBase = query(colRef, ...clauses, orderBy("nisn", "asc"), limit(PAGE_SIZE));
+      qBase = query(
+        colRef,
+        ...clauses,
+        orderBy("nisn", "asc"),
+        limit(PAGE_SIZE)
+      );
       if (afterDoc) {
-        qBase = query(colRef, ...clauses, orderBy("nisn", "asc"), startAfter(afterDoc), limit(PAGE_SIZE));
+        qBase = query(
+          colRef,
+          ...clauses,
+          orderBy("nisn", "asc"),
+          startAfter(afterDoc),
+          limit(PAGE_SIZE)
+        );
       }
     }
     return qBase;
@@ -221,7 +272,8 @@ export default function TesWawancaraPage() {
     setLoading(true);
     setErrMsg("");
     try {
-      const afterDoc = targetIndex === 0 ? null : anchors[targetIndex - 1] || null;
+      const afterDoc =
+        targetIndex === 0 ? null : anchors[targetIndex - 1] || null;
 
       if (useScoresSource) {
         // ambil dari interview_scores, lalu filter hanya user verified
@@ -243,7 +295,9 @@ export default function TesWawancaraPage() {
           })
         );
 
-        const filtered = list.filter((x) => verifiedFlags[String(x.scoreDoc.nisn || "")]);
+        const filtered = list.filter(
+          (x) => verifiedFlags[String(x.scoreDoc.nisn || "")]
+        );
         const rows = filtered.map((x, i) => ({
           no: targetIndex * PAGE_SIZE + (i + 1),
           nisn: x.scoreDoc.nisn,
@@ -340,7 +394,9 @@ export default function TesWawancaraPage() {
       }
     } catch (e) {
       console.error(e);
-      setErrMsg("Gagal memuat data. Pastikan index: users(role↑,username↑) & scores(index sesuai urutan) ada.");
+      setErrMsg(
+        "Gagal memuat data. Pastikan index: users(role↑,username↑) & scores(index sesuai urutan) ada."
+      );
       setItems([]);
       setHasNext(false);
     } finally {
@@ -350,16 +406,28 @@ export default function TesWawancaraPage() {
 
   async function runGlobalSearch(qStr) {
     const q = (qStr || "").trim().toLowerCase();
-    if (!q) { setGlobalResults(null); return; }
+    if (!q) {
+      setGlobalResults(null);
+      return;
+    }
 
     setQBusy(true);
     try {
       const all = [];
       const colRef = collection(db, USERS_COLLECTION);
-      const clauses = [where("role", "==", "siswa"), where("registrationPaymentStatus", "==", "verified")];
-      if (levelFilter !== "ALL") clauses.push(where("registrationLevel", "==", levelFilter));
+      const clauses = [
+        where("role", "==", "siswa"),
+        where("registrationPaymentStatus", "==", "verified"),
+      ];
+      if (levelFilter !== "ALL")
+        clauses.push(where("registrationLevel", "==", levelFilter));
 
-      let qRef = query(colRef, ...clauses, orderBy("username", "asc"), limit(EXPORT_BATCH));
+      let qRef = query(
+        colRef,
+        ...clauses,
+        orderBy("username", "asc"),
+        limit(EXPORT_BATCH)
+      );
       // loop pagination
       while (true) {
         const snap = await getDocs(qRef);
@@ -385,7 +453,9 @@ export default function TesWawancaraPage() {
           all.push({
             no: all.length + 1,
             nisn,
-            name: String(u?.fullName || u?.fullname || u?.displayName || u?.name || "Tanpa Nama"),
+            name: String(
+              u?.fullName || u?.fullname || u?.displayName || u?.name || "Tanpa Nama"
+            ),
             level: u?.registrationLevel || "-",
             examiner: sc?.examinerName || "-",
             score: sc ? sc.total100 : null,
@@ -396,11 +466,17 @@ export default function TesWawancaraPage() {
 
         if (snap.size < EXPORT_BATCH) break;
         const last = snap.docs[snap.docs.length - 1];
-        qRef = query(colRef, ...clauses, orderBy("username", "asc"), startAfter(last), limit(EXPORT_BATCH));
+        qRef = query(
+          colRef,
+          ...clauses,
+          orderBy("username", "asc"),
+          startAfter(last),
+          limit(EXPORT_BATCH)
+        );
       }
 
       // batasi tampilan besar agar tetap ringan; data export tetap tersedia dari tombol export
-      setGlobalResults(all.slice(0, 2000)); 
+      setGlobalResults(all.slice(0, 2000));
     } catch (e) {
       console.error("global search error:", e?.message);
       setGlobalResults([]); // tampilkan kosong daripada nge-freeze
@@ -441,7 +517,7 @@ export default function TesWawancaraPage() {
     if (!hasNext || loading) return;
     fetchPage(pageIndex + 1);
   }
-  
+
   async function fetchUserByNisn(nisn) {
     try {
       const s = await getDoc(doc(db, USERS_COLLECTION, String(nisn)));
@@ -494,9 +570,22 @@ export default function TesWawancaraPage() {
     // - Jika ada paket tersimpan: pakai itu
     // - Jika tidak ada: pakai preferensi localStorage (default p1)
     let defaultP =
-      (typeof window !== "undefined" && localStorage.getItem("interview_active_paket")) || "p1";
+      (typeof window !== "undefined" &&
+        localStorage.getItem("interview_active_paket")) ||
+      "p1";
     const initialPaket =
-      saved?.paket === "p1" || saved?.paket === "p2" ? saved.paket : defaultP === "p2" ? "p2" : "p1";
+      saved?.paket === "p1" ||
+      saved?.paket === "p2" ||
+      saved?.paket === "p3" ||
+      saved?.paket === "p4"
+        ? saved.paket
+        : defaultP === "p2"
+        ? "p2"
+        : defaultP === "p3"
+        ? "p3"
+        : defaultP === "p4"
+        ? "p4"
+        : "p1";
 
     setActivePaket(initialPaket);
     await loadQuestions(initialPaket);
@@ -517,10 +606,11 @@ export default function TesWawancaraPage() {
 
   /* ======= Ganti Paket di modal ======= */
   async function onChangePaket(p) {
-    if (p !== "p1" && p !== "p2") return;
+    if (p !== "p1" && p !== "p2" && p !== "p3" && p !== "p4") return;
     setActivePaket(p);
-    if (typeof window !== "undefined") localStorage.setItem("interview_active_paket", p);
-    // Saat ganti paket, kosongkan jawaban agar tidak tercampur (kita simpan satu paket pada summary)
+    if (typeof window !== "undefined")
+      localStorage.setItem("interview_active_paket", p);
+    // Saat ganti paket, kosongkan jawaban agar tidak tercampur
     setAnswers({ student: {}, parent: {} });
     await loadQuestions(p);
   }
@@ -535,21 +625,29 @@ export default function TesWawancaraPage() {
     setSaving(true);
     try {
       // hitung student
-      let sumS = 0, maxS = 0;
+      let sumS = 0,
+        maxS = 0;
       qsStudent.forEach((q) => {
         const chosen = q.options?.find((o) => o.key === answers.student[q.id]);
         const pts = Number(chosen?.points || 0);
         sumS += pts;
-        const qMax = Math.max(0, ...(q.options || []).map((o) => Number(o.points || 0)));
+        const qMax = Math.max(
+          0,
+          ...(q.options || []).map((o) => Number(o.points || 0))
+        );
         maxS += qMax;
       });
       // hitung parent
-      let sumP = 0, maxP = 0;
+      let sumP = 0,
+        maxP = 0;
       qsParent.forEach((q) => {
         const chosen = q.options?.find((o) => o.key === answers.parent[q.id]);
         const pts = Number(chosen?.points || 0);
         sumP += pts;
-        const qMax = Math.max(0, ...(q.options || []).map((o) => Number(o.points || 0)));
+        const qMax = Math.max(
+          0,
+          ...(q.options || []).map((o) => Number(o.points || 0))
+        );
         maxP += qMax;
       });
 
@@ -581,7 +679,9 @@ export default function TesWawancaraPage() {
       // Update baris tabel saat ini
       setItems((prev) =>
         prev.map((r) =>
-          r.nisn === nisn ? { ...r, score: payload.total100, examiner: payload.examinerName, done: true } : r
+          r.nisn === nisn
+            ? { ...r, score: payload.total100, examiner: payload.examinerName, done: true }
+            : r
         )
       );
       setOpen(false);
@@ -646,9 +746,6 @@ export default function TesWawancaraPage() {
 
   /* ======= Export XLS (SEMUA sesuai jenjang) ======= */
   async function exportAllByJenjang() {
-    // Barometer hanya jenjang: abaikan pencarian/status/sort/paging.
-    // Ambil semua siswa "verified" dari users_app (role=siswa),
-    // filter berdasarkan levelFilter (ALL = semua).
     setExporting(true);
     try {
       const esc = (s) =>
@@ -661,22 +758,22 @@ export default function TesWawancaraPage() {
         .map((c) => `<th style="background:#f1f5f9;text-align:left">${esc(c)}</th>`)
         .join("")}</tr>`;
 
-      // Kumpulkan semua user sesuai jenjang
       const allRows = [];
       const colRef = collection(db, USERS_COLLECTION);
-      const clauses = [where("role", "==", "siswa"), where("registrationPaymentStatus", "==", "verified")];
-      if (levelFilter !== "ALL") clauses.push(where("registrationLevel", "==", levelFilter));
+      const clauses = [
+        where("role", "==", "siswa"),
+        where("registrationPaymentStatus", "==", "verified"),
+      ];
+      if (levelFilter !== "ALL")
+        clauses.push(where("registrationLevel", "==", levelFilter));
 
       let qRef = query(colRef, ...clauses, orderBy("username", "asc"), limit(EXPORT_BATCH));
-      let page = 0;
       let total = 0;
 
-      // Loop pagination sampai habis
       while (true) {
         const snap = await getDocs(qRef);
         if (snap.empty) break;
 
-        // Buat rows dengan join skor per NISN (getDoc per item — sederhana & aman)
         const batchUsers = snap.docs.map((d) => ({ id: d.id, ...(d.data() || {}) }));
         for (let i = 0; i < batchUsers.length; i++) {
           const u = batchUsers[i];
@@ -696,13 +793,11 @@ export default function TesWawancaraPage() {
           });
         }
 
-        if (snap.size < EXPORT_BATCH) break; // sudah habis
+        if (snap.size < EXPORT_BATCH) break;
         const last = snap.docs[snap.docs.length - 1];
         qRef = query(colRef, ...clauses, orderBy("username", "asc"), startAfter(last), limit(EXPORT_BATCH));
-        page += 1;
       }
 
-      // Render ke HTML tabel
       const bodyRows = allRows
         .map((r) => {
           const tds = [
@@ -741,7 +836,8 @@ export default function TesWawancaraPage() {
       const url = URL.createObjectURL(blob);
       const a = document.createElement("a");
       const stamp = new Date().toISOString().slice(0, 19).replace(/[:T]/g, "-");
-      const jenjangSlug = levelFilter === "ALL" ? "SEMUA" : String(levelFilter).replace(/\s+/g, "_").toUpperCase();
+      const jenjangSlug =
+        levelFilter === "ALL" ? "SEMUA" : String(levelFilter).replace(/\s+/g, "_").toUpperCase();
       a.href = url;
       a.download = `tes-wawancara-${jenjangSlug}-${stamp}.xls`;
       document.body.appendChild(a);
@@ -763,7 +859,9 @@ export default function TesWawancaraPage() {
         {/* Header + meta (match Tahfidz) */}
         <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between mb-6">
           <div>
-            <h1 className="text-2xl sm:text-3xl font-bold text-slate-900">Tes Wawancara</h1>
+            <h1 className="text-2xl sm:text-3xl font-bold text-slate-900">
+              Tes Wawancara
+            </h1>
             <p className="text-sm text-slate-600 mt-1">
               Filter berdasarkan jenjang & status. Urutkan nilai tertinggi untuk melihat ranking.
             </p>
@@ -888,7 +986,7 @@ export default function TesWawancaraPage() {
             <div className="flex items-center gap-2 mb-4">
               <div className="w-8 h-8 rounded-lg bg-slate-700 flex items-center justify-center">
                 <svg className="w-4 h-4 text-white" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M16 7a4 4 0 11-8 0 4 0 018 0zM12 14a7 7 0 00-7 7h14a7 7 0 00-7-7z" />
+                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M16 7a4 4 0 11-8 0 4 4 0 018 0zM12 14a7 7 0 00-7 7h14a7 7 0 00-7-7z" />
                 </svg>
               </div>
               <h3 className="font-semibold text-slate-900">Nama Penanya</h3>
@@ -949,7 +1047,6 @@ export default function TesWawancaraPage() {
                       {r.done ? "Ulangi Tes" : "Mulai Tes"}
                     </button>
                   </div>
-
                 </div>
 
                 <div className="grid grid-cols-2 gap-2 text-sm text-black">
@@ -1071,7 +1168,7 @@ export default function TesWawancaraPage() {
                   Tes Wawancara — {currentStudent ? getName(currentStudent) : ""}
                 </h3>
 
-                {/* Paket Switcher: biru, netral */}
+                {/* Paket Switcher */}
                 <div className="flex items-center gap-1">
                   <button
                     onClick={() => onChangePaket("p1")}
@@ -1091,8 +1188,25 @@ export default function TesWawancaraPage() {
                   >
                     Paket 2
                   </button>
+                  <button
+                    onClick={() => onChangePaket("p3")}
+                    className={`rounded-lg px-3 py-1.5 text-xs font-medium ${
+                      activePaket === "p3" ? "bg-violet-600 text-white" : "bg-slate-100 text-slate-800"
+                    }`}
+                    title="Gunakan Paket 3"
+                  >
+                    Paket 3
+                  </button>
+                  <button
+                    onClick={() => onChangePaket("p4")}
+                    className={`rounded-lg px-3 py-1.5 text-xs font-medium ${
+                      activePaket === "p4" ? "bg-violet-600 text-white" : "bg-slate-100 text-slate-800"
+                    }`}
+                    title="Gunakan Paket 4"
+                  >
+                    Paket 4
+                  </button>
 
-                  {/* Tombol Tutup (tetap) */}
                   <button
                     onClick={() => setOpen(false)}
                     className="ml-2 rounded border border-slate-300 px-3 py-1.5 text-xs text-slate-700"
@@ -1100,7 +1214,7 @@ export default function TesWawancaraPage() {
                     Tutup
                   </button>
 
-                  {/* === Tambahan khusus MOBILE: Simpan di sebelah Tutup === */}
+                  {/* MOBILE: Simpan */}
                   <button
                     onClick={submitTest}
                     disabled={saving}
@@ -1114,15 +1228,29 @@ export default function TesWawancaraPage() {
 
               <div className="px-5 py-4 max-h-[calc(100dvh-8rem)] sm:max-h-none overflow-y-auto">
                 <div className="mb-3 text-xs text-slate-600">
-                  Paket aktif: <span className="font-semibold">{activePaket === "p1" ? "Paket 1" : "Paket 2"}</span>
+                  Paket aktif:{" "}
+                  <span className="font-semibold">
+                    {activePaket === "p1"
+                      ? "Paket 1"
+                      : activePaket === "p2"
+                      ? "Paket 2"
+                      : activePaket === "p3"
+                      ? "Paket 3"
+                      : "Paket 4"}
+                  </span>
                 </div>
+
                 <div className="grid gap-4 md:grid-cols-2">
                   {/* Murid */}
                   <section className="rounded-xl border border-slate-200">
-                    <div className="border-b px-4 py-3 text-sm font-semibold text-black">Murid</div>
+                    <div className="border-b px-4 py-3 text-sm font-semibold text-black">
+                      Murid
+                    </div>
                     <div className="p-4">
                       {qsStudent.length === 0 && (
-                        <div className="text-xs text-slate-500">Belum ada pertanyaan.</div>
+                        <div className="text-xs text-slate-500">
+                          Belum ada pertanyaan.
+                        </div>
                       )}
                       <div className="space-y-4">
                         {qsStudent.map((q, idx) => (
@@ -1159,10 +1287,14 @@ export default function TesWawancaraPage() {
 
                   {/* Orang Tua */}
                   <section className="rounded-xl border border-slate-200">
-                    <div className="border-b px-4 py-3 text-sm font-semibold text-black">Orang Tua</div>
+                    <div className="border-b px-4 py-3 text-sm font-semibold text-black">
+                      Orang Tua
+                    </div>
                     <div className="p-4">
                       {qsParent.length === 0 && (
-                        <div className="text-xs text-slate-500 text-black">Belum ada pertanyaan.</div>
+                        <div className="text-xs text-slate-500 text-black">
+                          Belum ada pertanyaan.
+                        </div>
                       )}
                       <div className="space-y-4">
                         {qsParent.map((q, idx) => (
