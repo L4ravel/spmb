@@ -1,15 +1,7 @@
 {
   "compilerOptions": {
     "target": "ES2022",
-<<<<<<< HEAD
-    "lib": [
-      "dom",
-      "dom.iterable",
-      "ES2022"
-    ],
-=======
     "lib": ["dom", "dom.iterable", "ES2022"],
->>>>>>> e0d87d9e1c20ca8d01f5b309fbda141ca41fae79
     "allowJs": true,
     "skipLibCheck": true,
     "strict": true,
@@ -19,23 +11,6 @@
     "moduleResolution": "bundler",
     "resolveJsonModule": true,
     "isolatedModules": true,
-<<<<<<< HEAD
-    "jsx": "react-jsx",
-    "incremental": true,
-    "baseUrl": ".",
-    "paths": {
-      "@/*": [
-        "./*"
-      ]
-    },
-    "forceConsistentCasingInFileNames": true,
-    "verbatimModuleSyntax": true,
-    "plugins": [
-      {
-        "name": "next"
-      }
-    ]
-=======
     "jsx": "preserve",
     "incremental": true,
     "baseUrl": ".",
@@ -44,8 +19,11 @@
     },
     "forceConsistentCasingInFileNames": true,
     "verbatimModuleSyntax": true,
-    "plugins": [{ "name": "next" }]
->>>>>>> e0d87d9e1c20ca8d01f5b309fbda141ca41fae79
+    "plugins": [
+      {
+        "name": "next"
+      }
+    ]
   },
   "include": [
     "next-env.d.ts",
@@ -53,17 +31,8 @@
     "**/*.tsx",
     "**/*.js",
     "**/*.jsx",
-<<<<<<< HEAD
     ".next/types/**/*.ts",
     ".next/dev/types/**/*.ts"
   ],
-  "exclude": [
-    "node_modules"
-  ]
-}
-=======
-    ".next/types/**/*.ts"
-  ],
   "exclude": ["node_modules"]
 }
->>>>>>> e0d87d9e1c20ca8d01f5b309fbda141ca41fae79
