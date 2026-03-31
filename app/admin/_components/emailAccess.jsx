@@ -20,7 +20,10 @@ export const EMAIL_ACCESS = {
   "riaruqoyyah16@gmail.com": [ "/admin/tes-wawancara",],  
   "heniherawati530@gmail.com": [ "/admin/tes-wawancara",],  
   "rabiatuladwyh2612@gmail.com": [ "/admin/tes-wawancara",],   
+<<<<<<< HEAD
   "ratna@spmb.com": [ "/admin/tes-wawancara",],
+=======
+>>>>>>> e0d87d9e1c20ca8d01f5b309fbda141ca41fae79
   
   //bendahara
   "riskanefendi@smpia.com": [ 
