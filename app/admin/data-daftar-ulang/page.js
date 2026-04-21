@@ -1217,22 +1217,22 @@ XLSX.writeFile(wb, filename, { bookType: "xlsx" });
 
     return (
       <a
-         href={`https://web.whatsapp.com/send?phone=${waNumber}&text=${encodeURIComponent(
-          `Bismillah..\n\nDiberitahukan kepada Yth. Wali Santri dari *${r.name}*, bahwa proses *daftar ulang* masih *belum diselesaikan*.\n\nJumlah daftar ulang yang perlu diselesaikan: *${fmtIDR(r.sisa)}*.\n\nMohon agar proses tersebut dapat segera dituntaskan.\n\nUntuk informasi lebih lanjut, silakan menghubungi panitia di nomor *0877 2024 2025*.\n\nTerima kasih atas perhatian dan kerja samanya.\nSyukron jazakumullahu khairan.\n\n— Panitia SPMB`
-        )}`}
-        target="_blank"
-        rel="noopener noreferrer"
-        onClick={() =>
-          setSentWA((prev) => ({ ...prev, [r.nisn]: true }))
-        }
-        className={`inline-flex items-center gap-1 rounded-md px-2 py-1 text-[11px] font-semibold text-white ${
-          sentWA[r.nisn]
-            ? "bg-slate-400 cursor-default"
-            : "bg-green-600 hover:bg-green-700"
-        }`}
-      >
-        {sentWA[r.nisn] ? "Hubungi WA ✓" : "Hubungi WA"}
-      </a>
+  href={`https://web.whatsapp.com/send?phone=${waNumber}&text=${encodeURIComponent(
+    `Bismillah..\n\nDiberitahukan kepada Yth. Wali Santri dari *${r.name}*, bahwa proses *daftar ulang* masih *belum diselesaikan*.\n\nJumlah daftar ulang yang perlu diselesaikan: *${fmtIDR(r.sisa)}*.\n\nBatas akhir pembayaran adalah *25 April 2026*. Setelah tanggal tersebut, bagi yang tidak melakukan pembayaran, data akan dihapus oleh sistem dan dianggap mengundurkan diri.\n\nUntuk informasi lebih lanjut, silakan menghubungi panitia di nomor *0877 2024 2025*.\n\nTerima kasih atas perhatian dan kerja samanya.\nSyukron jazakumullahu khairan.\n\n— Panitia SPMB`
+  )}`}
+  target="_blank"
+  rel="noopener noreferrer"
+  onClick={() =>
+    setSentWA((prev) => ({ ...prev, [r.nisn]: true }))
+  }
+  className={`inline-flex items-center gap-1 rounded-md px-2 py-1 text-[11px] font-semibold text-white ${
+    sentWA[r.nisn]
+      ? "bg-slate-400 cursor-default"
+      : "bg-green-600 hover:bg-green-700"
+  }`}
+>
+  {sentWA[r.nisn] ? "Hubungi WA ✓" : "Hubungi WA"}
+</a>
     );
   })() : (
     <span className="text-[11px] text-slate-400">—</span>
