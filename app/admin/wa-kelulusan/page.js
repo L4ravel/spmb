@@ -32,6 +32,7 @@ const firebaseConfig = {
   messagingSenderId: process.env.NEXT_PUBLIC_FIREBASE_MESSAGING_SENDER_ID,
   appId: process.env.NEXT_PUBLIC_FIREBASE_APP_ID,
 };
+
 const app = getApps().length ? getApp() : initializeApp(firebaseConfig);
 const db = getFirestore(app);
 
@@ -39,54 +40,95 @@ const db = getFirestore(app);
 function cleanWaNumber(raw) {
   if (!raw) return "";
   let s = String(raw).trim();
-  // buang semua selain angka
+
   s = s.replace(/[^\d]/g, "");
   if (!s) return "";
+
   if (s.startsWith("62")) return s;
   if (s.startsWith("0")) return "62" + s.slice(1);
+
   return s;
 }
 
-/* ===== Template pesan WA ===== */
-/* ===== Template pesan WA ===== */
+/* ===== Helper status keputusan ===== */
+function normalizeFinalDecision(value) {
+  const raw = String(value || "").trim().toUpperCase();
+
+  if (raw === "LULUS") return "LULUS";
+  if (raw === "TIDAK_LULUS") return "TIDAK_LULUS";
+  if (raw === "TIDAK LULUS") return "TIDAK_LULUS";
+
+  return "-";
+}
+
+function getDecisionLabel(value) {
+  const decision = normalizeFinalDecision(value);
+
+  if (decision === "LULUS") return "LULUS";
+  if (decision === "TIDAK_LULUS") return "TIDAK LULUS";
+
+  return "-";
+}
+
+/* ===== Template pesan WA dinamis ===== */
 function buildWaMessage(row) {
   const nisn = row.nisn || "-";
   const name = row.name || "-";
   const level = row.level || "-";
+  const finalDecision = normalizeFinalDecision(row.finalDecision);
+  const finalDecisionLabel = getDecisionLabel(row.finalDecision);
 
-  return (
-    "PENGUMUMAN KELULUSAN\n" +
+  const baseMessage =
+    "PENGUMUMAN HASIL SELEKSI\n" +
     "SPMB TP. 2026/2027\n\n" +
-
     "Dengan ini kami menyampaikan bahwa peserta atas nama berikut:\n\n" +
     `Nama Peserta : ${name}\n` +
     `Jenjang      : ${level}\n` +
     `NISN         : ${nisn}\n\n` +
-
-    "DINYATAKAN **LULUS** pada Seleksi Penerimaan Murid Baru (SPMB) " +
+    `DINYATAKAN ${finalDecisionLabel} pada Seleksi Penerimaan Murid Baru (SPMB) ` +
     "Tahun Pelajaran 2026/2027 di Pondok Pesantren As Sunnah.\n\n" +
-
-    "Hasil kelulusan resmi diumumkan pada tanggal 19 Januari 2025 dan " +
-    "dapat diakses melalui laman berikut:\n" +
+    "Hasil seleksi resmi dapat diakses melalui laman berikut:\n" +
     "👉 https://spmb.pontrenassunnah.com/login\n\n" +
-
     "Akun login SPMB:\n" +
     `• Username: ${nisn}\n` +
-    `• Password: ${nisn}\n\n` +
+    `• Password: ${nisn}\n\n`;
 
-    "Selanjutnya, peserta yang dinyatakan LULUS wajib melakukan daftar ulang " +
-    "secara offline dengan datang langsung ke Pondok Pesantren As Sunnah atau " +
-    "melalui akun SPMB masing-masing pada:\n" +
-    "• 20 Januari 2025 s.d. 3 Februari 2026\n\n" +
+  if (finalDecision === "LULUS") {
+    return (
+      baseMessage +
+      "Selanjutnya, peserta yang dinyatakan LULUS wajib melakukan daftar ulang " +
+      "secara offline dengan datang langsung ke Pondok Pesantren As Sunnah atau " +
+      "melalui akun SPMB masing-masing pada:\n" +
+      "• 2 Mei 2026 s.d. 12 Mei 2026\n\n" +
+      "Untuk informasi lebih lanjut, silakan hubungi panitia melalui WhatsApp resmi:\n" +
+      "0877-2024-2025\n\n" +
+      "Demikian pengumuman ini kami sampaikan.\n" +
+      "Terima kasih atas perhatian dan kerja samanya."
+    );
+  }
 
+  if (finalDecision === "TIDAK_LULUS") {
+    return (
+      baseMessage +
+      "Kami menyampaikan apresiasi dan terima kasih atas partisipasi peserta " +
+      "dalam mengikuti proses Seleksi Penerimaan Murid Baru (SPMB) Pondok Pesantren As Sunnah.\n\n" +
+      "Semoga hasil ini dapat diterima dengan lapang dada, dan semoga Allah memberikan " +
+      "jalan pendidikan terbaik bagi Ananda ke depannya.\n\n" +
+      "Untuk informasi lebih lanjut, silakan hubungi panitia melalui WhatsApp resmi:\n" +
+      "0877-2024-2025\n\n" +
+      "Demikian pengumuman ini kami sampaikan.\n" +
+      "Terima kasih atas perhatian dan kerja samanya."
+    );
+  }
+
+  return (
+    baseMessage +
     "Untuk informasi lebih lanjut, silakan hubungi panitia melalui WhatsApp resmi:\n" +
     "0877-2024-2025\n\n" +
-
     "Demikian pengumuman ini kami sampaikan.\n" +
     "Terima kasih atas perhatian dan kerja samanya."
   );
 }
-
 
 export default function AdminWaKelulusanPage() {
   const [rows, setRows] = useState([]);
@@ -95,9 +137,10 @@ export default function AdminWaKelulusanPage() {
 
   const [search, setSearch] = useState("");
   const [filterLevel, setFilterLevel] = useState("ALL");
+  const [filterDecision, setFilterDecision] = useState("ALL"); // ALL | LULUS | TIDAK_LULUS
   const [filterWaStatus, setFilterWaStatus] = useState("ALL"); // ALL | SENT | NOT_SENT
-  const [filterDateFrom, setFilterDateFrom] = useState(""); // yyyy-mm-dd
-  const [filterDateTo, setFilterDateTo] = useState(""); // yyyy-mm-dd
+  const [filterDateFrom, setFilterDateFrom] = useState("");
+  const [filterDateTo, setFilterDateTo] = useState("");
 
   useEffect(() => {
     let alive = true;
@@ -105,13 +148,14 @@ export default function AdminWaKelulusanPage() {
     async function load() {
       setLoading(true);
       setErrorMsg("");
-      try {        
+
+      try {
         const usersSnap = await getDocs(
-  query(
-    collection(db, "users_app"),
-    where("finalDecision", "in", ["LULUS", "TIDAK_LULUS"])
-  )
-);
+          query(
+            collection(db, "users_app"),
+            where("finalDecision", "in", ["LULUS", "TIDAK_LULUS"])
+          )
+        );
 
         const tmpRows = [];
 
@@ -120,24 +164,34 @@ export default function AdminWaKelulusanPage() {
           const nisn = (ud.nisn || userDoc.id || "").toString().trim();
           if (!nisn) continue;
 
+          const finalDecision = normalizeFinalDecision(ud.finalDecision);
+
           const level =
-            (ud.registrationLevel ||
+            (
+              ud.registrationLevel ||
               ud.jenjangDiterima ||
               ud.jenjang ||
-              "").toString().trim() || "-";
+              ""
+            )
+              .toString()
+              .trim() || "-";
 
           const name =
             ud.fullName || ud.nama || ud.name || ud.studentName || nisn;
 
-          // 2. Ambil info WA wali dari koleksi ppdb (doc id = nisn)
           let waliWa = "";
+
           try {
             const ppdbSnap = await getDoc(doc(db, "ppdb", nisn));
+
             if (ppdbSnap.exists()) {
               const pd = ppdbSnap.data() || {};
-              // utama waliWa, kalau gak ada pakai beberapa fallback
               waliWa =
-                pd.waliWa || pd.waliWA || pd.waliHp || pd.waliHP || "";
+                pd.waliWa ||
+                pd.waliWA ||
+                pd.waliHp ||
+                pd.waliHP ||
+                "";
             }
           } catch (e) {
             console.error("Failed fetch ppdb for", nisn, e);
@@ -146,9 +200,9 @@ export default function AdminWaKelulusanPage() {
           const waClean = cleanWaNumber(waliWa);
           const waStatus = ud.waKelulusanSent ? "SENT" : "NOT_SENT";
 
-          // konversi waKelulusanSentAt ke timestamp (ms) bila ada
           let waSentAt = null;
           const rawSentAt = ud.waKelulusanSentAt;
+
           if (rawSentAt) {
             if (typeof rawSentAt.toMillis === "function") {
               waSentAt = rawSentAt.toMillis();
@@ -161,6 +215,7 @@ export default function AdminWaKelulusanPage() {
             nisn,
             name,
             level,
+            finalDecision,
             rawWa: waliWa,
             wa: waClean,
             waStatus,
@@ -170,11 +225,11 @@ export default function AdminWaKelulusanPage() {
 
         if (!alive) return;
 
-        // urutkan: jenjang lalu nama
         tmpRows.sort((a, b) => {
           if (a.level === b.level) {
             return a.name.localeCompare(b.name, "id");
           }
+
           return a.level.localeCompare(b.level, "id");
         });
 
@@ -182,43 +237,51 @@ export default function AdminWaKelulusanPage() {
       } catch (e) {
         console.error(e);
         if (!alive) return;
-        setErrorMsg(e?.message || "Gagal memuat data WA kelulusan.");
+
+        setErrorMsg(e?.message || "Gagal memuat data WA pengumuman.");
       } finally {
-        alive && setLoading(false);
+        if (alive) setLoading(false);
       }
     }
 
     load();
+
     return () => {
       alive = false;
     };
   }, []);
 
-  // opsi filter jenjang
   const levelOptions = useMemo(() => {
     const set = new Set();
+
     rows.forEach((r) => {
       if (r.level) set.add(r.level);
     });
+
     return Array.from(set).sort((a, b) => a.localeCompare(b, "id"));
   }, [rows]);
 
-  // apply search + filter (jenjang, status WA, tanggal kirim)
   const filteredRows = useMemo(() => {
     let out = [...rows];
 
     if (search.trim()) {
       const s = search.trim().toLowerCase();
+
       out = out.filter(
         (r) =>
           r.nisn.toLowerCase().includes(s) ||
           r.name.toLowerCase().includes(s) ||
-          r.level.toLowerCase().includes(s)
+          r.level.toLowerCase().includes(s) ||
+          getDecisionLabel(r.finalDecision).toLowerCase().includes(s)
       );
     }
 
     if (filterLevel !== "ALL") {
       out = out.filter((r) => r.level === filterLevel);
+    }
+
+    if (filterDecision !== "ALL") {
+      out = out.filter((r) => r.finalDecision === filterDecision);
     }
 
     if (filterWaStatus === "SENT") {
@@ -227,20 +290,23 @@ export default function AdminWaKelulusanPage() {
       out = out.filter((r) => r.waStatus !== "SENT");
     }
 
-    // filter tanggal berdasarkan waSentAt (hanya yang sudah dikirim)
     if (filterDateFrom || filterDateTo) {
       const fromMs = filterDateFrom
         ? new Date(filterDateFrom + "T00:00:00").getTime()
         : null;
+
       const toMs = filterDateTo
         ? new Date(filterDateTo + "T23:59:59.999").getTime()
         : null;
 
       out = out.filter((r) => {
-        if (!r.waSentAt) return false; // belum punya tanggal kirim => exclude
+        if (!r.waSentAt) return false;
+
         const t = r.waSentAt;
+
         if (fromMs !== null && t < fromMs) return false;
         if (toMs !== null && t > toMs) return false;
+
         return true;
       });
     }
@@ -250,19 +316,30 @@ export default function AdminWaKelulusanPage() {
     rows,
     search,
     filterLevel,
+    filterDecision,
     filterWaStatus,
     filterDateFrom,
     filterDateTo,
   ]);
 
+  const totalLulus = useMemo(
+    () => rows.filter((r) => r.finalDecision === "LULUS").length,
+    [rows]
+  );
+
+  const totalTidakLulus = useMemo(
+    () => rows.filter((r) => r.finalDecision === "TIDAK_LULUS").length,
+    [rows]
+  );
+
   const totalSent = useMemo(
     () => rows.filter((r) => r.waStatus === "SENT").length,
     [rows]
   );
+
   const totalNotSent = rows.length - totalSent;
 
-  // klik tombol kirim WA
-     const handleSendWa = async (row) => {
+  const handleSendWa = async (row) => {
     if (!row.wa) {
       alert("Nomor WA wali belum tersedia untuk peserta ini.");
       return;
@@ -270,22 +347,24 @@ export default function AdminWaKelulusanPage() {
 
     const msg = buildWaMessage(row);
 
-    // Deteksi mobile vs desktop
     let url = "";
+
     if (typeof window !== "undefined") {
       const ua = navigator.userAgent || "";
-      const isMobile = /Android|webOS|iPhone|iPad|iPod|BlackBerry|IEMobile|Opera Mini/i.test(
-        ua
-      );
+
+      const isMobile =
+        /Android|webOS|iPhone|iPad|iPod|BlackBerry|IEMobile|Opera Mini/i.test(
+          ua
+        );
 
       if (isMobile) {
-        // Prioritas: buka aplikasi WhatsApp di HP
-        url = `whatsapp://send?phone=${row.wa}&text=${encodeURIComponent(msg)}`;
-      } else {
-        // Prioritas: WhatsApp Web di komputer
-        url = `https://web.whatsapp.com/send?phone=${row.wa}&text=${encodeURIComponent(
+        url = `whatsapp://send?phone=${row.wa}&text=${encodeURIComponent(
           msg
         )}`;
+      } else {
+        url = `https://web.whatsapp.com/send?phone=${
+          row.wa
+        }&text=${encodeURIComponent(msg)}`;
       }
     }
 
@@ -298,35 +377,49 @@ export default function AdminWaKelulusanPage() {
         waKelulusanSent: true,
         waKelulusanSentAt: serverTimestamp(),
       });
+
       const now = Date.now();
+
       setRows((prev) =>
         prev.map((r) =>
           r.nisn === row.nisn
-            ? { ...r, waStatus: "SENT", waSentAt: now }
+            ? {
+                ...r,
+                waStatus: "SENT",
+                waSentAt: now,
+              }
             : r
         )
       );
     } catch (e) {
       console.error(e);
+
       alert(
-        "Gagal menyimpan status WA kelulusan. Silakan cek koneksi atau rules Firestore."
+        "Gagal menyimpan status WA pengumuman. Silakan cek koneksi atau rules Firestore."
       );
     }
   };
 
-
-
   return (
-    <main className="p-4 md:p-6 space-y-4">
+    <main className="space-y-4 p-4 md:p-6">
       <div className="flex flex-col gap-1 md:flex-row md:items-center md:justify-between">
         <div>
-          <h1 className="text-lg md:text-xl font-bold text-slate-900">
-            WA Kelulusan
-          </h1>          
+          <h1 className="text-lg font-bold text-slate-900 md:text-xl">
+            WA Pengumuman SPMB
+          </h1>
         </div>
-        <div className="text-[11px] md:text-xs text-slate-600">
-          Total LULUS:{" "}
-          <span className="font-semibold">{rows.length}</span> · Sudah WA:{" "}
+
+        <div className="text-[11px] text-slate-600 md:text-xs">
+          Total Peserta: <span className="font-semibold">{rows.length}</span> ·
+          Lulus:{" "}
+          <span className="font-semibold text-emerald-700">
+            {totalLulus}
+          </span>{" "}
+          · Tidak Lulus:{" "}
+          <span className="font-semibold text-rose-700">
+            {totalTidakLulus}
+          </span>{" "}
+          · Sudah WA:{" "}
           <span className="font-semibold text-emerald-700">{totalSent}</span> ·
           Belum WA:{" "}
           <span className="font-semibold text-amber-700">{totalNotSent}</span>
@@ -334,11 +427,13 @@ export default function AdminWaKelulusanPage() {
       </div>
 
       <div className="rounded-2xl border border-slate-200 bg-white shadow-sm">
-        {/* Header filter */}
-        <div className="px-3 py-3 md:px-4 md:py-3 border-b border-slate-200 flex flex-col gap-3 md:flex-row md:items-center md:justify-between">
+        <div className="flex flex-col gap-3 border-b border-slate-200 px-3 py-3 md:flex-row md:items-center md:justify-between md:px-4">
           <div className="flex items-center gap-2 text-slate-800">
             <Filter className="h-4 w-4" />
-            <span className="text-sm font-semibold">Daftar WA Kelulusan</span>
+            <span className="text-sm font-semibold">
+              Daftar WA Pengumuman
+            </span>
+
             {loading && (
               <span className="inline-flex items-center gap-1 text-[11px] text-slate-500">
                 <Loader2 className="h-3.5 w-3.5 animate-spin" />
@@ -346,23 +441,23 @@ export default function AdminWaKelulusanPage() {
               </span>
             )}
           </div>
+
           <div className="flex flex-col gap-2 md:flex-row md:items-center">
-            {/* Search */}
             <div className="flex items-center gap-1 rounded-lg border border-slate-200 bg-slate-50 px-2">
               <Search className="h-3.5 w-3.5 text-slate-500" />
+
               <input
                 value={search}
                 onChange={(e) => setSearch(e.target.value)}
                 placeholder="Cari NISN / nama / jenjang…"
-                className="bg-transparent px-1 py-1 text-xs md:text-sm text-slate-900 placeholder:text-slate-400 focus:outline-none"
+                className="bg-transparent px-1 py-1 text-xs text-slate-900 placeholder:text-slate-400 focus:outline-none md:text-sm"
               />
             </div>
 
-            {/* Filter jenjang */}
             <select
               value={filterLevel}
               onChange={(e) => setFilterLevel(e.target.value)}
-              className="rounded-lg border border-slate-200 bg-white px-2 py-1 text-xs text-slate-900 max-w-[160px]"
+              className="max-w-[160px] rounded-lg border border-slate-200 bg-white px-2 py-1 text-xs text-slate-900"
             >
               <option value="ALL">Semua Jenjang</option>
               {levelOptions.map((lv) => (
@@ -372,7 +467,16 @@ export default function AdminWaKelulusanPage() {
               ))}
             </select>
 
-            {/* Filter status WA */}
+            <select
+              value={filterDecision}
+              onChange={(e) => setFilterDecision(e.target.value)}
+              className="rounded-lg border border-slate-200 bg-white px-2 py-1 text-xs text-slate-900"
+            >
+              <option value="ALL">Semua Hasil</option>
+              <option value="LULUS">Lulus</option>
+              <option value="TIDAK_LULUS">Tidak Lulus</option>
+            </select>
+
             <select
               value={filterWaStatus}
               onChange={(e) => setFilterWaStatus(e.target.value)}
@@ -383,7 +487,6 @@ export default function AdminWaKelulusanPage() {
               <option value="SENT">Sudah dikirim</option>
             </select>
 
-            {/* Filter tanggal kirim WA */}
             <div className="flex flex-col gap-1 md:flex-row md:items-center">
               <input
                 type="date"
@@ -391,9 +494,11 @@ export default function AdminWaKelulusanPage() {
                 onChange={(e) => setFilterDateFrom(e.target.value)}
                 className="rounded-lg border border-slate-200 bg-white px-2 py-1 text-xs text-slate-900"
               />
-              <span className="hidden md:inline text-[11px] text-slate-500">
+
+              <span className="hidden text-[11px] text-slate-500 md:inline">
                 s.d.
               </span>
+
               <input
                 type="date"
                 value={filterDateTo}
@@ -404,9 +509,8 @@ export default function AdminWaKelulusanPage() {
           </div>
         </div>
 
-        {/* Tabel utama */}
         {errorMsg ? (
-          <div className="p-4 text-sm text-rose-700 flex items-center gap-2">
+          <div className="flex items-center gap-2 p-4 text-sm text-rose-700">
             <AlertCircle className="h-4 w-4" />
             {errorMsg}
           </div>
@@ -417,33 +521,53 @@ export default function AdminWaKelulusanPage() {
         ) : (
           <div className="overflow-x-auto">
             <table className="min-w-full text-xs md:text-sm">
-              <thead className="bg-slate-50 border-b border-slate-200">
+              <thead className="border-b border-slate-200 bg-slate-50">
                 <tr className="text-left text-[11px] font-semibold uppercase tracking-wide text-slate-500">
-                  <th className="px-3 py-2 w-12 text-center">No</th>
+                  <th className="w-12 px-3 py-2 text-center">No</th>
                   <th className="px-3 py-2">NISN</th>
                   <th className="px-3 py-2">Nama</th>
                   <th className="px-3 py-2">Jenjang</th>
+                  <th className="px-3 py-2">Hasil</th>
                   <th className="px-3 py-2 text-center">Kirim WA</th>
                   <th className="px-3 py-2">Keterangan</th>
                 </tr>
               </thead>
+
               <tbody className="divide-y divide-slate-100">
                 {filteredRows.map((r, idx) => (
                   <tr key={r.nisn} className="hover:bg-slate-50">
                     <td className="px-3 py-2 text-center text-[11px] text-slate-700">
                       {idx + 1}
                     </td>
+
                     <td className="px-3 py-2 font-mono text-[11px] text-slate-800">
                       {r.nisn}
                     </td>
+
                     <td className="px-3 py-2">
                       <div className="font-semibold text-slate-900">
                         {r.name}
                       </div>
                     </td>
+
                     <td className="px-3 py-2 text-slate-800">{r.level}</td>
 
-                    {/* KIRIM WA */}
+                    <td className="px-3 py-2">
+                      {r.finalDecision === "LULUS" ? (
+                        <span className="inline-flex rounded-full border border-emerald-200 bg-emerald-50 px-2 py-0.5 text-[11px] font-semibold text-emerald-700">
+                          Lulus
+                        </span>
+                      ) : r.finalDecision === "TIDAK_LULUS" ? (
+                        <span className="inline-flex rounded-full border border-rose-200 bg-rose-50 px-2 py-0.5 text-[11px] font-semibold text-rose-700">
+                          Tidak Lulus
+                        </span>
+                      ) : (
+                        <span className="inline-flex rounded-full border border-slate-200 bg-slate-50 px-2 py-0.5 text-[11px] font-semibold text-slate-600">
+                          -
+                        </span>
+                      )}
+                    </td>
+
                     <td className="px-3 py-2 text-center">
                       {r.wa ? (
                         <button
@@ -461,7 +585,6 @@ export default function AdminWaKelulusanPage() {
                       )}
                     </td>
 
-                    {/* KETERANGAN */}
                     <td className="px-3 py-2">
                       {r.wa ? (
                         <div className="flex items-center gap-1 text-[11px]">
@@ -497,7 +620,3 @@ export default function AdminWaKelulusanPage() {
     </main>
   );
 }
-
-
-
-
