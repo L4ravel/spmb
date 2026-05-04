@@ -19,6 +19,7 @@ export const HIERARCHY = {
       values: [
         { value: "SMP Putra", label: "Putra" },
         { value: "SMP Putri", label: "Putri " },
+        { value: "SMP Putra Full Day", label: "Putra - Full Day" },
         { value: "SMP Putri Full Day", label: "Putri - Full Day" },
       ],
     },
