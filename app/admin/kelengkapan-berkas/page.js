@@ -35,6 +35,7 @@ const firebaseConfig = {
   messagingSenderId: process.env.NEXT_PUBLIC_FIREBASE_MESSAGING_SENDER_ID,
   appId: process.env.NEXT_PUBLIC_FIREBASE_APP_ID,
 };
+
 const app = getApps().length ? getApp() : initializeApp(firebaseConfig);
 const db = getFirestore(app);
 const storage = getStorage(app);
@@ -54,6 +55,36 @@ function cls(...parts) {
   return parts.filter(Boolean).join(" ");
 }
 
+function getTimeValue(value) {
+  if (!value) return 0;
+
+  if (typeof value?.toMillis === "function") {
+    return value.toMillis();
+  }
+
+  if (typeof value?.seconds === "number") {
+    return value.seconds * 1000;
+  }
+
+  const parsed = new Date(value).getTime();
+  return Number.isFinite(parsed) ? parsed : 0;
+}
+
+function formatDateTime(value) {
+  const ms = getTimeValue(value);
+  if (!ms) return "-";
+
+  return new Intl.DateTimeFormat("id-ID", {
+    day: "2-digit",
+    month: "short",
+    year: "numeric",
+    hour: "2-digit",
+    minute: "2-digit",
+    hour12: false,
+    timeZone: "Asia/Makassar",
+  }).format(new Date(ms));
+}
+
 export default function KelengkapanBerkasPage() {
   const [rows, setRows] = useState([]);
   const [loading, setLoading] = useState(true);
@@ -68,9 +99,10 @@ export default function KelengkapanBerkasPage() {
   const [viewerOpen, setViewerOpen] = useState(false);
   const [viewerNisn, setViewerNisn] = useState(null);
   const [viewerFileKey, setViewerFileKey] = useState(null);
-  const [viewerRotation, setViewerRotation] = useState(0); // derajat rotasi
-  const [viewerZoom, setViewerZoom] = useState(1); // skala zoom
-    const [uploadBusy, setUploadBusy] = useState(false);
+  const [viewerRotation, setViewerRotation] = useState(0);
+  const [viewerZoom, setViewerZoom] = useState(1);
+
+  const [uploadBusy, setUploadBusy] = useState(false);
   const fileInputRef = useRef(null);
 
   // Load semua dokumen ppdb sekali, lalu pagination & filter di client
@@ -80,11 +112,13 @@ export default function KelengkapanBerkasPage() {
     async function loadAll() {
       setLoading(true);
       setErrorMsg("");
+
       try {
         const snap = await getDocs(collection(db, "ppdb"));
         if (cancelled) return;
 
         const docs = [];
+
         snap.forEach((docSnap) => {
           const data = docSnap.data() || {};
           const nisn = data.nisn || docSnap.id;
@@ -98,6 +132,8 @@ export default function KelengkapanBerkasPage() {
             data.name ||
             "-";
 
+          const createdAtMs = getTimeValue(data.createdAt);
+
           docs.push({
             id: docSnap.id,
             nisn,
@@ -105,15 +141,21 @@ export default function KelengkapanBerkasPage() {
             waliWa,
             filesMeta,
             name,
+            createdAt: data.createdAt || null,
+            createdAtMs,
           });
         });
 
-        // urutkan biar stabil
+        // Urutan: yang lama daftar/upload di atas, yang baru di bawah
         docs.sort((a, b) => {
-          if (a.jenjang === b.jenjang) {
-            return String(a.nisn).localeCompare(String(b.nisn));
+          const timeA = Number(a.createdAtMs || 0);
+          const timeB = Number(b.createdAtMs || 0);
+
+          if (timeA !== timeB) {
+            return timeA - timeB;
           }
-          return String(a.jenjang).localeCompare(String(b.jenjang));
+
+          return String(a.nisn || "").localeCompare(String(b.nisn || ""));
         });
 
         setRows(docs);
@@ -145,8 +187,8 @@ export default function KelengkapanBerkasPage() {
       const s = search.trim().toLowerCase();
       out = out.filter(
         (r) =>
-          r.nisn.toLowerCase().includes(s) ||
-          (r.name || "").toLowerCase().includes(s)
+          String(r.nisn || "").toLowerCase().includes(s) ||
+          String(r.name || "").toLowerCase().includes(s)
       );
     }
 
@@ -173,9 +215,11 @@ export default function KelengkapanBerkasPage() {
   // Jenjang diambil dari Firestore (unique dari rows)
   const jenjangOptions = useMemo(() => {
     const set = new Set();
+
     rows.forEach((r) => {
       if (r.jenjang) set.add(r.jenjang);
     });
+
     return Array.from(set).sort();
   }, [rows]);
 
@@ -184,7 +228,7 @@ export default function KelengkapanBerkasPage() {
     [filteredRows, viewerNisn]
   );
 
-  // daftar key berkas untuk row yang sedang dibuka
+  // Daftar key berkas untuk row yang sedang dibuka
   const currentFileKeys = useMemo(() => {
     if (!currentViewerRow) return [];
     return Object.keys(currentViewerRow.filesMeta || {});
@@ -196,6 +240,7 @@ export default function KelengkapanBerkasPage() {
         setViewerFileKey(null);
         return;
       }
+
       if (!currentFileKeys.includes(viewerFileKey)) {
         setViewerFileKey(currentFileKeys[0]);
       }
@@ -207,18 +252,18 @@ export default function KelengkapanBerkasPage() {
       ? currentViewerRow.filesMeta[viewerFileKey]
       : null;
 
-   const handleReplaceFile = async (event) => {
+  const handleReplaceFile = async (event) => {
     const file = event.target.files?.[0];
     if (!file || !currentViewerRow || !viewerFileKey) return;
 
     setUploadBusy(true);
+
     try {
       const nisnForPath = currentViewerRow.nisn || currentViewerRow.id;
       const safeName = file.name.replace(/\s+/g, "_");
       const path = `ppdb/${nisnForPath}/${viewerFileKey}-${Date.now()}-${safeName}`;
       const storageRef = ref(storage, path);
 
-      // upload ke Storage
       await uploadBytes(storageRef, file);
       const url = await getDownloadURL(storageRef);
 
@@ -229,12 +274,10 @@ export default function KelengkapanBerkasPage() {
         url,
       };
 
-      // update field filesMeta.<key> di Firestore
       await updateDoc(doc(db, "ppdb", currentViewerRow.id), {
         [`filesMeta.${viewerFileKey}`]: newMeta,
       });
 
-      // sinkronkan ke state lokal
       setRows((prev) =>
         prev.map((r) =>
           r.id === currentViewerRow.id
@@ -257,10 +300,10 @@ export default function KelengkapanBerkasPage() {
     }
   };
 
-
   const onOpenViewer = (row) => {
     setViewerNisn(row.nisn);
     setViewerOpen(true);
+
     const keys = Object.keys(row.filesMeta || {});
     setViewerFileKey(keys[0] || null);
     setViewerRotation(0);
@@ -278,8 +321,10 @@ export default function KelengkapanBerkasPage() {
   // Next/Prev sekarang pindah antar BERKAS (fileMeta), bukan antar peserta
   const goFilePrev = () => {
     if (!currentFileKeys.length || !viewerFileKey) return;
+
     const idx = currentFileKeys.indexOf(viewerFileKey);
     if (idx <= 0) return;
+
     setViewerFileKey(currentFileKeys[idx - 1]);
     setViewerRotation(0);
     setViewerZoom(1);
@@ -287,28 +332,33 @@ export default function KelengkapanBerkasPage() {
 
   const goFileNext = () => {
     if (!currentFileKeys.length || !viewerFileKey) return;
+
     const idx = currentFileKeys.indexOf(viewerFileKey);
     if (idx === -1 || idx >= currentFileKeys.length - 1) return;
+
     setViewerFileKey(currentFileKeys[idx + 1]);
     setViewerRotation(0);
     setViewerZoom(1);
   };
 
   const zoomIn = () => {
-    setViewerZoom((z) => Math.min(3, z + 0.25)); // max 300%
+    setViewerZoom((z) => Math.min(3, z + 0.25));
   };
 
   const zoomOut = () => {
-    setViewerZoom((z) => Math.max(0.5, z - 0.25)); // min 50%
+    setViewerZoom((z) => Math.max(0.5, z - 0.25));
   };
 
   const openWhatsApp = (row) => {
     if (typeof window === "undefined") return;
+
     const phone = normalizePhone(row.waliWa);
+
     if (!phone) {
       alert("Nomor WhatsApp wali tidak tersedia.");
       return;
     }
+
     const text =
       "Bismillah.%0A%0APanitia SPMB Pondok As Sunnah Lombok mengecek kelengkapan berkas an. " +
       encodeURIComponent(row.name || "-") +
@@ -317,8 +367,10 @@ export default function KelengkapanBerkasPage() {
       "%2C%20" +
       encodeURIComponent(row.jenjang || "-") +
       ").";
+
     const url =
       "https://web.whatsapp.com/send?phone=" + phone + "&text=" + text;
+
     window.open(url, "_blank", "noopener,noreferrer");
   };
 
@@ -408,14 +460,18 @@ export default function KelengkapanBerkasPage() {
                   <th className="px-4 py-2 text-left font-medium">Nama</th>
                   <th className="px-4 py-2 text-left font-medium">Jenjang</th>
                   <th className="px-4 py-2 text-left font-medium">Berkas</th>
+                  <th className="px-4 py-2 text-left font-medium">
+                    Waktu Pendaftaran
+                  </th>
                   <th className="px-4 py-2 text-left font-medium">WhatsApp</th>
                 </tr>
               </thead>
+
               <tbody>
                 {loading ? (
                   <tr>
                     <td
-                      colSpan={6}
+                      colSpan={7}
                       className="px-4 py-10 text-center text-slate-500 text-sm"
                     >
                       <div className="inline-flex items-center gap-2">
@@ -427,7 +483,7 @@ export default function KelengkapanBerkasPage() {
                 ) : pageRows.length === 0 ? (
                   <tr>
                     <td
-                      colSpan={6}
+                      colSpan={7}
                       className="px-4 py-6 text-center text-slate-500 text-sm"
                     >
                       Tidak ada data untuk filter ini.
@@ -445,15 +501,19 @@ export default function KelengkapanBerkasPage() {
                       <td className="px-4 py-2 align-top text-xs text-slate-600">
                         {(page - 1) * pageSize + idx + 1}
                       </td>
+
                       <td className="px-4 py-2 align-top text-xs font-mono text-slate-800">
                         {row.nisn}
                       </td>
+
                       <td className="px-4 py-2 align-top text-xs text-slate-800">
                         {row.name || "-"}
                       </td>
+
                       <td className="px-4 py-2 align-top text-xs text-slate-700">
                         {row.jenjang || "-"}
                       </td>
+
                       <td className="px-4 py-2 align-top text-xs">
                         {Object.keys(row.filesMeta || {}).length === 0 ? (
                           <span className="inline-flex items-center rounded-full bg-slate-100 px-2.5 py-1 text-[11px] text-slate-500">
@@ -470,6 +530,11 @@ export default function KelengkapanBerkasPage() {
                           </button>
                         )}
                       </td>
+
+                      <td className="px-4 py-2 align-top text-xs text-slate-700 whitespace-nowrap">
+                        {formatDateTime(row.createdAt)}
+                      </td>
+
                       <td className="px-4 py-2 align-top text-xs">
                         {row.waliWa ? (
                           <button
@@ -496,14 +561,14 @@ export default function KelengkapanBerkasPage() {
           {/* Pagination */}
           <div className="px-4 py-3 border-t border-slate-100 flex flex-col gap-2 md:flex-row md:items-center md:justify-between">
             <div className="text-[11px] text-slate-500">
-              Menampilkan{" "}
-              <span className="font-semibold">{pageRows.length}</span> dari{" "}
-              <span className="font-semibold">{filteredRows.length}</span> data ·
-              Halaman{" "}
+              Menampilkan <span className="font-semibold">{pageRows.length}</span>{" "}
+              dari <span className="font-semibold">{filteredRows.length}</span>{" "}
+              data · Halaman{" "}
               <span className="font-semibold">
                 {page} / {totalPages}
               </span>
             </div>
+
             <div className="flex items-center justify-end gap-2">
               <button
                 type="button"
@@ -519,6 +584,7 @@ export default function KelengkapanBerkasPage() {
                 <ChevronLeft className="h-3 w-3" />
                 Prev
               </button>
+
               <button
                 type="button"
                 disabled={loading || page >= totalPages}
@@ -545,13 +611,14 @@ export default function KelengkapanBerkasPage() {
         <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/60">
           <div className="bg-white rounded-2xl shadow-2xl w-full max-w-5xl h-[90vh] flex flex-col overflow-hidden">
             <div className="flex items-center justify-between px-5 py-3 border-b border-slate-200">
-               <input
-              ref={fileInputRef}
-              type="file"
-              accept="application/pdf,image/*"
-              className="hidden"
-              onChange={handleReplaceFile}
-            />
+              <input
+                ref={fileInputRef}
+                type="file"
+                accept="application/pdf,image/*"
+                className="hidden"
+                onChange={handleReplaceFile}
+              />
+
               <div className="min-w-0">
                 <div className="text-xs font-mono text-slate-500">
                   {currentViewerRow.nisn}
@@ -565,7 +632,6 @@ export default function KelengkapanBerkasPage() {
               </div>
 
               <div className="flex flex-wrap items-center gap-2 justify-end">
-                {/* Prev / Next berkas */}
                 <button
                   type="button"
                   onClick={goFilePrev}
@@ -605,7 +671,6 @@ export default function KelengkapanBerkasPage() {
                   <ChevronRight className="h-3 w-3" />
                 </button>
 
-                {/* Rotasi kiri / kanan */}
                 <button
                   type="button"
                   onClick={() =>
@@ -625,9 +690,7 @@ export default function KelengkapanBerkasPage() {
 
                 <button
                   type="button"
-                  onClick={() =>
-                    setViewerRotation((r) => (r + 90) % 360)
-                  }
+                  onClick={() => setViewerRotation((r) => (r + 90) % 360)}
                   disabled={!currentFileMeta}
                   className={cls(
                     "inline-flex items-center gap-1 rounded-full border px-2.5 py-1.5 text-[11px]",
@@ -640,7 +703,6 @@ export default function KelengkapanBerkasPage() {
                   Rotasi Kanan
                 </button>
 
-                {/* Zoom out / in */}
                 <button
                   type="button"
                   onClick={zoomOut}
@@ -671,7 +733,6 @@ export default function KelengkapanBerkasPage() {
                   Zoom In
                 </button>
 
-                  {/* Ganti berkas */}
                 <button
                   type="button"
                   onClick={() => fileInputRef.current?.click()}
@@ -696,7 +757,6 @@ export default function KelengkapanBerkasPage() {
                   )}
                 </button>
 
-                {/* Buka tab lain */}
                 {currentFileMeta?.url && (
                   <a
                     href={currentFileMeta.url}
@@ -774,8 +834,8 @@ export default function KelengkapanBerkasPage() {
                           rel="noreferrer"
                           className="text-sm text-violet-700 hover:underline"
                         >
-                          Format berkas tidak bisa dipreview. Klik untuk
-                          membuka di tab baru.
+                          Format berkas tidak bisa dipreview. Klik untuk membuka
+                          di tab baru.
                         </a>
                       </div>
                     )}
