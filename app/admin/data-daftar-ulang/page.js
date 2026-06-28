@@ -24,7 +24,7 @@ import {
   Rows,
   Download,
 } from "lucide-react";
-import * as XLSX from "xlsx";
+import * as XLSX from "xlsx-js-style";
 
 const firebaseConfig = {
   apiKey: process.env.NEXT_PUBLIC_FIREBASE_API_KEY,
@@ -63,6 +63,28 @@ function formatDateTime(ms) {
   }
 }
 
+function formatDateOnly(value) {
+  if (!value) return "";
+
+  try {
+    const date = value?.toDate
+      ? value.toDate()
+      : value instanceof Date
+      ? value
+      : new Date(value);
+
+    if (Number.isNaN(date.getTime())) return String(value || "").trim();
+
+    return date.toLocaleDateString("id-ID", {
+      day: "2-digit",
+      month: "2-digit",
+      year: "numeric",
+    });
+  } catch {
+    return String(value || "").trim();
+  }
+}
+
 function normalizeStatus(pLike) {
   try {
     const raw =
@@ -98,6 +120,103 @@ function isPpsJenjang(jenjang) {
     j.includes("pps wustho") ||
     j.includes("pps ulya")
   );
+}
+
+function makeSafeSheetName(value, fallback = "Sheet") {
+  const clean = String(value || fallback)
+    .replace(/[\\/?*[\]:]/g, " ")
+    .replace(/\s+/g, " ")
+    .trim();
+
+  return (clean || fallback).slice(0, 31);
+}
+
+function makeUniqueSheetName(wb, rawName) {
+  const base = makeSafeSheetName(rawName);
+  let name = base;
+  let i = 2;
+
+  while (wb.SheetNames.includes(name)) {
+    const suffix = ` ${i}`;
+    name = `${base.slice(0, 31 - suffix.length)}${suffix}`;
+    i += 1;
+  }
+
+  return name;
+}
+
+function groupRowsByLevel(data) {
+  const map = new Map();
+
+  data.forEach((row) => {
+    const level = row.level || "Tanpa Jenjang";
+
+    if (!map.has(level)) {
+      map.set(level, []);
+    }
+
+    map.get(level).push(row);
+  });
+
+  return Array.from(map.entries()).sort(([a], [b]) => a.localeCompare(b, "id"));
+}
+
+function applyExcelStyle(ws, rowCount, colCount) {
+  if (!ws || rowCount <= 0 || colCount <= 0) return;
+
+  const thinBorder = {
+    top: { style: "thin", color: { rgb: "94A3B8" } },
+    bottom: { style: "thin", color: { rgb: "94A3B8" } },
+    left: { style: "thin", color: { rgb: "94A3B8" } },
+    right: { style: "thin", color: { rgb: "94A3B8" } },
+  };
+
+  for (let r = 0; r < rowCount; r += 1) {
+    for (let c = 0; c < colCount; c += 1) {
+      const cellRef = XLSX.utils.encode_cell({ r, c });
+
+      if (!ws[cellRef]) {
+        ws[cellRef] = { t: "s", v: "" };
+      }
+
+      ws[cellRef].s = {
+        border: thinBorder,
+        alignment: {
+          vertical: "center",
+          horizontal: r === 0 ? "center" : c === 0 ? "center" : "left",
+          wrapText: true,
+        },
+        font: {
+          name: "Arial",
+          sz: 10,
+          bold: r === 0,
+          color: { rgb: r === 0 ? "0F172A" : "111827" },
+        },
+        fill:
+          r === 0
+            ? {
+                patternType: "solid",
+                fgColor: { rgb: "E2E8F0" },
+              }
+            : undefined,
+      };
+    }
+  }
+
+  ws["!freeze"] = { xSplit: 0, ySplit: 1 };
+  ws["!autofilter"] = {
+    ref: XLSX.utils.encode_range({
+      s: { r: 0, c: 0 },
+      e: { r: Math.max(0, rowCount - 1), c: Math.max(0, colCount - 1) },
+    }),
+  };
+}
+
+function appendStyledSheet(wb, sheetName, sheetData, colWidths) {
+  const ws = XLSX.utils.aoa_to_sheet(sheetData);
+  ws["!cols"] = colWidths;
+  applyExcelStyle(ws, sheetData.length, sheetData[0]?.length || 0);
+  XLSX.utils.book_append_sheet(wb, ws, makeUniqueSheetName(wb, sheetName));
 }
 
 function StatCard({ icon: Icon, label, value, helper, onClick, active }) {
@@ -511,6 +630,8 @@ export default function AdminDataDaftarUlangPage() {
           const waliWa = (ppdbData.waliWa || "").toString().trim();
           const ayahNama = (ppdbData.ayahNama || "").toString().trim();
           const ibuNama = (ppdbData.ibuNama || "").toString().trim();
+          const tempatLahir = (ppdbData.tempatLahir || "").toString().trim();
+          const tglLahir = formatDateOnly(ppdbData.tglLahir);
 
           const ayahIncomeRaw = (ppdbData.ayahIncome ?? "").toString().trim();
 
@@ -609,6 +730,8 @@ export default function AdminDataDaftarUlangPage() {
             name,
             ayahNama,
             ibuNama,
+            tempatLahir,
+            tglLahir,
             level,
             jalur,
             phone,
@@ -720,23 +843,23 @@ export default function AdminDataDaftarUlangPage() {
     return out;
   }, [rows, search, filterJalur, filterLevel, filterStatus]);
 
-const isShowAll = pageSize === "ALL";
+  const isShowAll = pageSize === "ALL";
 
-const totalPages = useMemo(() => {
-  if (isShowAll) return 1;
-  return Math.max(1, Math.ceil(filteredRows.length / Number(pageSize)));
-}, [filteredRows.length, pageSize, isShowAll]);
+  const totalPages = useMemo(() => {
+    if (isShowAll) return 1;
+    return Math.max(1, Math.ceil(filteredRows.length / Number(pageSize)));
+  }, [filteredRows.length, pageSize, isShowAll]);
 
-const pageSafe = isShowAll ? 1 : Math.min(page, totalPages);
+  const pageSafe = isShowAll ? 1 : Math.min(page, totalPages);
 
-const paginatedRows = useMemo(() => {
-  if (isShowAll) return filteredRows;
+  const paginatedRows = useMemo(() => {
+    if (isShowAll) return filteredRows;
 
-  const start = (pageSafe - 1) * Number(pageSize);
-  return filteredRows.slice(start, start + Number(pageSize));
-}, [filteredRows, pageSafe, pageSize, isShowAll]);
+    const start = (pageSafe - 1) * Number(pageSize);
+    return filteredRows.slice(start, start + Number(pageSize));
+  }, [filteredRows, pageSafe, pageSize, isShowAll]);
 
-const rowIndexStart = isShowAll ? 0 : (pageSafe - 1) * Number(pageSize);
+  const rowIndexStart = isShowAll ? 0 : (pageSafe - 1) * Number(pageSize);
 
   const levelOptions = useMemo(() => {
     const set = new Set();
@@ -748,58 +871,43 @@ const rowIndexStart = isShowAll ? 0 : (pageSafe - 1) * Number(pageSize);
     return Array.from(set).sort((a, b) => a.localeCompare(b, "id"));
   }, [rows]);
 
-  const buildSummarySheetData = (data) => {
+  const buildSimpleSheetData = (data) => {
     const header = [
-      "NISN",
+      "No",
       "Nama",
+      "Jenjang",
+      "Tempat Lahir",
+      "Tanggal Lahir",
       "Nama Ayah",
       "Nama Ibu",
-      "Jenjang",
-      "Jalur",
-      "Tagihan Awal",
-      "Potongan",
-      "Keterangan Potongan",
-      "Tagihan Net",
-      "Terbayar",
-      "Sisa",
-      "Status",
-      "Bukti",
-      "Pertama Bayar",
+      "Nomor HP/Wali",
     ];
 
-    const rows = data.map((r) => {
-      const totalAwalNum = Number(r.totalAwal || 0) || 0;
-      const totalPaidNum = Number(r.totalPaid || 0) || 0;
+    const body = data.map((r, idx) => [
+      idx + 1,
+      r.name || "",
+      r.level || "",
+      r.tempatLahir || "",
+      r.tglLahir || "",
+      r.ayahNama || "",
+      r.ibuNama || "",
+      r.waliWa || r.phone || "",
+    ]);
 
-      return [
-        r.nisn,
-        r.name,
-        r.ayahNama || "",
-        r.ibuNama || "",
-        r.level,
-        r.jalur || "",
-        totalAwalNum,
-        Number(r.totalDisc || 0) || 0,
-        r.discountLabel || "",
-        Number(r.netTagihan || 0) || 0,
-        totalPaidNum,
-        Number(r.sisa || 0) || 0,
-        r.statusDaftarUlang,
-        r.buktiCount || 0,
-        formatDateTime(r.firstPaidAt),
-      ];
-    });
-
-    return [header, ...rows];
+    return [header, ...body];
   };
 
-  const buildComponentSheetData = (data) => {
+  const buildFullSheetData = (data) => {
     const header = [
+      "No",
       "NISN",
       "Nama",
+      "Jenjang",
+      "Tempat Lahir",
+      "Tanggal Lahir",
       "Nama Ayah",
       "Nama Ibu",
-      "Jenjang",
+      "Nomor HP/Wali",
       "Jalur",
       "Keterangan Potongan",
       "SPP",
@@ -809,12 +917,20 @@ const rowIndexStart = isShowAll ? 0 : (pageSafe - 1) * Number(pageSize);
       "Kitab",
       "BP3",
       "Total Uang Pangkal",
-      "Total Dibayar (SPP+Pangkal)",
-      "Jumlah Dibayar (Approved)",
-      "Perlu Dibayar Lagi",
+      "Tagihan Awal",
+      "Potongan PTK",
+      "Potongan Non-PTK",
+      "Total Potongan",
+      "Tagihan Net",
+      "Terbayar",
+      "Sisa",
+      "Status",
+      "Jumlah Bukti",
+      "Pertama Bayar",
+      "Terakhir Bayar",
     ];
 
-    const rows = data.map((r) => {
+    const body = data.map((r, idx) => {
       const pk = r.pangkalComponents || {};
 
       const getPkValNum = (key) => {
@@ -822,100 +938,115 @@ const rowIndexStart = isShowAll ? 0 : (pageSafe - 1) * Number(pageSize);
         return Number.isFinite(val) ? val : 0;
       };
 
-      const baseSPPNum = Number(r.baseSPP || 0) || 0;
-      const totalPangkalNum = Number(r.totalPangkal || 0) || 0;
-      const totalAll = baseSPPNum + totalPangkalNum;
-      const totalPaidNum = Number(r.totalPaid || 0) || 0;
-      const perluNum = Math.max(0, totalAll - totalPaidNum);
-
       return [
-        r.nisn,
-        r.name,
+        idx + 1,
+        r.nisn || "",
+        r.name || "",
+        r.level || "",
+        r.tempatLahir || "",
+        r.tglLahir || "",
         r.ayahNama || "",
         r.ibuNama || "",
-        r.level,
+        r.waliWa || r.phone || "",
         r.jalur || "",
         r.discountLabel || "",
-        baseSPPNum,
+        Number(r.baseSPP || 0) || 0,
         getPkValNum("pakaian"),
         getPkValNum("sarpras"),
         getPkValNum("kasur"),
         getPkValNum("kitab"),
         getPkValNum("bp3"),
-        totalPangkalNum,
-        totalAll,
-        totalPaidNum,
-        perluNum,
+        Number(r.totalPangkal || 0) || 0,
+        Number(r.totalAwal || 0) || 0,
+        Number(r.discPTK || 0) || 0,
+        Number(r.discNonPTK || 0) || 0,
+        Number(r.totalDisc || 0) || 0,
+        Number(r.netTagihan || 0) || 0,
+        Number(r.totalPaid || 0) || 0,
+        Number(r.sisa || 0) || 0,
+        r.statusDaftarUlang || "",
+        r.buktiCount || 0,
+        formatDateTime(r.firstPaidAt),
+        formatDateTime(r.lastPaidAt),
       ];
     });
 
-    return [header, ...rows];
+    return [header, ...body];
   };
 
-  const handleDownloadXls = () => {
+  const handleDownloadSimpleXls = () => {
     if (!filteredRows.length) return;
 
     const ts = new Date().toISOString().slice(0, 10);
     const wb = XLSX.utils.book_new();
+    const grouped = groupRowsByLevel(filteredRows);
 
-    let sheetData;
-    let sheetName;
+    const colWidths = [
+      { wch: 6 },
+      { wch: 34 },
+      { wch: 26 },
+      { wch: 22 },
+      { wch: 16 },
+      { wch: 30 },
+      { wch: 30 },
+      { wch: 22 },
+    ];
 
-    if (viewMode === "SUMMARY") {
-      sheetData = buildSummarySheetData(filteredRows);
-      sheetName = "Rekap";
-    } else {
-      sheetData = buildComponentSheetData(filteredRows);
-      sheetName = "Komponen";
-    }
+    grouped.forEach(([level, data]) => {
+      appendStyledSheet(wb, level, buildSimpleSheetData(data), colWidths);
+    });
 
-    const ws = XLSX.utils.aoa_to_sheet(sheetData);
+    XLSX.writeFile(wb, `data-daftar-ulang-ringkas-${ts}.xlsx`, {
+      bookType: "xlsx",
+    });
+  };
 
-    const colWidths =
-      viewMode === "SUMMARY"
-        ? [
-            { wch: 18 },
-            { wch: 32 },
-            { wch: 32 },
-            { wch: 32 },
-            { wch: 22 },
-            { wch: 14 },
-            { wch: 16 },
-            { wch: 16 },
-            { wch: 24 },
-            { wch: 16 },
-            { wch: 16 },
-            { wch: 16 },
-            { wch: 16 },
-            { wch: 10 },
-            { wch: 20 },
-          ]
-        : [
-            { wch: 18 },
-            { wch: 32 },
-            { wch: 32 },
-            { wch: 32 },
-            { wch: 22 },
-            { wch: 14 },
-            { wch: 24 },
-            { wch: 14 },
-            { wch: 14 },
-            { wch: 14 },
-            { wch: 14 },
-            { wch: 14 },
-            { wch: 14 },
-            { wch: 20 },
-            { wch: 24 },
-            { wch: 24 },
-            { wch: 20 },
-          ];
+  const handleDownloadFullXls = () => {
+    if (!filteredRows.length) return;
 
-    ws["!cols"] = colWidths;
+    const ts = new Date().toISOString().slice(0, 10);
+    const wb = XLSX.utils.book_new();
+    const grouped = groupRowsByLevel(filteredRows);
 
-    XLSX.utils.book_append_sheet(wb, ws, sheetName);
+    const colWidths = [
+      { wch: 6 },
+      { wch: 18 },
+      { wch: 34 },
+      { wch: 26 },
+      { wch: 22 },
+      { wch: 16 },
+      { wch: 30 },
+      { wch: 30 },
+      { wch: 22 },
+      { wch: 14 },
+      { wch: 26 },
+      { wch: 14 },
+      { wch: 14 },
+      { wch: 14 },
+      { wch: 14 },
+      { wch: 14 },
+      { wch: 14 },
+      { wch: 20 },
+      { wch: 18 },
+      { wch: 18 },
+      { wch: 20 },
+      { wch: 18 },
+      { wch: 18 },
+      { wch: 18 },
+      { wch: 18 },
+      { wch: 16 },
+      { wch: 14 },
+      { wch: 20 },
+      { wch: 20 },
+    ];
 
-    const filename = `data-daftar-ulang-${viewMode.toLowerCase()}-${ts}.xlsx`;
-    XLSX.writeFile(wb, filename, { bookType: "xlsx" });
+    grouped.forEach(([level, data]) => {
+      appendStyledSheet(wb, level, buildFullSheetData(data), colWidths);
+    });
+
+    XLSX.writeFile(wb, `data-daftar-ulang-lengkap-${ts}.xlsx`, {
+      bookType: "xlsx",
+    });
   };
 
   return (
@@ -992,6 +1123,7 @@ const rowIndexStart = isShowAll ? 0 : (pageSafe - 1) * Number(pageSize);
           <div className="flex flex-col gap-2 md:flex-row md:items-center md:gap-3">
             <div className="flex items-center gap-1 rounded-lg border border-slate-200 bg-slate-50 px-2">
               <Search className="h-3.5 w-3.5 text-slate-500" />
+
               <input
                 value={search}
                 onChange={(e) => {
@@ -1050,20 +1182,20 @@ const rowIndexStart = isShowAll ? 0 : (pageSafe - 1) * Number(pageSize);
               </select>
 
               <select
-  value={pageSize}
-  onChange={(e) => {
-    const value = e.target.value;
-    setPageSize(value === "ALL" ? "ALL" : Number(value));
-    setPage(1);
-  }}
-  className="rounded-lg border border-slate-200 bg-white px-2 py-1 text-xs text-slate-900"
->
-  {PAGE_SIZES.map((n) => (
-    <option key={n} value={n}>
-      {n === "ALL" ? "Semua" : n}
-    </option>
-  ))}
-</select>
+                value={pageSize}
+                onChange={(e) => {
+                  const value = e.target.value;
+                  setPageSize(value === "ALL" ? "ALL" : Number(value));
+                  setPage(1);
+                }}
+                className="rounded-lg border border-slate-200 bg-white px-2 py-1 text-xs text-slate-900"
+              >
+                {PAGE_SIZES.map((n) => (
+                  <option key={n} value={n}>
+                    {n === "ALL" ? "Semua" : n}
+                  </option>
+                ))}
+              </select>
             </div>
 
             <div className="inline-flex rounded-lg border border-slate-200 bg-slate-50 overflow-hidden text-xs">
@@ -1094,14 +1226,25 @@ const rowIndexStart = isShowAll ? 0 : (pageSafe - 1) * Number(pageSize);
               </button>
             </div>
 
-            <button
-              type="button"
-              onClick={handleDownloadXls}
-              className="inline-flex items-center gap-1 rounded-lg border border-emerald-500 bg-emerald-600 px-3 py-1.5 text-xs font-semibold text-white hover:bg-emerald-700"
-            >
-              <Download className="h-3.5 w-3.5" />
-              Download .xls
-            </button>
+            <div className="flex items-center gap-2">
+              <button
+                type="button"
+                onClick={handleDownloadSimpleXls}
+                className="inline-flex items-center gap-1 rounded-lg border border-sky-500 bg-sky-600 px-3 py-1.5 text-xs font-semibold text-white hover:bg-sky-700"
+              >
+                <Download className="h-3.5 w-3.5" />
+                Excel Ringkas
+              </button>
+
+              <button
+                type="button"
+                onClick={handleDownloadFullXls}
+                className="inline-flex items-center gap-1 rounded-lg border border-emerald-500 bg-emerald-600 px-3 py-1.5 text-xs font-semibold text-white hover:bg-emerald-700"
+              >
+                <Download className="h-3.5 w-3.5" />
+                Excel Lengkap
+              </button>
+            </div>
           </div>
         </div>
 
@@ -1180,6 +1323,20 @@ const rowIndexStart = isShowAll ? 0 : (pageSafe - 1) * Number(pageSize);
                         {r.phone ? (
                           <div className="text-[11px] text-slate-500">
                             {r.phone}
+                          </div>
+                        ) : null}
+
+                        {(r.tempatLahir || r.tglLahir) && (
+                          <div className="text-[11px] text-slate-500">
+                            TTL: {[r.tempatLahir, r.tglLahir]
+                              .filter(Boolean)
+                              .join(", ")}
+                          </div>
+                        )}
+
+                        {r.waliWa ? (
+                          <div className="text-[11px] text-slate-500">
+                            Wali: {r.waliWa}
                           </div>
                         ) : null}
                       </td>
@@ -1266,9 +1423,9 @@ const rowIndexStart = isShowAll ? 0 : (pageSafe - 1) * Number(pageSize);
                             return (
                               <a
                                 href={`https://web.whatsapp.com/send?phone=${waNumber}&text=${encodeURIComponent(
-                                  `Bismillah..\n\nDiberitahukan kepada Yth. Wali Santri dari *${r.name}*, bahwa proses *daftar ulang* masih *belum diselesaikan*.\n\nJumlah daftar ulang yang perlu diselesaikan: *${fmtIDR(
-                                    r.sisa
-                                  )}*.\n\nBatas akhir pembayaran adalah *25 April 2026*. Setelah tanggal tersebut, bagi yang tidak melakukan pembayaran, data akan dihapus oleh sistem dan dianggap mengundurkan diri.\n\nUntuk informasi lebih lanjut, silakan menghubungi panitia di nomor *0877 2024 2025*.\n\nTerima kasih atas perhatian dan kerja samanya.\nSyukron jazakumullahu khairan.\n\n— Panitia SPMB`
+                                  `Bismillah..\n\nDiberitahukan kepada Yth. Bapak/Ibu Wali Santri dari *${r.name}*, bahwa proses *daftar ulang* ananda masih *belum diselesaikan*.\n\nAdapun sisa pembayaran daftar ulang yang perlu dilunasi adalah sebesar *${fmtIDR(
+  r.sisa
+)}*.\n\nKami berharap Bapak/Ibu dapat melakukan pelunasan sebelum kedatangan santri, agar proses administrasi dan penerimaan ananda dapat berjalan dengan baik dan lancar.\n\nUntuk informasi lebih lanjut, silakan menghubungi panitia di nomor *0877 2024 2025*.\n\nTerima kasih atas perhatian dan kerja samanya.\nSyukron jazakumullahu khairan.\n\n— Panitia SPMB`
                                 )}`}
                                 target="_blank"
                                 rel="noopener noreferrer"
@@ -1368,6 +1525,20 @@ const rowIndexStart = isShowAll ? 0 : (pageSafe - 1) * Number(pageSize);
                           {r.phone ? (
                             <div className="text-[11px] text-slate-500">
                               {r.phone}
+                            </div>
+                          ) : null}
+
+                          {(r.tempatLahir || r.tglLahir) && (
+                            <div className="text-[11px] text-slate-500">
+                              TTL: {[r.tempatLahir, r.tglLahir]
+                                .filter(Boolean)
+                                .join(", ")}
+                            </div>
+                          )}
+
+                          {r.waliWa ? (
+                            <div className="text-[11px] text-slate-500">
+                              Wali: {r.waliWa}
                             </div>
                           ) : null}
                         </td>
