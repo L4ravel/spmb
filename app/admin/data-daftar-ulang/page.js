@@ -122,6 +122,36 @@ function isPpsJenjang(jenjang) {
   );
 }
 
+function normalizeText(value) {
+  return String(value || "").trim();
+}
+
+function normalizeName(value) {
+  return String(value || "")
+    .trim()
+    .toLowerCase()
+    .replace(/\s+/g, " ");
+}
+
+function sortRowsAZ(data) {
+  return [...data].sort((a, b) => {
+    const nameCompare = normalizeName(a.name).localeCompare(
+      normalizeName(b.name),
+      "id",
+      {
+        sensitivity: "base",
+        numeric: true,
+      }
+    );
+
+    if (nameCompare !== 0) return nameCompare;
+
+    return String(a.nisn || "").localeCompare(String(b.nisn || ""), "id", {
+      numeric: true,
+    });
+  });
+}
+
 function makeSafeSheetName(value, fallback = "Sheet") {
   const clean = String(value || fallback)
     .replace(/[\\/?*[\]:]/g, " ")
@@ -219,6 +249,17 @@ function appendStyledSheet(wb, sheetName, sheetData, colWidths) {
   XLSX.utils.book_append_sheet(wb, ws, makeUniqueSheetName(wb, sheetName));
 }
 
+function normalizeWaNumber(raw) {
+  if (!raw) return "";
+
+  let n = raw.toString().replace(/\D/g, "");
+
+  if (n.startsWith("0")) n = "62" + n.slice(1);
+  if (!n.startsWith("62")) n = "62" + n;
+
+  return n;
+}
+
 function StatCard({ icon: Icon, label, value, helper, onClick, active }) {
   return (
     <button
@@ -255,6 +296,119 @@ function StatCard({ icon: Icon, label, value, helper, onClick, active }) {
   );
 }
 
+function DownloadLevelModal({
+  open,
+  type,
+  levels,
+  selectedLevels,
+  includeAllSheet,
+  onToggleLevel,
+  onToggleAllLevels,
+  onToggleIncludeAllSheet,
+  onClose,
+  onDownload,
+}) {
+  if (!open) return null;
+
+  const allLevelsChecked =
+    levels.length > 0 && selectedLevels.length === levels.length;
+
+  return (
+    <div className="fixed inset-0 z-[100] flex items-center justify-center bg-slate-950/50 p-4">
+      <div className="w-full max-w-lg rounded-2xl border border-slate-200 bg-white shadow-xl">
+        <div className="border-b border-slate-200 px-4 py-3">
+          <h2 className="text-sm font-bold text-slate-900">
+            Download Excel {type === "SIMPLE" ? "Ringkas" : "Lengkap"}
+          </h2>
+          <p className="mt-0.5 text-xs text-slate-500">
+            Centang jenjang yang ingin dibuat menjadi sheet Excel.
+          </p>
+        </div>
+
+        <div className="max-h-[65vh] overflow-y-auto p-4 space-y-3">
+          <label className="flex cursor-pointer items-start gap-2 rounded-xl border border-slate-200 bg-slate-50 p-3 text-sm text-slate-800">
+            <input
+              type="checkbox"
+              checked={allLevelsChecked}
+              onChange={onToggleAllLevels}
+              className="mt-0.5 h-4 w-4 rounded border-slate-300"
+            />
+
+            <span>
+              <span className="block font-semibold">Pilih semua jenjang</span>
+              <span className="block text-xs text-slate-500">
+                Semua jenjang dibuat per sheet sesuai nama jenjangnya.
+              </span>
+            </span>
+          </label>
+
+          <label className="flex cursor-pointer items-start gap-2 rounded-xl border border-emerald-200 bg-emerald-50 p-3 text-sm text-emerald-900">
+            <input
+              type="checkbox"
+              checked={includeAllSheet}
+              onChange={onToggleIncludeAllSheet}
+              className="mt-0.5 h-4 w-4 rounded border-emerald-300"
+            />
+
+            <span>
+              <span className="block font-semibold">
+                Tambahkan sheet Semua Jenjang
+              </span>
+              <span className="block text-xs text-emerald-700">
+                Semua jenjang digabung dalam 1 sheet tambahan.
+              </span>
+            </span>
+          </label>
+
+          <div className="grid grid-cols-1 gap-2 md:grid-cols-2">
+            {levels.map((level) => (
+              <label
+                key={level}
+                className="flex cursor-pointer items-center gap-2 rounded-xl border border-slate-200 p-3 text-sm text-slate-800 hover:bg-slate-50"
+              >
+                <input
+                  type="checkbox"
+                  checked={selectedLevels.includes(level)}
+                  onChange={() => onToggleLevel(level)}
+                  className="h-4 w-4 rounded border-slate-300"
+                />
+
+                <span className="font-medium">{level}</span>
+              </label>
+            ))}
+          </div>
+
+          {!levels.length ? (
+            <div className="rounded-xl border border-amber-200 bg-amber-50 p-3 text-xs text-amber-800">
+              Tidak ada jenjang yang cocok dengan filter saat ini.
+            </div>
+          ) : null}
+        </div>
+
+        <div className="flex items-center justify-end gap-2 border-t border-slate-200 px-4 py-3">
+          <button
+            type="button"
+            onClick={onClose}
+            className="rounded-lg border border-slate-200 bg-white px-3 py-1.5 text-xs font-semibold text-slate-700 hover:bg-slate-50"
+          >
+            Batal
+          </button>
+
+          <button
+            type="button"
+            onClick={onDownload}
+            disabled={!includeAllSheet && selectedLevels.length === 0}
+            className="inline-flex items-center gap-1 rounded-lg border border-emerald-500 bg-emerald-600 px-3 py-1.5 text-xs font-semibold text-white hover:bg-emerald-700 disabled:cursor-not-allowed disabled:opacity-50"
+          >
+            <Download className="h-3.5 w-3.5" />
+            Download
+          </button>
+        </div>
+      </div>
+    </div>
+  );
+}
+
 export default function AdminDataDaftarUlangPage() {
   const [rows, setRows] = useState([]);
   const [stats, setStats] = useState({
@@ -279,148 +433,9 @@ export default function AdminDataDaftarUlangPage() {
   const [filterLevel, setFilterLevel] = useState("ALL");
   const [sentWA, setSentWA] = useState({});
 
-  function normalizeWaNumber(raw) {
-    if (!raw) return "";
-
-    let n = raw.toString().replace(/\D/g, "");
-
-    if (n.startsWith("0")) n = "62" + n.slice(1);
-    if (!n.startsWith("62")) n = "62" + n;
-
-    return n;
-  }
-
-  const scopedStats = useMemo(() => {
-    let base = [...rows];
-
-    if (search.trim()) {
-      const s = search.trim().toLowerCase();
-      base = base.filter(
-        (r) =>
-          r.nisn.toLowerCase().includes(s) ||
-          r.name.toLowerCase().includes(s) ||
-          r.level.toLowerCase().includes(s)
-      );
-    }
-
-    if (filterJalur === "PTK") {
-      base = base.filter((r) => r.jalur === "PTK");
-    } else if (filterJalur === "NON_PTK") {
-      base = base.filter((r) => (r.jalur || "") !== "PTK");
-    } else if (filterJalur === "NON_PTK_DISC") {
-      base = base.filter(
-        (r) =>
-          (r.jalur || "") !== "PTK" && (Number(r.discNonPTK || 0) || 0) > 0
-      );
-    }
-
-    if (filterLevel !== "ALL") {
-      base = base.filter((r) => r.level === filterLevel);
-    }
-
-    if (filterStatus !== "ALL") {
-      base = base.filter((r) => r.statusDaftarUlang === filterStatus);
-    }
-
-    let filtered = base;
-
-    if (statScope === "PTK") {
-      filtered = base.filter((r) => r.jalur === "PTK");
-    } else if (statScope === "NON_PTK") {
-      filtered = base.filter((r) => (r.jalur || "") !== "PTK");
-    }
-
-    const totalTagihanNet = filtered.reduce(
-      (sum, r) => sum + (Number(r.netTagihan || 0) || 0),
-      0
-    );
-
-    const totalPaid = filtered.reduce(
-      (sum, r) => sum + (Number(r.totalPaid || 0) || 0),
-      0
-    );
-
-    const totalSisa = filtered.reduce(
-      (sum, r) => sum + (Number(r.sisa || 0) || 0),
-      0
-    );
-
-    return {
-      participants: filtered.length,
-      totalTagihanNet,
-      totalPaid,
-      totalSisa,
-    };
-  }, [rows, statScope, search, filterJalur, filterLevel, filterStatus]);
-
-  const discountValue = useMemo(() => {
-    let base = [...rows];
-
-    if (search.trim()) {
-      const s = search.trim().toLowerCase();
-      base = base.filter(
-        (r) =>
-          r.nisn.toLowerCase().includes(s) ||
-          r.name.toLowerCase().includes(s) ||
-          r.level.toLowerCase().includes(s)
-      );
-    }
-
-    if (filterJalur === "PTK") {
-      base = base.filter((r) => r.jalur === "PTK");
-    } else if (filterJalur === "NON_PTK") {
-      base = base.filter((r) => (r.jalur || "") !== "PTK");
-    } else if (filterJalur === "NON_PTK_DISC") {
-      base = base.filter(
-        (r) =>
-          (r.jalur || "") !== "PTK" && (Number(r.discNonPTK || 0) || 0) > 0
-      );
-    }
-
-    if (filterLevel !== "ALL") {
-      base = base.filter((r) => r.level === filterLevel);
-    }
-
-    if (filterStatus !== "ALL") {
-      base = base.filter((r) => r.statusDaftarUlang === filterStatus);
-    }
-
-    let totalPTK = 0;
-    let totalNonPTK = 0;
-
-    base.forEach((r) => {
-      totalPTK += Number(r.discPTK || 0) || 0;
-      totalNonPTK += Number(r.discNonPTK || 0) || 0;
-    });
-
-    if (statScope === "ALL") {
-      return fmtIDR(totalPTK + totalNonPTK);
-    }
-
-    if (statScope === "PTK") {
-      return fmtIDR(totalPTK);
-    }
-
-    if (statScope === "NON_PTK") {
-      return fmtIDR(totalNonPTK);
-    }
-
-    return "-";
-  }, [rows, search, filterJalur, filterLevel, filterStatus, statScope]);
-
-  const discountHelper = useMemo(() => {
-    if (statScope === "ALL") return "Kiri: PTK · Kanan: Non-PTK";
-    if (statScope === "PTK") return "Diskon jalur PTK";
-    if (statScope === "NON_PTK") return "Diskon jalur Non-PTK";
-    return "";
-  }, [statScope]);
-
-  const scopeLabelSuffix =
-    statScope === "ALL"
-      ? " (Semua Jalur)"
-      : statScope === "PTK"
-      ? " (PTK)"
-      : " (Non-PTK)";
+  const [downloadModalType, setDownloadModalType] = useState(null);
+  const [selectedDownloadLevels, setSelectedDownloadLevels] = useState([]);
+  const [includeAllDownloadSheet, setIncludeAllDownloadSheet] = useState(false);
 
   const handleToggleStatScope = () => {
     setStatScope((prev) =>
@@ -437,7 +452,10 @@ export default function AdminDataDaftarUlangPage() {
 
       try {
         const finalSnap = await getDocs(
-          query(collection(db, "users_app"), where("finalDecision", "==", "LULUS"))
+          query(
+            collection(db, "users_app"),
+            where("finalDecision", "==", "LULUS")
+          )
         );
 
         const feesSnap = await getDocs(collection(db, "re_registration_fees"));
@@ -445,7 +463,7 @@ export default function AdminDataDaftarUlangPage() {
 
         feesSnap.forEach((d) => {
           const data = d.data() || {};
-          const label = (data.label || data.key || "").toString().trim();
+          const label = normalizeText(data.label || data.key);
 
           if (!label) return;
 
@@ -487,11 +505,11 @@ export default function AdminDataDaftarUlangPage() {
 
           if (!nisn) return;
 
-          const type = (data.type || "").toString().toUpperCase();
+          const type = normalizeText(data.type).toUpperCase();
           const siblingsCount = Number(data.siblingsCount || 0) || 0;
           const amountBP3 = Number(data.amountBP3 || 0) || 0;
           const amountSPP = Number(data.amountSPP || 0) || 0;
-          const sourceKey = (data.sourceKey || "").toString();
+          const sourceKey = normalizeText(data.sourceKey);
 
           if (!discountsByNisn[nisn]) {
             discountsByNisn[nisn] = {
@@ -512,7 +530,7 @@ export default function AdminDataDaftarUlangPage() {
               sourceKey,
             };
             totalDiscountPTK += amount;
-          } else if (docId === "nonptk_discount") {
+          } else {
             discountsByNisn[nisn].nonptk += amount;
             discountsByNisn[nisn].nonptkMeta = {
               type,
@@ -578,28 +596,26 @@ export default function AdminDataDaftarUlangPage() {
 
         for (const fSnap of finalSnap.docs) {
           const ud = fSnap.data() || {};
-          const nisn = (ud.nisn || fSnap.id || "").toString().trim();
+          const nisn = normalizeText(ud.nisn || fSnap.id);
 
           if (!nisn) continue;
 
-          const level = (
-            ud.registrationLevel ||
-            ud.jenjangDiterima ||
-            ud.jenjang ||
-            ""
-          )
-            .toString()
-            .trim();
+          const level = normalizeText(
+            ud.registrationLevel || ud.jenjangDiterima || ud.jenjang
+          );
 
           if (!level) continue;
 
-          const name = ud.fullName || ud.nama || ud.name || ud.studentName || nisn;
+          const name =
+            normalizeText(ud.fullName || ud.nama || ud.name || ud.studentName) ||
+            nisn;
 
-          const phone =
-            ud.noWa || ud.whatsapp || ud.phone || ud.hp || ud.noHP || "";
+          const phone = normalizeText(
+            ud.noWa || ud.whatsapp || ud.phone || ud.hp || ud.noHP
+          );
 
           const fee = feesByLabel[level] || null;
-          const baseSPP = fee?.spp || 0;
+          const baseSPP = Number(fee?.spp || 0) || 0;
 
           let pangkalComponents = {};
           let totalPangkal = 0;
@@ -621,19 +637,17 @@ export default function AdminDataDaftarUlangPage() {
           const discInfo = discountsByNisn[nisn] || { ptk: 0, nonptk: 0 };
           const discPTK = Number(discInfo.ptk || 0);
           const discNonPTK = Number(discInfo.nonptk || 0);
-
           const totalDisc =
             (Number.isFinite(discPTK) ? discPTK : 0) +
             (Number.isFinite(discNonPTK) ? discNonPTK : 0);
 
           const ppdbData = ppdbById[nisn] || {};
-          const waliWa = (ppdbData.waliWa || "").toString().trim();
-          const ayahNama = (ppdbData.ayahNama || "").toString().trim();
-          const ibuNama = (ppdbData.ibuNama || "").toString().trim();
-          const tempatLahir = (ppdbData.tempatLahir || "").toString().trim();
+          const waliWa = normalizeText(ppdbData.waliWa);
+          const ayahNama = normalizeText(ppdbData.ayahNama);
+          const ibuNama = normalizeText(ppdbData.ibuNama);
+          const tempatLahir = normalizeText(ppdbData.tempatLahir);
           const tglLahir = formatDateOnly(ppdbData.tglLahir);
-
-          const ayahIncomeRaw = (ppdbData.ayahIncome ?? "").toString().trim();
+          const ayahIncomeRaw = normalizeText(ppdbData.ayahIncome);
 
           let netTagihan = Math.max(0, totalAwal - totalDisc);
 
@@ -679,12 +693,10 @@ export default function AdminDataDaftarUlangPage() {
           if (discPTK > 0 && discInfo.ptkMeta) {
             const meta = discInfo.ptkMeta;
             const punyaSaudara = (meta.siblingsCount || 0) > 0;
-
             const hasSPP =
               (meta.amountSPP || 0) > 0 ||
               meta.type === "SPP" ||
               meta.type === "BP3+SPP";
-
             const hasBP3 =
               (meta.amountBP3 || 0) > 0 ||
               meta.type === "BP3" ||
@@ -706,14 +718,12 @@ export default function AdminDataDaftarUlangPage() {
           } else if (discNonPTK > 0 && discInfo.nonptkMeta) {
             const meta = discInfo.nonptkMeta;
             const punyaSaudara = (meta.siblingsCount || 0) > 0;
-            const sourceKey = (meta.sourceKey || "").toLowerCase();
+            const sourceKey = normalizeText(meta.sourceKey).toLowerCase();
             const t = meta.type || "";
-
             const isSPP =
               t === "SPP" ||
               sourceKey === "spp" ||
               sourceKey.endsWith(".spp");
-
             const isBP3 = t === "BP3" || sourceKey.includes("bp3");
 
             if (isSPP) {
@@ -760,29 +770,11 @@ export default function AdminDataDaftarUlangPage() {
 
         if (!alive) return;
 
-        tmpRows.sort((a, b) => {
-          const aPaid = Number(a.firstPaidAt || 0);
-          const bPaid = Number(b.firstPaidAt || 0);
+        const sortedRows = sortRowsAZ(tmpRows);
 
-          if (aPaid && bPaid) {
-            if (aPaid !== bPaid) return aPaid - bPaid;
-            return a.name.localeCompare(b.name, "id");
-          }
-
-          if (aPaid && !bPaid) return -1;
-          if (!aPaid && bPaid) return 1;
-
-          if (a.level === b.level) {
-            return a.name.localeCompare(b.name, "id");
-          }
-
-          return a.level.localeCompare(b.level, "id");
-        });
-
-        setRows(tmpRows);
-
+        setRows(sortedRows);
         setStats({
-          totalParticipants: tmpRows.length,
+          totalParticipants: sortedRows.length,
           totalTagihanNet: statTotalTagihanNet,
           totalPaid: statTotalPaid,
           totalSisa: statTotalSisa,
@@ -840,8 +832,64 @@ export default function AdminDataDaftarUlangPage() {
       out = out.filter((r) => r.statusDaftarUlang === filterStatus);
     }
 
-    return out;
+    return sortRowsAZ(out);
   }, [rows, search, filterJalur, filterLevel, filterStatus]);
+
+  const scopedStats = useMemo(() => {
+    let filtered = [...filteredRows];
+
+    if (statScope === "PTK") {
+      filtered = filtered.filter((r) => r.jalur === "PTK");
+    } else if (statScope === "NON_PTK") {
+      filtered = filtered.filter((r) => (r.jalur || "") !== "PTK");
+    }
+
+    return {
+      participants: filtered.length,
+      totalTagihanNet: filtered.reduce(
+        (sum, r) => sum + (Number(r.netTagihan || 0) || 0),
+        0
+      ),
+      totalPaid: filtered.reduce(
+        (sum, r) => sum + (Number(r.totalPaid || 0) || 0),
+        0
+      ),
+      totalSisa: filtered.reduce(
+        (sum, r) => sum + (Number(r.sisa || 0) || 0),
+        0
+      ),
+    };
+  }, [filteredRows, statScope]);
+
+  const discountValue = useMemo(() => {
+    let totalPTK = 0;
+    let totalNonPTK = 0;
+
+    filteredRows.forEach((r) => {
+      totalPTK += Number(r.discPTK || 0) || 0;
+      totalNonPTK += Number(r.discNonPTK || 0) || 0;
+    });
+
+    if (statScope === "ALL") return fmtIDR(totalPTK + totalNonPTK);
+    if (statScope === "PTK") return fmtIDR(totalPTK);
+    if (statScope === "NON_PTK") return fmtIDR(totalNonPTK);
+
+    return "-";
+  }, [filteredRows, statScope]);
+
+  const discountHelper = useMemo(() => {
+    if (statScope === "ALL") return "Kiri: PTK · Kanan: Non-PTK";
+    if (statScope === "PTK") return "Diskon jalur PTK";
+    if (statScope === "NON_PTK") return "Diskon jalur Non-PTK";
+    return "";
+  }, [statScope]);
+
+  const scopeLabelSuffix =
+    statScope === "ALL"
+      ? " (Semua Jalur)"
+      : statScope === "PTK"
+      ? " (PTK)"
+      : " (Non-PTK)";
 
   const isShowAll = pageSize === "ALL";
 
@@ -871,9 +919,48 @@ export default function AdminDataDaftarUlangPage() {
     return Array.from(set).sort((a, b) => a.localeCompare(b, "id"));
   }, [rows]);
 
+  const downloadLevelOptions = useMemo(() => {
+    const set = new Set();
+
+    filteredRows.forEach((r) => {
+      if (r.level) set.add(r.level);
+    });
+
+    return Array.from(set).sort((a, b) => a.localeCompare(b, "id"));
+  }, [filteredRows]);
+
+  const openDownloadModal = (type) => {
+    if (!filteredRows.length) return;
+
+    setDownloadModalType(type);
+    setSelectedDownloadLevels(downloadLevelOptions);
+    setIncludeAllDownloadSheet(false);
+  };
+
+  const closeDownloadModal = () => {
+    setDownloadModalType(null);
+    setSelectedDownloadLevels([]);
+    setIncludeAllDownloadSheet(false);
+  };
+
+  const toggleDownloadLevel = (level) => {
+    setSelectedDownloadLevels((prev) =>
+      prev.includes(level)
+        ? prev.filter((item) => item !== level)
+        : [...prev, level]
+    );
+  };
+
+  const toggleAllDownloadLevels = () => {
+    setSelectedDownloadLevels((prev) =>
+      prev.length === downloadLevelOptions.length ? [] : downloadLevelOptions
+    );
+  };
+
   const buildSimpleSheetData = (data) => {
     const header = [
       "No",
+      "NISN",
       "Nama",
       "Jenjang",
       "Tempat Lahir",
@@ -883,8 +970,9 @@ export default function AdminDataDaftarUlangPage() {
       "Nomor HP/Wali",
     ];
 
-    const body = data.map((r, idx) => [
+    const body = sortRowsAZ(data).map((r, idx) => [
       idx + 1,
+      r.nisn || "",
       r.name || "",
       r.level || "",
       r.tempatLahir || "",
@@ -930,7 +1018,7 @@ export default function AdminDataDaftarUlangPage() {
       "Terakhir Bayar",
     ];
 
-    const body = data.map((r, idx) => {
+    const body = sortRowsAZ(data).map((r, idx) => {
       const pk = r.pangkalComponents || {};
 
       const getPkValNum = (key) => {
@@ -974,15 +1062,21 @@ export default function AdminDataDaftarUlangPage() {
     return [header, ...body];
   };
 
-  const handleDownloadSimpleXls = () => {
+  const runDownloadXls = (type) => {
     if (!filteredRows.length) return;
+
+    const pickedLevels = new Set(selectedDownloadLevels);
+    const selectedRows = filteredRows.filter((r) => pickedLevels.has(r.level));
+
+    if (!selectedRows.length && !includeAllDownloadSheet) return;
 
     const ts = new Date().toISOString().slice(0, 10);
     const wb = XLSX.utils.book_new();
-    const grouped = groupRowsByLevel(filteredRows);
+    const isSimple = type === "SIMPLE";
 
-    const colWidths = [
+    const simpleColWidths = [
       { wch: 6 },
+      { wch: 18 },
       { wch: 34 },
       { wch: 26 },
       { wch: 22 },
@@ -992,23 +1086,7 @@ export default function AdminDataDaftarUlangPage() {
       { wch: 22 },
     ];
 
-    grouped.forEach(([level, data]) => {
-      appendStyledSheet(wb, level, buildSimpleSheetData(data), colWidths);
-    });
-
-    XLSX.writeFile(wb, `data-daftar-ulang-ringkas-${ts}.xlsx`, {
-      bookType: "xlsx",
-    });
-  };
-
-  const handleDownloadFullXls = () => {
-    if (!filteredRows.length) return;
-
-    const ts = new Date().toISOString().slice(0, 10);
-    const wb = XLSX.utils.book_new();
-    const grouped = groupRowsByLevel(filteredRows);
-
-    const colWidths = [
+    const fullColWidths = [
       { wch: 6 },
       { wch: 18 },
       { wch: 34 },
@@ -1040,13 +1118,31 @@ export default function AdminDataDaftarUlangPage() {
       { wch: 20 },
     ];
 
+    const buildSheetData = isSimple ? buildSimpleSheetData : buildFullSheetData;
+    const colWidths = isSimple ? simpleColWidths : fullColWidths;
+
+   if (includeAllDownloadSheet && selectedRows.length) {
+  appendStyledSheet(
+    wb,
+    "Semua Jenjang",
+    buildSheetData(selectedRows),
+    colWidths
+  );
+}
+
+    const grouped = groupRowsByLevel(selectedRows);
+
     grouped.forEach(([level, data]) => {
-      appendStyledSheet(wb, level, buildFullSheetData(data), colWidths);
+      appendStyledSheet(wb, level, buildSheetData(data), colWidths);
     });
 
-    XLSX.writeFile(wb, `data-daftar-ulang-lengkap-${ts}.xlsx`, {
-      bookType: "xlsx",
-    });
+    XLSX.writeFile(
+      wb,
+      `data-daftar-ulang-${isSimple ? "ringkas" : "lengkap"}-${ts}.xlsx`,
+      { bookType: "xlsx" }
+    );
+
+    closeDownloadModal();
   };
 
   return (
@@ -1135,7 +1231,7 @@ export default function AdminDataDaftarUlangPage() {
               />
             </div>
 
-            <div className="flex items-center gap-2">
+            <div className="flex flex-wrap items-center gap-2">
               <select
                 value={filterJalur}
                 onChange={(e) => {
@@ -1229,8 +1325,9 @@ export default function AdminDataDaftarUlangPage() {
             <div className="flex items-center gap-2">
               <button
                 type="button"
-                onClick={handleDownloadSimpleXls}
-                className="inline-flex items-center gap-1 rounded-lg border border-sky-500 bg-sky-600 px-3 py-1.5 text-xs font-semibold text-white hover:bg-sky-700"
+                onClick={() => openDownloadModal("SIMPLE")}
+                disabled={!filteredRows.length}
+                className="inline-flex items-center gap-1 rounded-lg border border-sky-500 bg-sky-600 px-3 py-1.5 text-xs font-semibold text-white hover:bg-sky-700 disabled:opacity-50"
               >
                 <Download className="h-3.5 w-3.5" />
                 Excel Ringkas
@@ -1238,8 +1335,9 @@ export default function AdminDataDaftarUlangPage() {
 
               <button
                 type="button"
-                onClick={handleDownloadFullXls}
-                className="inline-flex items-center gap-1 rounded-lg border border-emerald-500 bg-emerald-600 px-3 py-1.5 text-xs font-semibold text-white hover:bg-emerald-700"
+                onClick={() => openDownloadModal("FULL")}
+                disabled={!filteredRows.length}
+                className="inline-flex items-center gap-1 rounded-lg border border-emerald-500 bg-emerald-600 px-3 py-1.5 text-xs font-semibold text-white hover:bg-emerald-700 disabled:opacity-50"
               >
                 <Download className="h-3.5 w-3.5" />
                 Excel Lengkap
@@ -1263,44 +1361,20 @@ export default function AdminDataDaftarUlangPage() {
               <table className="min-w-full text-xs md:text-sm">
                 <thead className="bg-slate-50 border-b border-slate-200">
                   <tr className="text-left text-[11px] font-semibold uppercase tracking-wide text-slate-500">
-                    <th className="px-3 py-2" rowSpan={2}>
-                      No
-                    </th>
-                    <th className="px-3 py-2" rowSpan={2}>
-                      NISN
-                    </th>
-                    <th className="px-3 py-2" rowSpan={2}>
-                      Nama
-                    </th>
-                    <th className="px-3 py-2" rowSpan={2}>
-                      Jenjang
-                    </th>
-                    <th className="px-3 py-2" rowSpan={2}>
-                      Status
-                    </th>
-                    <th className="px-3 py-2 text-center" colSpan={5}>
-                      TAGIHAN
-                    </th>
-                    <th className="px-3 py-2" rowSpan={2}>
-                      Status
-                    </th>
-                    <th className="px-3 py-2 text-center" rowSpan={2}>
-                      Bukti
-                    </th>
-                    <th className="px-3 py-2" rowSpan={2}>
-                      Pertama Bayar
-                    </th>
-                    <th className="px-3 py-2" rowSpan={2}>
-                      Hubungi
-                    </th>
-                  </tr>
-
-                  <tr className="text-left text-[11px] font-semibold uppercase tracking-wide text-slate-500">
-                    <th className="px-3 py-1 text-right">Tagihan Awal</th>
-                    <th className="px-3 py-1 text-right">Potongan</th>
-                    <th className="px-3 py-1 text-right">Tagihan Net</th>
-                    <th className="px-3 py-1 text-right">Terbayar</th>
-                    <th className="px-3 py-1 text-right">Sisa</th>
+                    <th className="px-3 py-2">No</th>
+                    <th className="px-3 py-2">NISN</th>
+                    <th className="px-3 py-2">Nama</th>
+                    <th className="px-3 py-2">Jenjang</th>
+                    <th className="px-3 py-2">Jalur</th>
+                    <th className="px-3 py-2 text-right">Tagihan Awal</th>
+                    <th className="px-3 py-2 text-right">Potongan</th>
+                    <th className="px-3 py-2 text-right">Tagihan Net</th>
+                    <th className="px-3 py-2 text-right">Terbayar</th>
+                    <th className="px-3 py-2 text-right">Sisa</th>
+                    <th className="px-3 py-2">Status</th>
+                    <th className="px-3 py-2 text-center">Bukti</th>
+                    <th className="px-3 py-2">Pertama Bayar</th>
+                    <th className="px-3 py-2">Hubungi</th>
                   </tr>
                 </thead>
 
@@ -1417,34 +1491,30 @@ export default function AdminDataDaftarUlangPage() {
                         {(r.statusDaftarUlang === "BELUM BAYAR" ||
                           r.statusDaftarUlang === "SEBAGIAN") &&
                         r.waliWa ? (
-                          (() => {
-                            const waNumber = normalizeWaNumber(r.waliWa);
-
-                            return (
-                              <a
-                                href={`https://web.whatsapp.com/send?phone=${waNumber}&text=${encodeURIComponent(
-                                  `Bismillah..\n\nDiberitahukan kepada Yth. Bapak/Ibu Wali Santri dari *${r.name}*, bahwa proses *daftar ulang* ananda masih *belum diselesaikan*.\n\nAdapun sisa pembayaran daftar ulang yang perlu dilunasi adalah sebesar *${fmtIDR(
-  r.sisa
-)}*.\n\nKami berharap Bapak/Ibu dapat melakukan pelunasan sebelum kedatangan santri, agar proses administrasi dan penerimaan ananda dapat berjalan dengan baik dan lancar.\n\nUntuk informasi lebih lanjut, silakan menghubungi panitia di nomor *0877 2024 2025*.\n\nTerima kasih atas perhatian dan kerja samanya.\nSyukron jazakumullahu khairan.\n\n— Panitia SPMB`
-                                )}`}
-                                target="_blank"
-                                rel="noopener noreferrer"
-                                onClick={() =>
-                                  setSentWA((prev) => ({
-                                    ...prev,
-                                    [r.nisn]: true,
-                                  }))
-                                }
-                                className={`inline-flex items-center gap-1 rounded-md px-2 py-1 text-[11px] font-semibold text-white ${
-                                  sentWA[r.nisn]
-                                    ? "bg-slate-400 cursor-default"
-                                    : "bg-green-600 hover:bg-green-700"
-                                }`}
-                              >
-                                {sentWA[r.nisn] ? "Hubungi WA ✓" : "Hubungi WA"}
-                              </a>
-                            );
-                          })()
+                          <a
+                            href={`https://web.whatsapp.com/send?phone=${normalizeWaNumber(
+                              r.waliWa
+                            )}&text=${encodeURIComponent(
+                              `Bismillah..\n\nDiberitahukan kepada Yth. Bapak/Ibu Wali Santri dari *${r.name}*, bahwa proses *daftar ulang* ananda masih *belum diselesaikan*.\n\nAdapun sisa pembayaran daftar ulang yang perlu dilunasi adalah sebesar *${fmtIDR(
+                                r.sisa
+                              )}*.\n\nKami berharap Bapak/Ibu dapat melakukan pelunasan sebelum kedatangan santri, agar proses administrasi dan penerimaan ananda dapat berjalan dengan baik dan lancar.\n\nUntuk informasi lebih lanjut, silakan menghubungi panitia di nomor *0877 2024 2025*.\n\nTerima kasih atas perhatian dan kerja samanya.\nSyukron jazakumullahu khairan.\n\n— Panitia SPMB`
+                            )}`}
+                            target="_blank"
+                            rel="noopener noreferrer"
+                            onClick={() =>
+                              setSentWA((prev) => ({
+                                ...prev,
+                                [r.nisn]: true,
+                              }))
+                            }
+                            className={`inline-flex items-center gap-1 rounded-md px-2 py-1 text-[11px] font-semibold text-white ${
+                              sentWA[r.nisn]
+                                ? "bg-slate-400 cursor-default"
+                                : "bg-green-600 hover:bg-green-700"
+                            }`}
+                          >
+                            {sentWA[r.nisn] ? "Hubungi WA ✓" : "Hubungi WA"}
+                          </a>
                         ) : (
                           <span className="text-[11px] text-slate-400">—</span>
                         )}
@@ -1457,42 +1527,20 @@ export default function AdminDataDaftarUlangPage() {
               <table className="min-w-full text-xs md:text-sm">
                 <thead className="bg-slate-50 border-b border-slate-200">
                   <tr className="text-left text-[11px] font-semibold uppercase tracking-wide text-slate-500">
-                    <th className="px-3 py-2" rowSpan={2}>
-                      No
-                    </th>
-                    <th className="px-3 py-2" rowSpan={2}>
-                      NISN
-                    </th>
-                    <th className="px-3 py-2" rowSpan={2}>
-                      Nama
-                    </th>
-                    <th className="px-3 py-2" rowSpan={2}>
-                      Jenjang
-                    </th>
-                    <th className="px-3 py-2" rowSpan={2}>
-                      Status
-                    </th>
-                    <th className="px-3 py-2 text-right" rowSpan={2}>
-                      SPP
-                    </th>
-                    <th className="px-3 py-2 text-center" colSpan={6}>
-                      UANG PANGKAL
-                    </th>
-                    <th className="px-3 py-2 text-right" rowSpan={2}>
-                      TOTAL DIBAYAR
-                    </th>
-                    <th className="px-3 py-2 text-right" rowSpan={2}>
-                      JUMLAH DIBAYAR
-                    </th>
-                  </tr>
-
-                  <tr className="text-left text-[11px] font-semibold uppercase tracking-wide text-slate-500">
-                    <th className="px-3 py-1 text-right">PAKAIAN</th>
-                    <th className="px-3 py-1 text-right">SARPRAS</th>
-                    <th className="px-3 py-1 text-right">KASUR</th>
-                    <th className="px-3 py-1 text-right">KITAB</th>
-                    <th className="px-3 py-1 text-right">BP3</th>
-                    <th className="px-3 py-1 text-right">TOTAL</th>
+                    <th className="px-3 py-2">No</th>
+                    <th className="px-3 py-2">NISN</th>
+                    <th className="px-3 py-2">Nama</th>
+                    <th className="px-3 py-2">Jenjang</th>
+                    <th className="px-3 py-2">Jalur</th>
+                    <th className="px-3 py-2 text-right">SPP</th>
+                    <th className="px-3 py-2 text-right">Pakaian</th>
+                    <th className="px-3 py-2 text-right">Sarpras</th>
+                    <th className="px-3 py-2 text-right">Kasur</th>
+                    <th className="px-3 py-2 text-right">Kitab</th>
+                    <th className="px-3 py-2 text-right">BP3</th>
+                    <th className="px-3 py-2 text-right">Total Pangkal</th>
+                    <th className="px-3 py-2 text-right">Total Dibayar</th>
+                    <th className="px-3 py-2 text-right">Jumlah Dibayar</th>
                   </tr>
                 </thead>
 
@@ -1617,7 +1665,7 @@ export default function AdminDataDaftarUlangPage() {
             </span>{" "}
             peserta (total{" "}
             <span className="font-semibold">
-              {rows.length.toLocaleString("id-ID")}
+              {stats.totalParticipants.toLocaleString("id-ID")}
             </span>
             ).
           </div>
@@ -1648,6 +1696,21 @@ export default function AdminDataDaftarUlangPage() {
           </div>
         </div>
       </div>
+
+      <DownloadLevelModal
+        open={Boolean(downloadModalType)}
+        type={downloadModalType}
+        levels={downloadLevelOptions}
+        selectedLevels={selectedDownloadLevels}
+        includeAllSheet={includeAllDownloadSheet}
+        onToggleLevel={toggleDownloadLevel}
+        onToggleAllLevels={toggleAllDownloadLevels}
+        onToggleIncludeAllSheet={() =>
+          setIncludeAllDownloadSheet((prev) => !prev)
+        }
+        onClose={closeDownloadModal}
+        onDownload={() => runDownloadXls(downloadModalType)}
+      />
     </main>
   );
 }
