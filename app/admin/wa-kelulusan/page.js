@@ -99,7 +99,7 @@ function buildWaMessage(row) {
       "Selanjutnya, peserta yang dinyatakan LULUS wajib melakukan daftar ulang " +
       "secara offline dengan datang langsung ke Pondok Pesantren As Sunnah atau " +
       "melalui akun SPMB masing-masing pada:\n" +
-      "• 20 juni 2026 s.d. 30 Juni 2026\n\n" +
+      "• 1 Juli 2026 s.d. 6 Juli 2026\n\n" +
       "Untuk informasi lebih lanjut, silakan hubungi panitia melalui WhatsApp resmi:\n" +
       "0877-2024-2025\n\n" +
       "Demikian pengumuman ini kami sampaikan.\n" +
