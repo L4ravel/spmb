@@ -242,7 +242,9 @@ function LoginInner() {
     "rabiatuladwyh2612@gmail.com",
     "panitia@spmb.com",
     "riskanefendi@smpia.com",
-    "aspar80@gmail.com",
+    "bendahara1@gmail.com",
+    "bendahara2@gmail.com",
+    "kelengkapan@gmail.com",
     "ratna@spmb.com"
 
 
