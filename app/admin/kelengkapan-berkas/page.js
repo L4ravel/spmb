@@ -23,6 +23,9 @@ import {
   ZoomIn,
   ZoomOut,
   Download,
+  Lock,
+  Eye,
+  EyeOff,
 } from "lucide-react";
 import { getStorage, ref, uploadBytes, getDownloadURL } from "firebase/storage";
 
@@ -41,6 +44,7 @@ const db = getFirestore(app);
 const storage = getStorage(app);
 
 const PAGE_SIZES = [10, 25, 50, 100, 500];
+const REPLACE_FILE_PASSWORD = "qscft123";
 
 function normalizePhone(raw) {
   let digits = String(raw || "").replace(/[^0-9]/g, "");
@@ -103,7 +107,13 @@ export default function KelengkapanBerkasPage() {
   const [viewerZoom, setViewerZoom] = useState(1);
 
   const [uploadBusy, setUploadBusy] = useState(false);
+  const [passwordOpen, setPasswordOpen] = useState(false);
+  const [replacePassword, setReplacePassword] = useState("");
+  const [passwordError, setPasswordError] = useState("");
+  const [showPassword, setShowPassword] = useState(false);
+
   const fileInputRef = useRef(null);
+  const passwordInputRef = useRef(null);
 
   // Load semua dokumen ppdb sekali, lalu pagination & filter di client
   useEffect(() => {
@@ -252,6 +262,16 @@ export default function KelengkapanBerkasPage() {
       ? currentViewerRow.filesMeta[viewerFileKey]
       : null;
 
+  useEffect(() => {
+    if (!passwordOpen) return;
+
+    const timer = window.setTimeout(() => {
+      passwordInputRef.current?.focus();
+    }, 80);
+
+    return () => window.clearTimeout(timer);
+  }, [passwordOpen]);
+
   const handleReplaceFile = async (event) => {
     const file = event.target.files?.[0];
     if (!file || !currentViewerRow || !viewerFileKey) return;
@@ -300,6 +320,38 @@ export default function KelengkapanBerkasPage() {
     }
   };
 
+  const openPasswordModal = () => {
+    if (!currentFileMeta || uploadBusy) return;
+
+    setReplacePassword("");
+    setPasswordError("");
+    setShowPassword(false);
+    setPasswordOpen(true);
+  };
+
+  const closePasswordModal = () => {
+    setPasswordOpen(false);
+    setReplacePassword("");
+    setPasswordError("");
+    setShowPassword(false);
+  };
+
+  const confirmReplacePassword = () => {
+    if (replacePassword !== REPLACE_FILE_PASSWORD) {
+      setPasswordError("Password salah.");
+      return;
+    }
+
+    setPasswordOpen(false);
+    setReplacePassword("");
+    setPasswordError("");
+    setShowPassword(false);
+
+    window.setTimeout(() => {
+      fileInputRef.current?.click();
+    }, 120);
+  };
+
   const onOpenViewer = (row) => {
     setViewerNisn(row.nisn);
     setViewerOpen(true);
@@ -316,6 +368,7 @@ export default function KelengkapanBerkasPage() {
     setViewerFileKey(null);
     setViewerRotation(0);
     setViewerZoom(1);
+    closePasswordModal();
   };
 
   // Next/Prev sekarang pindah antar BERKAS (fileMeta), bukan antar peserta
@@ -735,14 +788,15 @@ export default function KelengkapanBerkasPage() {
 
                 <button
                   type="button"
-                  onClick={() => fileInputRef.current?.click()}
+                  onClick={openPasswordModal}
                   disabled={!currentFileMeta || uploadBusy}
                   className={cls(
                     "inline-flex items-center gap-1 rounded-full border px-2.5 py-1.5 text-[11px]",
                     currentFileMeta && !uploadBusy
-                      ? "border-amber-400 bg-amber-50 text-amber-700 hover:bg-amber-100"
+                      ? "border-slate-300 bg-slate-100 text-slate-600 hover:bg-slate-200"
                       : "border-slate-200 bg-slate-50 text-slate-400 cursor-not-allowed"
                   )}
+                  title="Masukkan password untuk mengganti berkas"
                 >
                   {uploadBusy ? (
                     <>
@@ -751,7 +805,7 @@ export default function KelengkapanBerkasPage() {
                     </>
                   ) : (
                     <>
-                      <FileText className="h-3 w-3" />
+                      <Lock className="h-3 w-3" />
                       Ganti Berkas
                     </>
                   )}
@@ -846,6 +900,99 @@ export default function KelengkapanBerkasPage() {
                   Tidak ada berkas yang dipilih.
                 </div>
               )}
+            </div>
+          </div>
+        </div>
+      )}
+
+      {passwordOpen && (
+        <div className="fixed inset-0 z-[9999] flex items-center justify-center bg-black/50 px-4">
+          <div
+            className="w-full max-w-sm rounded-2xl bg-white shadow-2xl"
+            onClick={(e) => e.stopPropagation()}
+          >
+            <div className="flex items-start justify-between gap-4 border-b border-slate-200 p-5">
+              <div>
+                <h3 className="text-base font-bold text-slate-900">
+                  Password Ganti Berkas
+                </h3>
+                <p className="mt-1 text-xs text-slate-500">
+                  Masukkan password untuk membuka akses upload berkas baru.
+                </p>
+              </div>
+
+              <button
+                type="button"
+                onClick={closePasswordModal}
+                className="rounded-lg p-1.5 text-slate-500 hover:bg-slate-100 hover:text-slate-900"
+              >
+                <X className="h-4 w-4" />
+              </button>
+            </div>
+
+            <div className="p-5">
+              <label className="mb-2 block text-xs font-semibold text-slate-700">
+                Password
+              </label>
+
+              <div className="relative">
+                <input
+                  ref={passwordInputRef}
+                  type={showPassword ? "text" : "password"}
+                  value={replacePassword}
+                  onChange={(e) => {
+                    setReplacePassword(e.target.value);
+                    setPasswordError("");
+                  }}
+                  onKeyDown={(e) => {
+                    if (e.key === "Enter") {
+                      confirmReplacePassword();
+                    }
+
+                    if (e.key === "Escape") {
+                      closePasswordModal();
+                    }
+                  }}
+                  placeholder="Masukkan password"
+                  className="w-full rounded-xl border border-slate-300 bg-white px-3 py-2 pr-10 text-sm text-slate-900 placeholder:text-slate-400 focus:outline-none focus:ring-2 focus:ring-slate-400"
+                />
+
+                <button
+                  type="button"
+                  onClick={() => setShowPassword((v) => !v)}
+                  className="absolute right-2 top-1/2 -translate-y-1/2 rounded-md p-1 text-slate-500 hover:bg-slate-100"
+                >
+                  {showPassword ? (
+                    <EyeOff className="h-4 w-4" />
+                  ) : (
+                    <Eye className="h-4 w-4" />
+                  )}
+                </button>
+              </div>
+
+              {passwordError && (
+                <p className="mt-2 text-xs font-medium text-red-600">
+                  {passwordError}
+                </p>
+              )}
+
+              <div className="mt-5 flex justify-end gap-2">
+                <button
+                  type="button"
+                  onClick={closePasswordModal}
+                  className="rounded-lg border border-slate-300 bg-white px-4 py-2 text-xs font-semibold text-slate-700 hover:bg-slate-50"
+                >
+                  Batal
+                </button>
+
+                <button
+                  type="button"
+                  onClick={confirmReplacePassword}
+                  className="rounded-lg bg-slate-900 px-4 py-2 text-xs font-semibold text-white hover:bg-slate-800"
+                >
+                  Lanjutkan
+                </button>
+              </div>
             </div>
           </div>
         </div>
