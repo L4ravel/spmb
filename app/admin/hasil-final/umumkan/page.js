@@ -59,7 +59,7 @@ function escapeXml(v) {
 // Header kolom yang dipakai di tampilan
 const XLS_HEADERS = [
   "No","NISN","Nama","Jenjang",
-  "Akademik","AlQuran","Wawancara","Total","Rank",
+  "Akademik","AlQuran","Jumlah_Juz","Wawancara","Total","Rank",
   "Keputusan","Penguji_AlQuran","Penguji_Wawancara"
 ];
 
@@ -87,6 +87,7 @@ function rowsToXlsXml(rows, sheetName = "Hasil") {
       r.level,
       r.akademik ?? "",
       r.tahfidz ?? "",
+      r.memorizedCount ?? "",
       r.wawancara ?? "",
       (r.total ?? ""),   // kalau mau 1 desimal: (typeof r.total==="number"? r.total.toFixed(1): (r.total??""))
       r.rank ?? "",
@@ -329,6 +330,7 @@ snap.forEach((d) => {
     // Tahfidz
     const tData = tahfDoc.exists() ? tahfDoc.data() : null;
     const tahfidz = tData?.score ?? null;
+    const memorizedCount = tData?.memorizedCount ?? tData?.jumlahJuz ?? tData?.juz ?? null;
     const tahfidzExaminer = tData?.examinerName || tData?.penguji || null;
 
     // Wawancara
@@ -346,6 +348,7 @@ snap.forEach((d) => {
       level: getLevel(u),
       akademik,
       tahfidz,
+      memorizedCount,
       tahfidzExaminer,
       wawancara,
       wawancaraExaminer,
@@ -651,6 +654,12 @@ downloadXls(filename, xml);
                 </div>
               </div>
               <div className="rounded-lg bg-slate-50 p-2">
+                <div className="text-[11px] text-slate-500">Jumlah Juz</div>
+                <div className="mt-0.5 font-semibold text-right">
+                  {r.memorizedCount != null ? r.memorizedCount : <Pill text="belum" tone="amber" />}
+                </div>
+              </div>
+              <div className="rounded-lg bg-slate-50 p-2">
                 <div className="text-[11px] text-slate-500">Wawancara</div>
                 <div className="mt-0.5 font-semibold text-right">
                   {r.wawancara != null ? r.wawancara : <Pill text="belum" tone="amber" />}
@@ -946,6 +955,7 @@ downloadXls(filename, xml);
                 <th className="px-2 py-2 text-left w-32">Jenjang</th>
                 <th className="px-2 py-2 text-right w-28">Akademik</th>
                 <th className="px-2 py-2 text-right w-28">Al-Qur’an</th>
+                <th className="px-2 py-2 text-right w-28">Jumlah Juz</th>
                 <th className="px-2 py-2 text-right w-28">Wawancara</th>
                 <th className="px-2 py-2 text-right w-28">Total</th>
                 <th className="px-2 py-2 text-center w-20">Rank</th>
@@ -954,7 +964,7 @@ downloadXls(filename, xml);
             </thead>
             <tbody className="[&>tr>td]:break-words">
               {loading && (
-                <tr><td colSpan={11} className="px-3 py-6">
+                <tr><td colSpan={12} className="px-3 py-6">
                   <div className="h-8 w-full animate-pulse rounded bg-slate-100" />
                 </td></tr>
               )}
@@ -975,6 +985,7 @@ downloadXls(filename, xml);
                   <td className="px-2 py-2">{r.level}</td>
                   <td className="px-2 py-2 text-right">{r.akademik  != null ? r.akademik  : <Pill text="belum" tone="amber" />}</td>
                   <td className="px-2 py-2 text-right">{r.tahfidz   != null ? r.tahfidz   : <Pill text="belum" tone="amber" />}</td>
+                  <td className="px-2 py-2 text-right">{r.memorizedCount != null ? r.memorizedCount : <Pill text="belum" tone="amber" />}</td>
                   <td className="px-2 py-2 text-right">{r.wawancara != null ? r.wawancara : <Pill text="belum" tone="amber" />}</td>
                   <td className="px-2 py-2 text-right font-semibold">{r.total?.toFixed?.(1) ?? r.total}</td>
                   <td className="px-2 py-2 text-center">{r.rank}</td>
@@ -1021,7 +1032,7 @@ downloadXls(filename, xml);
               ))}
 
               {!loading && rows.length === 0 && (
-                <tr><td colSpan={11} className="px-3 py-8 text-center text-slate-600">Tidak ada data.</td></tr>
+                <tr><td colSpan={12} className="px-3 py-8 text-center text-slate-600">Tidak ada data.</td></tr>
               )}
             </tbody>
           </table>
