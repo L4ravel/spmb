@@ -22,29 +22,26 @@ export const EMAIL_ACCESS = {
   "rabiatuladwyh2612@gmail.com": [ "/admin/tes-wawancara",],  
 
   "ratna@spmb.com": [ "/admin/tes-wawancara",],
+  
 
 
   
   //bendahara
-  "riskanefendi@smpia.com": [ 
+  "bendahara2@gmail.com": [ 
     "/admin/daftar-ulang",
     "/admin/daftar-ulang",
     "/admin/data-daftar-ulang",
     "/admin/statistik-daftar-ulang",
     "/admin/kelengkapan-berkas",
   ],   
-   "aspar80@gmail.com": [ 
+   "bendahara1@gmail.com": [ 
     "/admin/daftar-ulang",
     "/admin/daftar-ulang",
     "/admin/data-daftar-ulang",
     "/admin/statistik-daftar-ulang",
     "/admin/kelengkapan-berkas",
   ],   
-   "mzkyzakky@gmail.com": [ 
-    "/admin/daftar-ulang",
-    "/admin/daftar-ulang",
-    "/admin/data-daftar-ulang",
-    "/admin/statistik-daftar-ulang",
+   "kelengkapan@gmail.com": [  
     "/admin/kelengkapan-berkas",
   ],  
    "zul@spmb.com": [ 
