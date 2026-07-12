@@ -43,6 +43,7 @@ const PAGE_SIZES = [10, 25, 50, 100, "ALL"];
 function fmtIDR(n) {
   const v = Number(n || 0);
   if (!Number.isFinite(v)) return "-";
+
   return v.toLocaleString("id-ID", {
     style: "currency",
     currency: "IDR",
@@ -73,7 +74,9 @@ function formatDateOnly(value) {
       ? value
       : new Date(value);
 
-    if (Number.isNaN(date.getTime())) return String(value || "").trim();
+    if (Number.isNaN(date.getTime())) {
+      return String(value || "").trim();
+    }
 
     return date.toLocaleDateString("id-ID", {
       day: "2-digit",
@@ -112,7 +115,7 @@ function normalizeStatus(pLike) {
 }
 
 function isPpsJenjang(jenjang) {
-  const j = (jenjang || "").toString().toLowerCase();
+  const j = String(jenjang || "").toLowerCase();
 
   return (
     j.includes("pps ula putra") ||
@@ -163,11 +166,13 @@ function makeSafeSheetName(value, fallback = "Sheet") {
 
 function makeUniqueSheetName(wb, rawName) {
   const base = makeSafeSheetName(rawName);
+
   let name = base;
   let i = 2;
 
   while (wb.SheetNames.includes(name)) {
     const suffix = ` ${i}`;
+
     name = `${base.slice(0, 31 - suffix.length)}${suffix}`;
     i += 1;
   }
@@ -188,7 +193,9 @@ function groupRowsByLevel(data) {
     map.get(level).push(row);
   });
 
-  return Array.from(map.entries()).sort(([a], [b]) => a.localeCompare(b, "id"));
+  return Array.from(map.entries()).sort(([a], [b]) =>
+    a.localeCompare(b, "id")
+  );
 }
 
 function applyExcelStyle(ws, rowCount, colCount) {
@@ -206,7 +213,10 @@ function applyExcelStyle(ws, rowCount, colCount) {
       const cellRef = XLSX.utils.encode_cell({ r, c });
 
       if (!ws[cellRef]) {
-        ws[cellRef] = { t: "s", v: "" };
+        ws[cellRef] = {
+          t: "s",
+          v: "",
+        };
       }
 
       ws[cellRef].s = {
@@ -220,33 +230,54 @@ function applyExcelStyle(ws, rowCount, colCount) {
           name: "Arial",
           sz: 10,
           bold: r === 0,
-          color: { rgb: r === 0 ? "0F172A" : "111827" },
+          color: {
+            rgb: r === 0 ? "0F172A" : "111827",
+          },
         },
         fill:
           r === 0
             ? {
                 patternType: "solid",
-                fgColor: { rgb: "E2E8F0" },
+                fgColor: {
+                  rgb: "E2E8F0",
+                },
               }
             : undefined,
       };
     }
   }
 
-  ws["!freeze"] = { xSplit: 0, ySplit: 1 };
+  ws["!freeze"] = {
+    xSplit: 0,
+    ySplit: 1,
+  };
+
   ws["!autofilter"] = {
     ref: XLSX.utils.encode_range({
-      s: { r: 0, c: 0 },
-      e: { r: Math.max(0, rowCount - 1), c: Math.max(0, colCount - 1) },
+      s: {
+        r: 0,
+        c: 0,
+      },
+      e: {
+        r: Math.max(0, rowCount - 1),
+        c: Math.max(0, colCount - 1),
+      },
     }),
   };
 }
 
 function appendStyledSheet(wb, sheetName, sheetData, colWidths) {
   const ws = XLSX.utils.aoa_to_sheet(sheetData);
+
   ws["!cols"] = colWidths;
+
   applyExcelStyle(ws, sheetData.length, sheetData[0]?.length || 0);
-  XLSX.utils.book_append_sheet(wb, ws, makeUniqueSheetName(wb, sheetName));
+
+  XLSX.utils.book_append_sheet(
+    wb,
+    ws,
+    makeUniqueSheetName(wb, sheetName)
+  );
 }
 
 function normalizeWaNumber(raw) {
@@ -254,18 +285,30 @@ function normalizeWaNumber(raw) {
 
   let n = raw.toString().replace(/\D/g, "");
 
-  if (n.startsWith("0")) n = "62" + n.slice(1);
-  if (!n.startsWith("62")) n = "62" + n;
+  if (n.startsWith("0")) {
+    n = `62${n.slice(1)}`;
+  }
+
+  if (!n.startsWith("62")) {
+    n = `62${n}`;
+  }
 
   return n;
 }
 
-function StatCard({ icon: Icon, label, value, helper, onClick, active }) {
+function StatCard({
+  icon: Icon,
+  label,
+  value,
+  helper,
+  onClick,
+  active,
+}) {
   return (
     <button
       type="button"
       onClick={onClick}
-      className={`group w-full text-left rounded-2xl border bg-white shadow-sm hover:shadow-md transition-all duration-300 p-4 md:p-5 ${
+      className={`group w-full rounded-2xl border bg-white p-4 text-left shadow-sm transition-all duration-300 hover:shadow-md md:p-5 ${
         active
           ? "border-emerald-300 ring-2 ring-emerald-200"
           : "border-slate-200"
@@ -277,16 +320,16 @@ function StatCard({ icon: Icon, label, value, helper, onClick, active }) {
         </div>
 
         <div className="min-w-0">
-          <div className="text-[11px] md:text-xs font-medium uppercase tracking-wide text-slate-500">
+          <div className="text-[11px] font-medium uppercase tracking-wide text-slate-500 md:text-xs">
             {label}
           </div>
 
-          <div className="mt-0.5 text-sm md:text-lg font-extrabold tracking-tight tabular-nums text-slate-900 break-words">
+          <div className="mt-0.5 break-words text-sm font-extrabold tracking-tight text-slate-900 tabular-nums md:text-lg">
             {value}
           </div>
 
           {helper ? (
-            <div className="mt-0.5 text-[11px] text-slate-500 truncate">
+            <div className="mt-0.5 truncate text-[11px] text-slate-500">
               {helper}
             </div>
           ) : null}
@@ -320,12 +363,13 @@ function DownloadLevelModal({
           <h2 className="text-sm font-bold text-slate-900">
             Download Excel {type === "SIMPLE" ? "Ringkas" : "Lengkap"}
           </h2>
+
           <p className="mt-0.5 text-xs text-slate-500">
             Centang jenjang yang ingin dibuat menjadi sheet Excel.
           </p>
         </div>
 
-        <div className="max-h-[65vh] overflow-y-auto p-4 space-y-3">
+        <div className="max-h-[65vh] space-y-3 overflow-y-auto p-4">
           <label className="flex cursor-pointer items-start gap-2 rounded-xl border border-slate-200 bg-slate-50 p-3 text-sm text-slate-800">
             <input
               type="checkbox"
@@ -335,7 +379,10 @@ function DownloadLevelModal({
             />
 
             <span>
-              <span className="block font-semibold">Pilih semua jenjang</span>
+              <span className="block font-semibold">
+                Pilih semua jenjang
+              </span>
+
               <span className="block text-xs text-slate-500">
                 Semua jenjang dibuat per sheet sesuai nama jenjangnya.
               </span>
@@ -354,6 +401,7 @@ function DownloadLevelModal({
               <span className="block font-semibold">
                 Tambahkan sheet Semua Jenjang
               </span>
+
               <span className="block text-xs text-emerald-700">
                 Semua jenjang digabung dalam 1 sheet tambahan.
               </span>
@@ -411,6 +459,7 @@ function DownloadLevelModal({
 
 export default function AdminDataDaftarUlangPage() {
   const [rows, setRows] = useState([]);
+
   const [stats, setStats] = useState({
     totalParticipants: 0,
     totalTagihanNet: 0,
@@ -435,11 +484,16 @@ export default function AdminDataDaftarUlangPage() {
 
   const [downloadModalType, setDownloadModalType] = useState(null);
   const [selectedDownloadLevels, setSelectedDownloadLevels] = useState([]);
-  const [includeAllDownloadSheet, setIncludeAllDownloadSheet] = useState(false);
+  const [includeAllDownloadSheet, setIncludeAllDownloadSheet] =
+    useState(false);
 
   const handleToggleStatScope = () => {
     setStatScope((prev) =>
-      prev === "ALL" ? "PTK" : prev === "PTK" ? "NON_PTK" : "ALL"
+      prev === "ALL"
+        ? "PTK"
+        : prev === "PTK"
+        ? "NON_PTK"
+        : "ALL"
     );
   };
 
@@ -458,7 +512,10 @@ export default function AdminDataDaftarUlangPage() {
           )
         );
 
-        const feesSnap = await getDocs(collection(db, "re_registration_fees"));
+        const feesSnap = await getDocs(
+          collection(db, "re_registration_fees")
+        );
+
         const feesByLabel = {};
 
         feesSnap.forEach((d) => {
@@ -470,7 +527,8 @@ export default function AdminDataDaftarUlangPage() {
           feesByLabel[label] = {
             spp: typeof data.spp === "number" ? data.spp : 0,
             uangPangkal:
-              data.uangPangkal && typeof data.uangPangkal === "object"
+              data.uangPangkal &&
+              typeof data.uangPangkal === "object"
                 ? data.uangPangkal
                 : {},
           };
@@ -483,21 +541,31 @@ export default function AdminDataDaftarUlangPage() {
           ppdbById[d.id] = d.data() || {};
         });
 
-        const reRegSnap = await getDocs(collectionGroup(db, "re_registration"));
+        const reRegSnap = await getDocs(
+          collectionGroup(db, "re_registration")
+        );
 
         const discountsByNisn = {};
+
         let totalDiscountPTK = 0;
         let totalDiscountNonPTK = 0;
 
         reRegSnap.forEach((docSnap) => {
           const docId = docSnap.id;
 
-          if (docId !== "ptk_discount" && docId !== "nonptk_discount") return;
+          if (
+            docId !== "ptk_discount" &&
+            docId !== "nonptk_discount"
+          ) {
+            return;
+          }
 
           const data = docSnap.data() || {};
           const amount = Number(data.amount || 0);
 
-          if (!Number.isFinite(amount) || amount <= 0) return;
+          if (!Number.isFinite(amount) || amount <= 0) {
+            return;
+          }
 
           const parent = docSnap.ref.parent;
           const userRef = parent?.parent;
@@ -522,6 +590,7 @@ export default function AdminDataDaftarUlangPage() {
 
           if (docId === "ptk_discount") {
             discountsByNisn[nisn].ptk += amount;
+
             discountsByNisn[nisn].ptkMeta = {
               type,
               siblingsCount,
@@ -529,19 +598,25 @@ export default function AdminDataDaftarUlangPage() {
               amountSPP,
               sourceKey,
             };
+
             totalDiscountPTK += amount;
           } else {
             discountsByNisn[nisn].nonptk += amount;
+
             discountsByNisn[nisn].nonptkMeta = {
               type,
               siblingsCount,
               sourceKey,
             };
+
             totalDiscountNonPTK += amount;
           }
         });
 
-        const paySnap = await getDocs(collectionGroup(db, "payments"));
+        const paySnap = await getDocs(
+          collectionGroup(db, "payments")
+        );
+
         const payAggByNisn = {};
 
         paySnap.forEach((docSnap) => {
@@ -554,10 +629,13 @@ export default function AdminDataDaftarUlangPage() {
 
           const amount = Number(data.amount || 0);
 
-          if (!Number.isFinite(amount) || amount <= 0) return;
+          if (!Number.isFinite(amount) || amount <= 0) {
+            return;
+          }
 
           const status = normalizeStatus(data);
           const ts = data.createdAt;
+
           const ms = ts?.toMillis
             ? ts.toMillis()
             : ts instanceof Date
@@ -574,22 +652,30 @@ export default function AdminDataDaftarUlangPage() {
           }
 
           const agg = payAggByNisn[nisn];
+
           agg.count += 1;
 
           if (status === "approved") {
             agg.totalApproved += amount;
 
-            if (ms && (!agg.firstPaidAt || ms < agg.firstPaidAt)) {
+            if (
+              ms &&
+              (!agg.firstPaidAt || ms < agg.firstPaidAt)
+            ) {
               agg.firstPaidAt = ms;
             }
 
-            if (ms && (!agg.lastPaidAt || ms > agg.lastPaidAt)) {
+            if (
+              ms &&
+              (!agg.lastPaidAt || ms > agg.lastPaidAt)
+            ) {
               agg.lastPaidAt = ms;
             }
           }
         });
 
         const tmpRows = [];
+
         let statTotalTagihanNet = 0;
         let statTotalPaid = 0;
         let statTotalSisa = 0;
@@ -601,17 +687,27 @@ export default function AdminDataDaftarUlangPage() {
           if (!nisn) continue;
 
           const level = normalizeText(
-            ud.registrationLevel || ud.jenjangDiterima || ud.jenjang
+            ud.registrationLevel ||
+              ud.jenjangDiterima ||
+              ud.jenjang
           );
 
           if (!level) continue;
 
           const name =
-            normalizeText(ud.fullName || ud.nama || ud.name || ud.studentName) ||
-            nisn;
+            normalizeText(
+              ud.fullName ||
+                ud.nama ||
+                ud.name ||
+                ud.studentName
+            ) || nisn;
 
           const phone = normalizeText(
-            ud.noWa || ud.whatsapp || ud.phone || ud.hp || ud.noHP
+            ud.noWa ||
+              ud.whatsapp ||
+              ud.phone ||
+              ud.hp ||
+              ud.noHP
           );
 
           const fee = feesByLabel[level] || null;
@@ -620,36 +716,60 @@ export default function AdminDataDaftarUlangPage() {
           let pangkalComponents = {};
           let totalPangkal = 0;
 
-          if (fee?.uangPangkal && typeof fee.uangPangkal === "object") {
+          if (
+            fee?.uangPangkal &&
+            typeof fee.uangPangkal === "object"
+          ) {
             pangkalComponents = fee.uangPangkal;
 
-            for (const v of Object.values(fee.uangPangkal)) {
-              const n = Number(v || 0);
+            for (const value of Object.values(
+              fee.uangPangkal
+            )) {
+              const numberValue = Number(value || 0);
 
-              if (Number.isFinite(n)) {
-                totalPangkal += n;
+              if (Number.isFinite(numberValue)) {
+                totalPangkal += numberValue;
               }
             }
           }
 
           const totalAwal = baseSPP + totalPangkal;
 
-          const discInfo = discountsByNisn[nisn] || { ptk: 0, nonptk: 0 };
+          const discInfo = discountsByNisn[nisn] || {
+            ptk: 0,
+            nonptk: 0,
+          };
+
           const discPTK = Number(discInfo.ptk || 0);
           const discNonPTK = Number(discInfo.nonptk || 0);
+
           const totalDisc =
             (Number.isFinite(discPTK) ? discPTK : 0) +
             (Number.isFinite(discNonPTK) ? discNonPTK : 0);
 
           const ppdbData = ppdbById[nisn] || {};
+
+          const nik = normalizeText(ppdbData.nik);
           const waliWa = normalizeText(ppdbData.waliWa);
           const ayahNama = normalizeText(ppdbData.ayahNama);
           const ibuNama = normalizeText(ppdbData.ibuNama);
-          const tempatLahir = normalizeText(ppdbData.tempatLahir);
-          const tglLahir = formatDateOnly(ppdbData.tglLahir);
-          const ayahIncomeRaw = normalizeText(ppdbData.ayahIncome);
+          const alamat = normalizeText(ppdbData.alamat);
+          const tempatLahir = normalizeText(
+            ppdbData.tempatLahir
+          );
 
-          let netTagihan = Math.max(0, totalAwal - totalDisc);
+          const tglLahir = formatDateOnly(
+            ppdbData.tglLahir
+          );
+
+          const ayahIncomeRaw = normalizeText(
+            ppdbData.ayahIncome
+          );
+
+          let netTagihan = Math.max(
+            0,
+            totalAwal - totalDisc
+          );
 
           if (isPpsJenjang(level) && !ayahIncomeRaw) {
             netTagihan = 0;
@@ -692,11 +812,14 @@ export default function AdminDataDaftarUlangPage() {
 
           if (discPTK > 0 && discInfo.ptkMeta) {
             const meta = discInfo.ptkMeta;
-            const punyaSaudara = (meta.siblingsCount || 0) > 0;
+            const punyaSaudara =
+              (meta.siblingsCount || 0) > 0;
+
             const hasSPP =
               (meta.amountSPP || 0) > 0 ||
               meta.type === "SPP" ||
               meta.type === "BP3+SPP";
+
             const hasBP3 =
               (meta.amountBP3 || 0) > 0 ||
               meta.type === "BP3" ||
@@ -715,16 +838,29 @@ export default function AdminDataDaftarUlangPage() {
             } else {
               discountLabel = "PTK";
             }
-          } else if (discNonPTK > 0 && discInfo.nonptkMeta) {
+          } else if (
+            discNonPTK > 0 &&
+            discInfo.nonptkMeta
+          ) {
             const meta = discInfo.nonptkMeta;
-            const punyaSaudara = (meta.siblingsCount || 0) > 0;
-            const sourceKey = normalizeText(meta.sourceKey).toLowerCase();
-            const t = meta.type || "";
+
+            const punyaSaudara =
+              (meta.siblingsCount || 0) > 0;
+
+            const sourceKey = normalizeText(
+              meta.sourceKey
+            ).toLowerCase();
+
+            const type = meta.type || "";
+
             const isSPP =
-              t === "SPP" ||
+              type === "SPP" ||
               sourceKey === "spp" ||
               sourceKey.endsWith(".spp");
-            const isBP3 = t === "BP3" || sourceKey.includes("bp3");
+
+            const isBP3 =
+              type === "BP3" ||
+              sourceKey.includes("bp3");
 
             if (isSPP) {
               discountLabel = "SPP yatim";
@@ -738,8 +874,10 @@ export default function AdminDataDaftarUlangPage() {
           tmpRows.push({
             nisn,
             name,
+            nik,
             ayahNama,
             ibuNama,
+            alamat,
             tempatLahir,
             tglLahir,
             level,
@@ -773,6 +911,7 @@ export default function AdminDataDaftarUlangPage() {
         const sortedRows = sortRowsAZ(tmpRows);
 
         setRows(sortedRows);
+
         setStats({
           totalParticipants: sortedRows.length,
           totalTagihanNet: statTotalTagihanNet,
@@ -781,14 +920,19 @@ export default function AdminDataDaftarUlangPage() {
           totalDiscountPTK,
           totalDiscountNonPTK,
         });
-      } catch (e) {
-        console.error(e);
+      } catch (error) {
+        console.error(error);
 
         if (!alive) return;
 
-        setErrorMsg(e?.message || "Gagal memuat data daftar ulang.");
+        setErrorMsg(
+          error?.message ||
+            "Gagal memuat data daftar ulang."
+        );
       } finally {
-        alive && setLoading(false);
+        if (alive) {
+          setLoading(false);
+        }
       }
     }
 
@@ -806,56 +950,78 @@ export default function AdminDataDaftarUlangPage() {
       const s = search.trim().toLowerCase();
 
       out = out.filter(
-        (r) =>
-          r.nisn.toLowerCase().includes(s) ||
-          r.name.toLowerCase().includes(s) ||
-          r.level.toLowerCase().includes(s)
+        (row) =>
+          row.nisn.toLowerCase().includes(s) ||
+          row.name.toLowerCase().includes(s) ||
+          row.nik.toLowerCase().includes(s) ||
+          row.level.toLowerCase().includes(s)
       );
     }
 
     if (filterJalur === "PTK") {
-      out = out.filter((r) => r.jalur === "PTK");
+      out = out.filter((row) => row.jalur === "PTK");
     } else if (filterJalur === "NON_PTK") {
-      out = out.filter((r) => (r.jalur || "") !== "PTK");
+      out = out.filter(
+        (row) => (row.jalur || "") !== "PTK"
+      );
     } else if (filterJalur === "NON_PTK_DISC") {
       out = out.filter(
-        (r) =>
-          (r.jalur || "") !== "PTK" && (Number(r.discNonPTK || 0) || 0) > 0
+        (row) =>
+          (row.jalur || "") !== "PTK" &&
+          (Number(row.discNonPTK || 0) || 0) > 0
       );
     }
 
     if (filterLevel !== "ALL") {
-      out = out.filter((r) => r.level === filterLevel);
+      out = out.filter(
+        (row) => row.level === filterLevel
+      );
     }
 
     if (filterStatus !== "ALL") {
-      out = out.filter((r) => r.statusDaftarUlang === filterStatus);
+      out = out.filter(
+        (row) =>
+          row.statusDaftarUlang === filterStatus
+      );
     }
 
     return sortRowsAZ(out);
-  }, [rows, search, filterJalur, filterLevel, filterStatus]);
+  }, [
+    rows,
+    search,
+    filterJalur,
+    filterLevel,
+    filterStatus,
+  ]);
 
   const scopedStats = useMemo(() => {
     let filtered = [...filteredRows];
 
     if (statScope === "PTK") {
-      filtered = filtered.filter((r) => r.jalur === "PTK");
+      filtered = filtered.filter(
+        (row) => row.jalur === "PTK"
+      );
     } else if (statScope === "NON_PTK") {
-      filtered = filtered.filter((r) => (r.jalur || "") !== "PTK");
+      filtered = filtered.filter(
+        (row) => (row.jalur || "") !== "PTK"
+      );
     }
 
     return {
       participants: filtered.length,
       totalTagihanNet: filtered.reduce(
-        (sum, r) => sum + (Number(r.netTagihan || 0) || 0),
+        (sum, row) =>
+          sum + (Number(row.netTagihan || 0) || 0),
         0
       ),
       totalPaid: filtered.reduce(
-        (sum, r) => sum + (Number(r.totalPaid || 0) || 0),
+        (sum, row) =>
+          sum + (Number(row.totalPaid || 0) || 0),
         0
       ),
       totalSisa: filtered.reduce(
-        (sum, r) => sum + (Number(r.sisa || 0) || 0),
+        (sum, row) =>
+          sum + (Number(row.sisa || 0) || 0),
         0
       ),
     };
@@ -865,22 +1031,40 @@ export default function AdminDataDaftarUlangPage() {
     let totalPTK = 0;
     let totalNonPTK = 0;
 
-    filteredRows.forEach((r) => {
-      totalPTK += Number(r.discPTK || 0) || 0;
-      totalNonPTK += Number(r.discNonPTK || 0) || 0;
+    filteredRows.forEach((row) => {
+      totalPTK += Number(row.discPTK || 0) || 0;
+      totalNonPTK +=
+        Number(row.discNonPTK || 0) || 0;
     });
 
-    if (statScope === "ALL") return fmtIDR(totalPTK + totalNonPTK);
-    if (statScope === "PTK") return fmtIDR(totalPTK);
-    if (statScope === "NON_PTK") return fmtIDR(totalNonPTK);
+    if (statScope === "ALL") {
+      return fmtIDR(totalPTK + totalNonPTK);
+    }
+
+    if (statScope === "PTK") {
+      return fmtIDR(totalPTK);
+    }
+
+    if (statScope === "NON_PTK") {
+      return fmtIDR(totalNonPTK);
+    }
 
     return "-";
   }, [filteredRows, statScope]);
 
   const discountHelper = useMemo(() => {
-    if (statScope === "ALL") return "Kiri: PTK · Kanan: Non-PTK";
-    if (statScope === "PTK") return "Diskon jalur PTK";
-    if (statScope === "NON_PTK") return "Diskon jalur Non-PTK";
+    if (statScope === "ALL") {
+      return "Kiri: PTK · Kanan: Non-PTK";
+    }
+
+    if (statScope === "PTK") {
+      return "Diskon jalur PTK";
+    }
+
+    if (statScope === "NON_PTK") {
+      return "Diskon jalur Non-PTK";
+    }
+
     return "";
   }, [statScope]);
 
@@ -895,45 +1079,79 @@ export default function AdminDataDaftarUlangPage() {
 
   const totalPages = useMemo(() => {
     if (isShowAll) return 1;
-    return Math.max(1, Math.ceil(filteredRows.length / Number(pageSize)));
-  }, [filteredRows.length, pageSize, isShowAll]);
 
-  const pageSafe = isShowAll ? 1 : Math.min(page, totalPages);
+    return Math.max(
+      1,
+      Math.ceil(
+        filteredRows.length / Number(pageSize)
+      )
+    );
+  }, [
+    filteredRows.length,
+    pageSize,
+    isShowAll,
+  ]);
+
+  const pageSafe = isShowAll
+    ? 1
+    : Math.min(page, totalPages);
 
   const paginatedRows = useMemo(() => {
     if (isShowAll) return filteredRows;
 
-    const start = (pageSafe - 1) * Number(pageSize);
-    return filteredRows.slice(start, start + Number(pageSize));
-  }, [filteredRows, pageSafe, pageSize, isShowAll]);
+    const start =
+      (pageSafe - 1) * Number(pageSize);
 
-  const rowIndexStart = isShowAll ? 0 : (pageSafe - 1) * Number(pageSize);
+    return filteredRows.slice(
+      start,
+      start + Number(pageSize)
+    );
+  }, [
+    filteredRows,
+    pageSafe,
+    pageSize,
+    isShowAll,
+  ]);
+
+  const rowIndexStart = isShowAll
+    ? 0
+    : (pageSafe - 1) * Number(pageSize);
 
   const levelOptions = useMemo(() => {
     const set = new Set();
 
-    rows.forEach((r) => {
-      if (r.level) set.add(r.level);
+    rows.forEach((row) => {
+      if (row.level) {
+        set.add(row.level);
+      }
     });
 
-    return Array.from(set).sort((a, b) => a.localeCompare(b, "id"));
+    return Array.from(set).sort((a, b) =>
+      a.localeCompare(b, "id")
+    );
   }, [rows]);
 
   const downloadLevelOptions = useMemo(() => {
     const set = new Set();
 
-    filteredRows.forEach((r) => {
-      if (r.level) set.add(r.level);
+    filteredRows.forEach((row) => {
+      if (row.level) {
+        set.add(row.level);
+      }
     });
 
-    return Array.from(set).sort((a, b) => a.localeCompare(b, "id"));
+    return Array.from(set).sort((a, b) =>
+      a.localeCompare(b, "id")
+    );
   }, [filteredRows]);
 
   const openDownloadModal = (type) => {
     if (!filteredRows.length) return;
 
     setDownloadModalType(type);
-    setSelectedDownloadLevels(downloadLevelOptions);
+    setSelectedDownloadLevels(
+      downloadLevelOptions
+    );
     setIncludeAllDownloadSheet(false);
   };
 
@@ -953,7 +1171,9 @@ export default function AdminDataDaftarUlangPage() {
 
   const toggleAllDownloadLevels = () => {
     setSelectedDownloadLevels((prev) =>
-      prev.length === downloadLevelOptions.length ? [] : downloadLevelOptions
+      prev.length === downloadLevelOptions.length
+        ? []
+        : downloadLevelOptions
     );
   };
 
@@ -962,25 +1182,31 @@ export default function AdminDataDaftarUlangPage() {
       "No",
       "NISN",
       "Nama",
+      "NIK",
       "Jenjang",
       "Tempat Lahir",
       "Tanggal Lahir",
       "Nama Ayah",
       "Nama Ibu",
+      "Alamat",
       "Nomor HP/Wali",
     ];
 
-    const body = sortRowsAZ(data).map((r, idx) => [
-      idx + 1,
-      r.nisn || "",
-      r.name || "",
-      r.level || "",
-      r.tempatLahir || "",
-      r.tglLahir || "",
-      r.ayahNama || "",
-      r.ibuNama || "",
-      r.waliWa || r.phone || "",
-    ]);
+    const body = sortRowsAZ(data).map(
+      (row, index) => [
+        index + 1,
+        row.nisn || "",
+        row.name || "",
+        row.nik || "",
+        row.level || "",
+        row.tempatLahir || "",
+        row.tglLahir || "",
+        row.ayahNama || "",
+        row.ibuNama || "",
+        row.alamat || "",
+        row.waliWa || row.phone || "",
+      ]
+    );
 
     return [header, ...body];
   };
@@ -990,6 +1216,7 @@ export default function AdminDataDaftarUlangPage() {
       "No",
       "NISN",
       "Nama",
+      "NIK",
       "Jenjang",
       "Tempat Lahir",
       "Tanggal Lahir",
@@ -1018,46 +1245,55 @@ export default function AdminDataDaftarUlangPage() {
       "Terakhir Bayar",
     ];
 
-    const body = sortRowsAZ(data).map((r, idx) => {
-      const pk = r.pangkalComponents || {};
+    const body = sortRowsAZ(data).map(
+      (row, index) => {
+        const pangkal =
+          row.pangkalComponents || {};
 
-      const getPkValNum = (key) => {
-        const val = Number(pk?.[key] || 0);
-        return Number.isFinite(val) ? val : 0;
-      };
+        const getPangkalValue = (key) => {
+          const value = Number(
+            pangkal?.[key] || 0
+          );
 
-      return [
-        idx + 1,
-        r.nisn || "",
-        r.name || "",
-        r.level || "",
-        r.tempatLahir || "",
-        r.tglLahir || "",
-        r.ayahNama || "",
-        r.ibuNama || "",
-        r.waliWa || r.phone || "",
-        r.jalur || "",
-        r.discountLabel || "",
-        Number(r.baseSPP || 0) || 0,
-        getPkValNum("pakaian"),
-        getPkValNum("sarpras"),
-        getPkValNum("kasur"),
-        getPkValNum("kitab"),
-        getPkValNum("bp3"),
-        Number(r.totalPangkal || 0) || 0,
-        Number(r.totalAwal || 0) || 0,
-        Number(r.discPTK || 0) || 0,
-        Number(r.discNonPTK || 0) || 0,
-        Number(r.totalDisc || 0) || 0,
-        Number(r.netTagihan || 0) || 0,
-        Number(r.totalPaid || 0) || 0,
-        Number(r.sisa || 0) || 0,
-        r.statusDaftarUlang || "",
-        r.buktiCount || 0,
-        formatDateTime(r.firstPaidAt),
-        formatDateTime(r.lastPaidAt),
-      ];
-    });
+          return Number.isFinite(value)
+            ? value
+            : 0;
+        };
+
+        return [
+          index + 1,
+          row.nisn || "",
+          row.name || "",
+          row.nik || "",
+          row.level || "",
+          row.tempatLahir || "",
+          row.tglLahir || "",
+          row.ayahNama || "",
+          row.ibuNama || "",
+          row.waliWa || row.phone || "",
+          row.jalur || "",
+          row.discountLabel || "",
+          Number(row.baseSPP || 0) || 0,
+          getPangkalValue("pakaian"),
+          getPangkalValue("sarpras"),
+          getPangkalValue("kasur"),
+          getPangkalValue("kitab"),
+          getPangkalValue("bp3"),
+          Number(row.totalPangkal || 0) || 0,
+          Number(row.totalAwal || 0) || 0,
+          Number(row.discPTK || 0) || 0,
+          Number(row.discNonPTK || 0) || 0,
+          Number(row.totalDisc || 0) || 0,
+          Number(row.netTagihan || 0) || 0,
+          Number(row.totalPaid || 0) || 0,
+          Number(row.sisa || 0) || 0,
+          row.statusDaftarUlang || "",
+          row.buktiCount || 0,
+          formatDateTime(row.firstPaidAt),
+          formatDateTime(row.lastPaidAt),
+        ];
+      }
+    );
 
     return [header, ...body];
   };
@@ -1065,24 +1301,39 @@ export default function AdminDataDaftarUlangPage() {
   const runDownloadXls = (type) => {
     if (!filteredRows.length) return;
 
-    const pickedLevels = new Set(selectedDownloadLevels);
-    const selectedRows = filteredRows.filter((r) => pickedLevels.has(r.level));
+    const pickedLevels = new Set(
+      selectedDownloadLevels
+    );
 
-    if (!selectedRows.length && !includeAllDownloadSheet) return;
+    const selectedRows = filteredRows.filter(
+      (row) => pickedLevels.has(row.level)
+    );
 
-    const ts = new Date().toISOString().slice(0, 10);
-    const wb = XLSX.utils.book_new();
+    if (
+      !selectedRows.length &&
+      !includeAllDownloadSheet
+    ) {
+      return;
+    }
+
+    const ts = new Date()
+      .toISOString()
+      .slice(0, 10);
+
+    const workbook = XLSX.utils.book_new();
     const isSimple = type === "SIMPLE";
 
     const simpleColWidths = [
       { wch: 6 },
       { wch: 18 },
       { wch: 34 },
+      { wch: 20 },
       { wch: 26 },
       { wch: 22 },
       { wch: 16 },
       { wch: 30 },
       { wch: 30 },
+      { wch: 46 },
       { wch: 22 },
     ];
 
@@ -1090,6 +1341,7 @@ export default function AdminDataDaftarUlangPage() {
       { wch: 6 },
       { wch: 18 },
       { wch: 34 },
+      { wch: 20 },
       { wch: 26 },
       { wch: 22 },
       { wch: 16 },
@@ -1118,48 +1370,68 @@ export default function AdminDataDaftarUlangPage() {
       { wch: 20 },
     ];
 
-    const buildSheetData = isSimple ? buildSimpleSheetData : buildFullSheetData;
-    const colWidths = isSimple ? simpleColWidths : fullColWidths;
+    const buildSheetData = isSimple
+      ? buildSimpleSheetData
+      : buildFullSheetData;
 
-   if (includeAllDownloadSheet && selectedRows.length) {
-  appendStyledSheet(
-    wb,
-    "Semua Jenjang",
-    buildSheetData(selectedRows),
-    colWidths
-  );
-}
+    const colWidths = isSimple
+      ? simpleColWidths
+      : fullColWidths;
 
-    const grouped = groupRowsByLevel(selectedRows);
+    if (
+      includeAllDownloadSheet &&
+      selectedRows.length
+    ) {
+      appendStyledSheet(
+        workbook,
+        "Semua Jenjang",
+        buildSheetData(selectedRows),
+        colWidths
+      );
+    }
+
+    const grouped =
+      groupRowsByLevel(selectedRows);
 
     grouped.forEach(([level, data]) => {
-      appendStyledSheet(wb, level, buildSheetData(data), colWidths);
+      appendStyledSheet(
+        workbook,
+        level,
+        buildSheetData(data),
+        colWidths
+      );
     });
 
     XLSX.writeFile(
-      wb,
-      `data-daftar-ulang-${isSimple ? "ringkas" : "lengkap"}-${ts}.xlsx`,
-      { bookType: "xlsx" }
+      workbook,
+      `data-daftar-ulang-${
+        isSimple ? "ringkas" : "lengkap"
+      }-${ts}.xlsx`,
+      {
+        bookType: "xlsx",
+      }
     );
 
     closeDownloadModal();
   };
 
   return (
-    <main className="p-4 md:p-6 space-y-4">
+    <main className="space-y-4 p-4 md:p-6">
       <div className="flex flex-col gap-2 md:flex-row md:items-center md:justify-between">
         <div>
-          <h1 className="text-lg md:text-xl font-bold text-slate-900">
+          <h1 className="text-lg font-bold text-slate-900 md:text-xl">
             Data Rekap Daftar Ulang
           </h1>
         </div>
       </div>
 
-      <div className="grid grid-cols-1 md:grid-cols-3 xl:grid-cols-5 gap-3">
+      <div className="grid grid-cols-1 gap-3 md:grid-cols-3 xl:grid-cols-5">
         <StatCard
           icon={Users}
           label={`Peserta Daftar Ulang (LULUS)${scopeLabelSuffix}`}
-          value={scopedStats.participants.toLocaleString("id-ID")}
+          value={scopedStats.participants.toLocaleString(
+            "id-ID"
+          )}
           helper="Klik untuk toggle: Semua → PTK → Non-PTK"
           onClick={handleToggleStatScope}
           active={statScope !== "ALL"}
@@ -1168,7 +1440,9 @@ export default function AdminDataDaftarUlangPage() {
         <StatCard
           icon={Wallet}
           label={`Total Tagihan (net)${scopeLabelSuffix}`}
-          value={fmtIDR(scopedStats.totalTagihanNet)}
+          value={fmtIDR(
+            scopedStats.totalTagihanNet
+          )}
           helper="Setelah potongan sesuai jalur"
           onClick={handleToggleStatScope}
           active={statScope !== "ALL"}
@@ -1203,17 +1477,20 @@ export default function AdminDataDaftarUlangPage() {
       </div>
 
       <div className="rounded-2xl border border-slate-200 bg-white shadow-sm">
-        <div className="px-3 py-3 md:px-4 md:py-3 border-b border-slate-200 flex flex-col gap-3 md:flex-row md:items-center md:justify-between">
+        <div className="flex flex-col gap-3 border-b border-slate-200 px-3 py-3 md:flex-row md:items-center md:justify-between md:px-4">
           <div className="flex items-center gap-2 text-slate-800">
             <Filter className="h-4 w-4" />
-            <span className="text-sm font-semibold">Data peserta</span>
 
-            {loading && (
+            <span className="text-sm font-semibold">
+              Data peserta
+            </span>
+
+            {loading ? (
               <span className="inline-flex items-center gap-1 text-[11px] text-slate-500">
                 <Loader2 className="h-3.5 w-3.5 animate-spin" />
                 Memuat…
               </span>
-            )}
+            ) : null}
           </div>
 
           <div className="flex flex-col gap-2 md:flex-row md:items-center md:gap-3">
@@ -1222,82 +1499,132 @@ export default function AdminDataDaftarUlangPage() {
 
               <input
                 value={search}
-                onChange={(e) => {
-                  setSearch(e.target.value);
+                onChange={(event) => {
+                  setSearch(event.target.value);
                   setPage(1);
                 }}
-                placeholder="Cari NISN / nama / jenjang…"
-                className="bg-transparent px-1 py-1 text-xs md:text-sm text-slate-900 placeholder:text-slate-400 focus:outline-none"
+                placeholder="Cari NISN / NIK / nama / jenjang…"
+                className="bg-transparent px-1 py-1 text-xs text-slate-900 placeholder:text-slate-400 focus:outline-none md:text-sm"
               />
             </div>
 
             <div className="flex flex-wrap items-center gap-2">
               <select
                 value={filterJalur}
-                onChange={(e) => {
-                  setFilterJalur(e.target.value);
+                onChange={(event) => {
+                  setFilterJalur(
+                    event.target.value
+                  );
+
                   setPage(1);
                 }}
                 className="rounded-lg border border-slate-200 bg-white px-2 py-1 text-xs text-slate-900"
               >
-                <option value="ALL">Semua Jalur</option>
-                <option value="PTK">PTK</option>
-                <option value="NON_PTK">Non-PTK</option>
-                <option value="NON_PTK_DISC">Non-PTK (dapat potongan)</option>
+                <option value="ALL">
+                  Semua Jalur
+                </option>
+
+                <option value="PTK">
+                  PTK
+                </option>
+
+                <option value="NON_PTK">
+                  Non-PTK
+                </option>
+
+                <option value="NON_PTK_DISC">
+                  Non-PTK (dapat potongan)
+                </option>
               </select>
 
               <select
                 value={filterLevel}
-                onChange={(e) => {
-                  setFilterLevel(e.target.value);
+                onChange={(event) => {
+                  setFilterLevel(
+                    event.target.value
+                  );
+
                   setPage(1);
                 }}
-                className="rounded-lg border border-slate-200 bg-white px-2 py-1 text-xs text-slate-900 max-w-[160px]"
+                className="max-w-[160px] rounded-lg border border-slate-200 bg-white px-2 py-1 text-xs text-slate-900"
               >
-                <option value="ALL">Semua Jenjang</option>
+                <option value="ALL">
+                  Semua Jenjang
+                </option>
 
-                {levelOptions.map((lv) => (
-                  <option key={lv} value={lv}>
-                    {lv}
+                {levelOptions.map((level) => (
+                  <option
+                    key={level}
+                    value={level}
+                  >
+                    {level}
                   </option>
                 ))}
               </select>
 
               <select
                 value={filterStatus}
-                onChange={(e) => {
-                  setFilterStatus(e.target.value);
+                onChange={(event) => {
+                  setFilterStatus(
+                    event.target.value
+                  );
+
                   setPage(1);
                 }}
                 className="rounded-lg border border-slate-200 bg-white px-2 py-1 text-xs text-slate-900"
               >
-                <option value="ALL">Semua Status</option>
-                <option value="BELUM BAYAR">Belum bayar</option>
-                <option value="SEBAGIAN">Sebagian</option>
-                <option value="LUNAS">Lunas</option>
+                <option value="ALL">
+                  Semua Status
+                </option>
+
+                <option value="BELUM BAYAR">
+                  Belum bayar
+                </option>
+
+                <option value="SEBAGIAN">
+                  Sebagian
+                </option>
+
+                <option value="LUNAS">
+                  Lunas
+                </option>
               </select>
 
               <select
                 value={pageSize}
-                onChange={(e) => {
-                  const value = e.target.value;
-                  setPageSize(value === "ALL" ? "ALL" : Number(value));
+                onChange={(event) => {
+                  const value =
+                    event.target.value;
+
+                  setPageSize(
+                    value === "ALL"
+                      ? "ALL"
+                      : Number(value)
+                  );
+
                   setPage(1);
                 }}
                 className="rounded-lg border border-slate-200 bg-white px-2 py-1 text-xs text-slate-900"
               >
-                {PAGE_SIZES.map((n) => (
-                  <option key={n} value={n}>
-                    {n === "ALL" ? "Semua" : n}
+                {PAGE_SIZES.map((size) => (
+                  <option
+                    key={size}
+                    value={size}
+                  >
+                    {size === "ALL"
+                      ? "Semua"
+                      : size}
                   </option>
                 ))}
               </select>
             </div>
 
-            <div className="inline-flex rounded-lg border border-slate-200 bg-slate-50 overflow-hidden text-xs">
+            <div className="inline-flex overflow-hidden rounded-lg border border-slate-200 bg-slate-50 text-xs">
               <button
                 type="button"
-                onClick={() => setViewMode("SUMMARY")}
+                onClick={() =>
+                  setViewMode("SUMMARY")
+                }
                 className={`inline-flex items-center gap-1 px-2.5 py-1.5 font-semibold ${
                   viewMode === "SUMMARY"
                     ? "bg-white text-slate-900"
@@ -1310,8 +1637,10 @@ export default function AdminDataDaftarUlangPage() {
 
               <button
                 type="button"
-                onClick={() => setViewMode("COMPONENT")}
-                className={`inline-flex items-center gap-1 px-2.5 py-1.5 font-semibold border-l border-slate-200 ${
+                onClick={() =>
+                  setViewMode("COMPONENT")
+                }
+                className={`inline-flex items-center gap-1 border-l border-slate-200 px-2.5 py-1.5 font-semibold ${
                   viewMode === "COMPONENT"
                     ? "bg-white text-slate-900"
                     : "text-slate-500 hover:text-slate-800"
@@ -1325,7 +1654,9 @@ export default function AdminDataDaftarUlangPage() {
             <div className="flex items-center gap-2">
               <button
                 type="button"
-                onClick={() => openDownloadModal("SIMPLE")}
+                onClick={() =>
+                  openDownloadModal("SIMPLE")
+                }
                 disabled={!filteredRows.length}
                 className="inline-flex items-center gap-1 rounded-lg border border-sky-500 bg-sky-600 px-3 py-1.5 text-xs font-semibold text-white hover:bg-sky-700 disabled:opacity-50"
               >
@@ -1335,7 +1666,9 @@ export default function AdminDataDaftarUlangPage() {
 
               <button
                 type="button"
-                onClick={() => openDownloadModal("FULL")}
+                onClick={() =>
+                  openDownloadModal("FULL")
+                }
                 disabled={!filteredRows.length}
                 className="inline-flex items-center gap-1 rounded-lg border border-emerald-500 bg-emerald-600 px-3 py-1.5 text-xs font-semibold text-white hover:bg-emerald-700 disabled:opacity-50"
               >
@@ -1347,325 +1680,518 @@ export default function AdminDataDaftarUlangPage() {
         </div>
 
         {errorMsg ? (
-          <div className="p-4 text-sm text-rose-700 flex items-center gap-2">
+          <div className="flex items-center gap-2 p-4 text-sm text-rose-700">
             <AlertCircle className="h-4 w-4" />
             {errorMsg}
           </div>
-        ) : filteredRows.length === 0 && !loading ? (
+        ) : filteredRows.length === 0 &&
+          !loading ? (
           <div className="p-4 text-sm text-slate-700">
-            Tidak ada data daftar ulang yang cocok dengan filter.
+            Tidak ada data daftar ulang yang
+            cocok dengan filter.
           </div>
         ) : (
           <div className="overflow-x-auto">
             {viewMode === "SUMMARY" ? (
               <table className="min-w-full text-xs md:text-sm">
-                <thead className="bg-slate-50 border-b border-slate-200">
+                <thead className="border-b border-slate-200 bg-slate-50">
                   <tr className="text-left text-[11px] font-semibold uppercase tracking-wide text-slate-500">
-                    <th className="px-3 py-2">No</th>
-                    <th className="px-3 py-2">NISN</th>
-                    <th className="px-3 py-2">Nama</th>
-                    <th className="px-3 py-2">Jenjang</th>
-                    <th className="px-3 py-2">Jalur</th>
-                    <th className="px-3 py-2 text-right">Tagihan Awal</th>
-                    <th className="px-3 py-2 text-right">Potongan</th>
-                    <th className="px-3 py-2 text-right">Tagihan Net</th>
-                    <th className="px-3 py-2 text-right">Terbayar</th>
-                    <th className="px-3 py-2 text-right">Sisa</th>
-                    <th className="px-3 py-2">Status</th>
-                    <th className="px-3 py-2 text-center">Bukti</th>
-                    <th className="px-3 py-2">Pertama Bayar</th>
-                    <th className="px-3 py-2">Hubungi</th>
+                    <th className="px-3 py-2">
+                      No
+                    </th>
+
+                    <th className="px-3 py-2">
+                      NISN
+                    </th>
+
+                    <th className="px-3 py-2">
+                      Nama
+                    </th>
+
+                    <th className="px-3 py-2">
+                      Jenjang
+                    </th>
+
+                    <th className="px-3 py-2">
+                      Jalur
+                    </th>
+
+                    <th className="px-3 py-2 text-right">
+                      Tagihan Awal
+                    </th>
+
+                    <th className="px-3 py-2 text-right">
+                      Potongan
+                    </th>
+
+                    <th className="px-3 py-2 text-right">
+                      Tagihan Net
+                    </th>
+
+                    <th className="px-3 py-2 text-right">
+                      Terbayar
+                    </th>
+
+                    <th className="px-3 py-2 text-right">
+                      Sisa
+                    </th>
+
+                    <th className="px-3 py-2">
+                      Status
+                    </th>
+
+                    <th className="px-3 py-2 text-center">
+                      Bukti
+                    </th>
+
+                    <th className="px-3 py-2">
+                      Pertama Bayar
+                    </th>
+
+                    <th className="px-3 py-2">
+                      Hubungi
+                    </th>
                   </tr>
                 </thead>
 
                 <tbody className="divide-y divide-slate-100">
-                  {paginatedRows.map((r, idx) => (
-                    <tr key={r.nisn} className="hover:bg-slate-50">
-                      <td className="px-3 py-2 text-[11px] font-semibold text-slate-800">
-                        {rowIndexStart + idx + 1}
-                      </td>
-
-                      <td className="px-3 py-2 font-mono text-[11px] text-slate-800">
-                        {r.nisn}
-                      </td>
-
-                      <td className="px-3 py-2">
-                        <div className="font-semibold text-slate-900">
-                          {r.name}
-                        </div>
-
-                        {r.phone ? (
-                          <div className="text-[11px] text-slate-500">
-                            {r.phone}
-                          </div>
-                        ) : null}
-
-                        {(r.tempatLahir || r.tglLahir) && (
-                          <div className="text-[11px] text-slate-500">
-                            TTL: {[r.tempatLahir, r.tglLahir]
-                              .filter(Boolean)
-                              .join(", ")}
-                          </div>
-                        )}
-
-                        {r.waliWa ? (
-                          <div className="text-[11px] text-slate-500">
-                            Wali: {r.waliWa}
-                          </div>
-                        ) : null}
-                      </td>
-
-                      <td className="px-3 py-2 text-slate-800">{r.level}</td>
-
-                      <td className="px-3 py-2">
-                        {r.jalur ? (
-                          <span
-                            className={`inline-flex items-center rounded-full px-2 py-0.5 text-[10px] font-semibold border ${
-                              r.jalur === "PTK"
-                                ? "bg-emerald-50 border-emerald-200 text-emerald-700"
-                                : "bg-sky-50 border-sky-200 text-sky-700"
-                            }`}
-                          >
-                            {r.jalur}
-                          </span>
-                        ) : (
-                          <span className="text-[11px] text-slate-400">—</span>
-                        )}
-                      </td>
-
-                      <td className="px-3 py-2 text-right tabular-nums text-slate-900">
-                        {fmtIDR(r.totalAwal)}
-                      </td>
-
-                      <td className="px-3 py-2 text-center tabular-nums text-slate-900">
-                        {r.totalDisc > 0 ? (
-                          <div className="flex flex-col items-center gap-0.5">
-                            <span>{fmtIDR(r.totalDisc)}</span>
-
-                            {r.discountLabel && (
-                              <span className="inline-flex items-center rounded-full px-2 py-0.5 text-[9px] font-semibold border border-violet-200 bg-violet-50 text-violet-700">
-                                {r.discountLabel}
-                              </span>
-                            )}
-                          </div>
-                        ) : (
-                          "—"
-                        )}
-                      </td>
-
-                      <td className="px-3 py-2 text-right tabular-nums text-slate-900">
-                        {fmtIDR(r.netTagihan)}
-                      </td>
-
-                      <td className="px-3 py-2 text-right tabular-nums text-slate-900">
-                        {fmtIDR(r.totalPaid)}
-                      </td>
-
-                      <td className="px-3 py-2 text-right tabular-nums text-slate-900">
-                        {fmtIDR(r.sisa)}
-                      </td>
-
-                      <td className="px-3 py-2">
-                        <span
-                          className={`inline-flex items-center rounded-full px-2 py-0.5 text-[10px] font-semibold border ${
-                            r.statusDaftarUlang === "LUNAS"
-                              ? "bg-emerald-50 border-emerald-200 text-emerald-700"
-                              : r.statusDaftarUlang === "SEBAGIAN"
-                              ? "bg-amber-50 border-amber-200 text-amber-700"
-                              : "bg-rose-50 border-rose-200 text-rose-700"
-                          }`}
-                        >
-                          {r.statusDaftarUlang}
-                        </span>
-                      </td>
-
-                      <td className="px-3 py-2 text-center text-[11px] text-slate-800">
-                        {r.buktiCount || 0}
-                      </td>
-
-                      <td className="px-3 py-2 text-[11px] text-slate-700">
-                        {formatDateTime(r.firstPaidAt)}
-                      </td>
-
-                      <td className="px-3 py-2 text-center">
-                        {(r.statusDaftarUlang === "BELUM BAYAR" ||
-                          r.statusDaftarUlang === "SEBAGIAN") &&
-                        r.waliWa ? (
-                          <a
-                            href={`https://web.whatsapp.com/send?phone=${normalizeWaNumber(
-                              r.waliWa
-                            )}&text=${encodeURIComponent(
-                              `Bismillah..\n\nDiberitahukan kepada Yth. Bapak/Ibu Wali Santri dari *${r.name}*, bahwa proses *daftar ulang* ananda masih *belum diselesaikan*.\n\nAdapun sisa pembayaran daftar ulang yang perlu dilunasi adalah sebesar *${fmtIDR(
-                                r.sisa
-                              )}*.\n\nKami berharap Bapak/Ibu dapat melakukan pelunasan sebelum kedatangan santri, agar proses administrasi dan penerimaan ananda dapat berjalan dengan baik dan lancar.\n\nUntuk informasi lebih lanjut, silakan menghubungi panitia di nomor *0877 2024 2025*.\n\nTerima kasih atas perhatian dan kerja samanya.\nSyukron jazakumullahu khairan.\n\n— Panitia SPMB`
-                            )}`}
-                            target="_blank"
-                            rel="noopener noreferrer"
-                            onClick={() =>
-                              setSentWA((prev) => ({
-                                ...prev,
-                                [r.nisn]: true,
-                              }))
-                            }
-                            className={`inline-flex items-center gap-1 rounded-md px-2 py-1 text-[11px] font-semibold text-white ${
-                              sentWA[r.nisn]
-                                ? "bg-slate-400 cursor-default"
-                                : "bg-green-600 hover:bg-green-700"
-                            }`}
-                          >
-                            {sentWA[r.nisn] ? "Hubungi WA ✓" : "Hubungi WA"}
-                          </a>
-                        ) : (
-                          <span className="text-[11px] text-slate-400">—</span>
-                        )}
-                      </td>
-                    </tr>
-                  ))}
-                </tbody>
-              </table>
-            ) : (
-              <table className="min-w-full text-xs md:text-sm">
-                <thead className="bg-slate-50 border-b border-slate-200">
-                  <tr className="text-left text-[11px] font-semibold uppercase tracking-wide text-slate-500">
-                    <th className="px-3 py-2">No</th>
-                    <th className="px-3 py-2">NISN</th>
-                    <th className="px-3 py-2">Nama</th>
-                    <th className="px-3 py-2">Jenjang</th>
-                    <th className="px-3 py-2">Jalur</th>
-                    <th className="px-3 py-2 text-right">SPP</th>
-                    <th className="px-3 py-2 text-right">Pakaian</th>
-                    <th className="px-3 py-2 text-right">Sarpras</th>
-                    <th className="px-3 py-2 text-right">Kasur</th>
-                    <th className="px-3 py-2 text-right">Kitab</th>
-                    <th className="px-3 py-2 text-right">BP3</th>
-                    <th className="px-3 py-2 text-right">Total Pangkal</th>
-                    <th className="px-3 py-2 text-right">Total Dibayar</th>
-                    <th className="px-3 py-2 text-right">Jumlah Dibayar</th>
-                  </tr>
-                </thead>
-
-                <tbody className="divide-y divide-slate-100">
-                  {paginatedRows.map((r, idx) => {
-                    const pk = r.pangkalComponents || {};
-
-                    const getPkVal = (key) => {
-                      const val = Number(pk?.[key] || 0);
-                      return Number.isFinite(val) && val > 0
-                        ? fmtIDR(val)
-                        : "–";
-                    };
-
-                    return (
-                      <tr key={r.nisn} className="hover:bg-slate-50 align-top">
+                  {paginatedRows.map(
+                    (row, index) => (
+                      <tr
+                        key={row.nisn}
+                        className="hover:bg-slate-50"
+                      >
                         <td className="px-3 py-2 text-[11px] font-semibold text-slate-800">
-                          {rowIndexStart + idx + 1}
+                          {rowIndexStart +
+                            index +
+                            1}
                         </td>
 
                         <td className="px-3 py-2 font-mono text-[11px] text-slate-800">
-                          {r.nisn}
+                          {row.nisn}
                         </td>
 
                         <td className="px-3 py-2">
                           <div className="font-semibold text-slate-900">
-                            {r.name}
+                            {row.name}
                           </div>
 
-                          {r.phone ? (
+                          {row.nik ? (
                             <div className="text-[11px] text-slate-500">
-                              {r.phone}
+                              NIK: {row.nik}
                             </div>
                           ) : null}
 
-                          {(r.tempatLahir || r.tglLahir) && (
+                          {row.phone ? (
                             <div className="text-[11px] text-slate-500">
-                              TTL: {[r.tempatLahir, r.tglLahir]
+                              {row.phone}
+                            </div>
+                          ) : null}
+
+                          {row.tempatLahir ||
+                          row.tglLahir ? (
+                            <div className="text-[11px] text-slate-500">
+                              TTL:{" "}
+                              {[
+                                row.tempatLahir,
+                                row.tglLahir,
+                              ]
                                 .filter(Boolean)
                                 .join(", ")}
                             </div>
-                          )}
+                          ) : null}
 
-                          {r.waliWa ? (
+                          {row.waliWa ? (
                             <div className="text-[11px] text-slate-500">
-                              Wali: {r.waliWa}
+                              Wali: {row.waliWa}
                             </div>
                           ) : null}
                         </td>
 
-                        <td className="px-3 py-2 text-slate-800">{r.level}</td>
+                        <td className="px-3 py-2 text-slate-800">
+                          {row.level}
+                        </td>
 
                         <td className="px-3 py-2">
-                          {r.jalur ? (
+                          {row.jalur ? (
                             <span
-                              className={`inline-flex items-center rounded-full px-2 py-0.5 text-[10px] font-semibold border ${
-                                r.jalur === "PTK"
-                                  ? "bg-emerald-50 border-emerald-200 text-emerald-700"
-                                  : "bg-sky-50 border-sky-200 text-sky-700"
+                              className={`inline-flex items-center rounded-full border px-2 py-0.5 text-[10px] font-semibold ${
+                                row.jalur === "PTK"
+                                  ? "border-emerald-200 bg-emerald-50 text-emerald-700"
+                                  : "border-sky-200 bg-sky-50 text-sky-700"
                               }`}
                             >
-                              {r.jalur}
+                              {row.jalur}
                             </span>
                           ) : (
-                            <span className="text-[11px] text-slate-400">—</span>
+                            <span className="text-[11px] text-slate-400">
+                              —
+                            </span>
                           )}
                         </td>
 
-                        <td className="px-3 py-2 text-right tabular-nums text-slate-900">
-                          {fmtIDR(r.baseSPP)}
+                        <td className="px-3 py-2 text-right text-slate-900 tabular-nums">
+                          {fmtIDR(
+                            row.totalAwal
+                          )}
                         </td>
 
-                        <td className="px-3 py-2 text-right tabular-nums text-slate-900">
-                          {getPkVal("pakaian")}
+                        <td className="px-3 py-2 text-center text-slate-900 tabular-nums">
+                          {row.totalDisc > 0 ? (
+                            <div className="flex flex-col items-center gap-0.5">
+                              <span>
+                                {fmtIDR(
+                                  row.totalDisc
+                                )}
+                              </span>
+
+                              {row.discountLabel ? (
+                                <span className="inline-flex items-center rounded-full border border-violet-200 bg-violet-50 px-2 py-0.5 text-[9px] font-semibold text-violet-700">
+                                  {
+                                    row.discountLabel
+                                  }
+                                </span>
+                              ) : null}
+                            </div>
+                          ) : (
+                            "—"
+                          )}
                         </td>
 
-                        <td className="px-3 py-2 text-right tabular-nums text-slate-900">
-                          {getPkVal("sarpras")}
+                        <td className="px-3 py-2 text-right text-slate-900 tabular-nums">
+                          {fmtIDR(
+                            row.netTagihan
+                          )}
                         </td>
 
-                        <td className="px-3 py-2 text-right tabular-nums text-slate-900">
-                          {getPkVal("kasur")}
+                        <td className="px-3 py-2 text-right text-slate-900 tabular-nums">
+                          {fmtIDR(
+                            row.totalPaid
+                          )}
                         </td>
 
-                        <td className="px-3 py-2 text-right tabular-nums text-slate-900">
-                          {getPkVal("kitab")}
+                        <td className="px-3 py-2 text-right text-slate-900 tabular-nums">
+                          {fmtIDR(row.sisa)}
                         </td>
 
-                        <td className="px-3 py-2 text-right tabular-nums text-slate-900">
-                          {getPkVal("bp3")}
+                        <td className="px-3 py-2">
+                          <span
+                            className={`inline-flex items-center rounded-full border px-2 py-0.5 text-[10px] font-semibold ${
+                              row.statusDaftarUlang ===
+                              "LUNAS"
+                                ? "border-emerald-200 bg-emerald-50 text-emerald-700"
+                                : row.statusDaftarUlang ===
+                                  "SEBAGIAN"
+                                ? "border-amber-200 bg-amber-50 text-amber-700"
+                                : "border-rose-200 bg-rose-50 text-rose-700"
+                            }`}
+                          >
+                            {
+                              row.statusDaftarUlang
+                            }
+                          </span>
                         </td>
 
-                        <td className="px-3 py-2 text-right tabular-nums font-semibold text-slate-900">
-                          {fmtIDR(r.totalPangkal)}
+                        <td className="px-3 py-2 text-center text-[11px] text-slate-800">
+                          {row.buktiCount || 0}
                         </td>
 
-                        <td className="px-3 py-2 text-right tabular-nums text-slate-900">
-                          {fmtIDR(r.baseSPP + r.totalPangkal)}
+                        <td className="px-3 py-2 text-[11px] text-slate-700">
+                          {formatDateTime(
+                            row.firstPaidAt
+                          )}
                         </td>
 
-                        <td className="px-3 py-2 text-right tabular-nums text-slate-900">
-                          {fmtIDR(r.totalPaid)}
+                        <td className="px-3 py-2 text-center">
+                          {(row.statusDaftarUlang ===
+                            "BELUM BAYAR" ||
+                            row.statusDaftarUlang ===
+                              "SEBAGIAN") &&
+                          row.waliWa ? (
+                            <a
+                              href={`https://web.whatsapp.com/send?phone=${normalizeWaNumber(
+                                row.waliWa
+                              )}&text=${encodeURIComponent(
+                                `Bismillah..\n\nDiberitahukan kepada Yth. Bapak/Ibu Wali Santri dari *${row.name}*, bahwa proses *daftar ulang* ananda masih *belum diselesaikan*.\n\nAdapun sisa pembayaran daftar ulang yang perlu dilunasi adalah sebesar *${fmtIDR(
+                                  row.sisa
+                                )}*.\n\nKami berharap Bapak/Ibu dapat melakukan pelunasan sebelum kedatangan santri, agar proses administrasi dan penerimaan ananda dapat berjalan dengan baik dan lancar.\n\nUntuk informasi lebih lanjut, silakan menghubungi panitia di nomor *0877 2024 2025*.\n\nTerima kasih atas perhatian dan kerja samanya.\nSyukron jazakumullahu khairan.\n\n— Panitia SPMB`
+                              )}`}
+                              target="_blank"
+                              rel="noopener noreferrer"
+                              onClick={() =>
+                                setSentWA(
+                                  (prev) => ({
+                                    ...prev,
+                                    [row.nisn]:
+                                      true,
+                                  })
+                                )
+                              }
+                              className={`inline-flex items-center gap-1 rounded-md px-2 py-1 text-[11px] font-semibold text-white ${
+                                sentWA[
+                                  row.nisn
+                                ]
+                                  ? "cursor-default bg-slate-400"
+                                  : "bg-green-600 hover:bg-green-700"
+                              }`}
+                            >
+                              {sentWA[row.nisn]
+                                ? "Hubungi WA ✓"
+                                : "Hubungi WA"}
+                            </a>
+                          ) : (
+                            <span className="text-[11px] text-slate-400">
+                              —
+                            </span>
+                          )}
                         </td>
                       </tr>
-                    );
-                  })}
+                    )
+                  )}
+                </tbody>
+              </table>
+            ) : (
+              <table className="min-w-full text-xs md:text-sm">
+                <thead className="border-b border-slate-200 bg-slate-50">
+                  <tr className="text-left text-[11px] font-semibold uppercase tracking-wide text-slate-500">
+                    <th className="px-3 py-2">
+                      No
+                    </th>
+
+                    <th className="px-3 py-2">
+                      NISN
+                    </th>
+
+                    <th className="px-3 py-2">
+                      Nama
+                    </th>
+
+                    <th className="px-3 py-2">
+                      Jenjang
+                    </th>
+
+                    <th className="px-3 py-2">
+                      Jalur
+                    </th>
+
+                    <th className="px-3 py-2 text-right">
+                      SPP
+                    </th>
+
+                    <th className="px-3 py-2 text-right">
+                      Pakaian
+                    </th>
+
+                    <th className="px-3 py-2 text-right">
+                      Sarpras
+                    </th>
+
+                    <th className="px-3 py-2 text-right">
+                      Kasur
+                    </th>
+
+                    <th className="px-3 py-2 text-right">
+                      Kitab
+                    </th>
+
+                    <th className="px-3 py-2 text-right">
+                      BP3
+                    </th>
+
+                    <th className="px-3 py-2 text-right">
+                      Total Pangkal
+                    </th>
+
+                    <th className="px-3 py-2 text-right">
+                      Total Dibayar
+                    </th>
+
+                    <th className="px-3 py-2 text-right">
+                      Jumlah Dibayar
+                    </th>
+                  </tr>
+                </thead>
+
+                <tbody className="divide-y divide-slate-100">
+                  {paginatedRows.map(
+                    (row, index) => {
+                      const pangkal =
+                        row.pangkalComponents ||
+                        {};
+
+                      const getPangkalValue = (
+                        key
+                      ) => {
+                        const value = Number(
+                          pangkal?.[key] || 0
+                        );
+
+                        return Number.isFinite(
+                          value
+                        ) && value > 0
+                          ? fmtIDR(value)
+                          : "–";
+                      };
+
+                      return (
+                        <tr
+                          key={row.nisn}
+                          className="align-top hover:bg-slate-50"
+                        >
+                          <td className="px-3 py-2 text-[11px] font-semibold text-slate-800">
+                            {rowIndexStart +
+                              index +
+                              1}
+                          </td>
+
+                          <td className="px-3 py-2 font-mono text-[11px] text-slate-800">
+                            {row.nisn}
+                          </td>
+
+                          <td className="px-3 py-2">
+                            <div className="font-semibold text-slate-900">
+                              {row.name}
+                            </div>
+
+                            {row.nik ? (
+                              <div className="text-[11px] text-slate-500">
+                                NIK: {row.nik}
+                              </div>
+                            ) : null}
+
+                            {row.phone ? (
+                              <div className="text-[11px] text-slate-500">
+                                {row.phone}
+                              </div>
+                            ) : null}
+
+                            {row.tempatLahir ||
+                            row.tglLahir ? (
+                              <div className="text-[11px] text-slate-500">
+                                TTL:{" "}
+                                {[
+                                  row.tempatLahir,
+                                  row.tglLahir,
+                                ]
+                                  .filter(Boolean)
+                                  .join(", ")}
+                              </div>
+                            ) : null}
+
+                            {row.waliWa ? (
+                              <div className="text-[11px] text-slate-500">
+                                Wali:{" "}
+                                {row.waliWa}
+                              </div>
+                            ) : null}
+                          </td>
+
+                          <td className="px-3 py-2 text-slate-800">
+                            {row.level}
+                          </td>
+
+                          <td className="px-3 py-2">
+                            {row.jalur ? (
+                              <span
+                                className={`inline-flex items-center rounded-full border px-2 py-0.5 text-[10px] font-semibold ${
+                                  row.jalur ===
+                                  "PTK"
+                                    ? "border-emerald-200 bg-emerald-50 text-emerald-700"
+                                    : "border-sky-200 bg-sky-50 text-sky-700"
+                                }`}
+                              >
+                                {row.jalur}
+                              </span>
+                            ) : (
+                              <span className="text-[11px] text-slate-400">
+                                —
+                              </span>
+                            )}
+                          </td>
+
+                          <td className="px-3 py-2 text-right text-slate-900 tabular-nums">
+                            {fmtIDR(
+                              row.baseSPP
+                            )}
+                          </td>
+
+                          <td className="px-3 py-2 text-right text-slate-900 tabular-nums">
+                            {getPangkalValue(
+                              "pakaian"
+                            )}
+                          </td>
+
+                          <td className="px-3 py-2 text-right text-slate-900 tabular-nums">
+                            {getPangkalValue(
+                              "sarpras"
+                            )}
+                          </td>
+
+                          <td className="px-3 py-2 text-right text-slate-900 tabular-nums">
+                            {getPangkalValue(
+                              "kasur"
+                            )}
+                          </td>
+
+                          <td className="px-3 py-2 text-right text-slate-900 tabular-nums">
+                            {getPangkalValue(
+                              "kitab"
+                            )}
+                          </td>
+
+                          <td className="px-3 py-2 text-right text-slate-900 tabular-nums">
+                            {getPangkalValue(
+                              "bp3"
+                            )}
+                          </td>
+
+                          <td className="px-3 py-2 text-right font-semibold text-slate-900 tabular-nums">
+                            {fmtIDR(
+                              row.totalPangkal
+                            )}
+                          </td>
+
+                          <td className="px-3 py-2 text-right text-slate-900 tabular-nums">
+                            {fmtIDR(
+                              row.baseSPP +
+                                row.totalPangkal
+                            )}
+                          </td>
+
+                          <td className="px-3 py-2 text-right text-slate-900 tabular-nums">
+                            {fmtIDR(
+                              row.totalPaid
+                            )}
+                          </td>
+                        </tr>
+                      );
+                    }
+                  )}
                 </tbody>
               </table>
             )}
           </div>
         )}
 
-        <div className="px-3 py-2 md:px-4 md:py-3 border-t border-slate-200 flex flex-col gap-2 md:flex-row md:items-center md:justify-between text-[11px] md:text-xs text-slate-600">
+        <div className="flex flex-col gap-2 border-t border-slate-200 px-3 py-2 text-[11px] text-slate-600 md:flex-row md:items-center md:justify-between md:px-4 md:py-3 md:text-xs">
           <div>
             Menampilkan{" "}
             <span className="font-semibold">
-              {paginatedRows.length.toLocaleString("id-ID")}
+              {paginatedRows.length.toLocaleString(
+                "id-ID"
+              )}
             </span>{" "}
             dari{" "}
             <span className="font-semibold">
-              {filteredRows.length.toLocaleString("id-ID")}
+              {filteredRows.length.toLocaleString(
+                "id-ID"
+              )}
             </span>{" "}
             peserta (total{" "}
             <span className="font-semibold">
-              {stats.totalParticipants.toLocaleString("id-ID")}
+              {stats.totalParticipants.toLocaleString(
+                "id-ID"
+              )}
             </span>
             ).
           </div>
@@ -1673,7 +2199,11 @@ export default function AdminDataDaftarUlangPage() {
           <div className="inline-flex items-center gap-1">
             <button
               type="button"
-              onClick={() => setPage((p) => Math.max(1, p - 1))}
+              onClick={() =>
+                setPage((prev) =>
+                  Math.max(1, prev - 1)
+                )
+              }
               disabled={pageSafe === 1}
               className="rounded-lg border border-slate-200 bg-white px-2 py-1 disabled:opacity-40"
             >
@@ -1681,14 +2211,29 @@ export default function AdminDataDaftarUlangPage() {
             </button>
 
             <span>
-              Halaman <span className="font-semibold">{pageSafe}</span> dari{" "}
-              <span className="font-semibold">{totalPages}</span>
+              Halaman{" "}
+              <span className="font-semibold">
+                {pageSafe}
+              </span>{" "}
+              dari{" "}
+              <span className="font-semibold">
+                {totalPages}
+              </span>
             </span>
 
             <button
               type="button"
-              onClick={() => setPage((p) => Math.min(totalPages, p + 1))}
-              disabled={pageSafe === totalPages}
+              onClick={() =>
+                setPage((prev) =>
+                  Math.min(
+                    totalPages,
+                    prev + 1
+                  )
+                )
+              }
+              disabled={
+                pageSafe === totalPages
+              }
               className="rounded-lg border border-slate-200 bg-white px-2 py-1 disabled:opacity-40"
             >
               &gt;
@@ -1701,15 +2246,29 @@ export default function AdminDataDaftarUlangPage() {
         open={Boolean(downloadModalType)}
         type={downloadModalType}
         levels={downloadLevelOptions}
-        selectedLevels={selectedDownloadLevels}
-        includeAllSheet={includeAllDownloadSheet}
-        onToggleLevel={toggleDownloadLevel}
-        onToggleAllLevels={toggleAllDownloadLevels}
+        selectedLevels={
+          selectedDownloadLevels
+        }
+        includeAllSheet={
+          includeAllDownloadSheet
+        }
+        onToggleLevel={
+          toggleDownloadLevel
+        }
+        onToggleAllLevels={
+          toggleAllDownloadLevels
+        }
         onToggleIncludeAllSheet={() =>
-          setIncludeAllDownloadSheet((prev) => !prev)
+          setIncludeAllDownloadSheet(
+            (prev) => !prev
+          )
         }
         onClose={closeDownloadModal}
-        onDownload={() => runDownloadXls(downloadModalType)}
+        onDownload={() =>
+          runDownloadXls(
+            downloadModalType
+          )
+        }
       />
     </main>
   );
