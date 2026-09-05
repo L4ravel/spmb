@@ -1745,7 +1745,7 @@ export default function AdminDataDaftarUlangPage() {
                     </th>
 
                     <th className="px-3 py-2">
-                      Pertama Bayar
+                      Terakhir Bayar
                     </th>
 
                     <th className="px-3 py-2">
@@ -1898,7 +1898,7 @@ export default function AdminDataDaftarUlangPage() {
 
                         <td className="px-3 py-2 text-[11px] text-slate-700">
                           {formatDateTime(
-                            row.firstPaidAt
+                            row.lastPaidAt
                           )}
                         </td>
 
@@ -1907,7 +1907,8 @@ export default function AdminDataDaftarUlangPage() {
                             "BELUM BAYAR" ||
                             row.statusDaftarUlang ===
                               "SEBAGIAN") &&
-                          row.waliWa ? (
+                          row.waliWa &&
+                          canSendPaymentReminder(row.lastPaidAt) ? (
                             <a
                               href={`https://web.whatsapp.com/send?phone=${normalizeWaNumber(
                                 row.waliWa
@@ -1939,6 +1940,17 @@ export default function AdminDataDaftarUlangPage() {
                                 ? "Hubungi WA ✓"
                                 : "Hubungi WA"}
                             </a>
+                          ) : row.waliWa &&
+                            row.statusDaftarUlang !== "LUNAS" &&
+                            !canSendPaymentReminder(row.lastPaidAt) ? (
+                            <span
+                              title={`Penagihan dinonaktifkan karena pembayaran terakhir ${formatDateTime(
+                                row.lastPaidAt
+                              )}`}
+                              className="inline-flex cursor-not-allowed items-center rounded-md bg-slate-200 px-2 py-1 text-[11px] font-semibold text-slate-500"
+                            >
+                              Ditunda
+                            </span>
                           ) : (
                             <span className="text-[11px] text-slate-400">
                               —
@@ -2272,4 +2284,18 @@ export default function AdminDataDaftarUlangPage() {
       />
     </main>
   );
+}
+
+function canSendPaymentReminder(lastPaidAt, now = new Date()) {
+  if (!lastPaidAt) return true;
+
+  const paidDate = new Date(lastPaidAt);
+
+  if (Number.isNaN(paidDate.getTime())) return true;
+
+  const paidMonth = paidDate.getFullYear() * 12 + paidDate.getMonth();
+  const currentMonth = now.getFullYear() * 12 + now.getMonth();
+
+  // Aktif hanya jika pembayaran terakhir dua bulan lalu atau lebih lama.
+  return currentMonth - paidMonth >= 2;
 }
