@@ -12,6 +12,7 @@ import {
   AlertCircle,
   CheckCircle2,
   CreditCard,
+  Download,
   Eye,
   FileText,
   FileQuestion,
@@ -47,6 +48,16 @@ function formatDate(value) {
 
 function isPdfUrl(url = "") {
   return /\.pdf(?:\?|#|$)/i.test(decodeURIComponent(String(url)));
+}
+
+function safeExcelText(value) {
+  const text = String(value ?? "");
+  return /^[=+\-@]/.test(text) ? `'${text}` : text;
+}
+
+function fileDateStamp(date = new Date()) {
+  const pad = (value) => String(value).padStart(2, "0");
+  return `${date.getFullYear()}${pad(date.getMonth() + 1)}${pad(date.getDate())}-${pad(date.getHours())}${pad(date.getMinutes())}`;
 }
 
 function SummaryCard({ label, value, helper, icon: Icon, tone }) {
@@ -176,6 +187,7 @@ export default function AuditUangPendaftaranPage() {
   const [proof, setProof] = useState("all");
   const [selectedProof, setSelectedProof] = useState(null);
   const [updatingMethod, setUpdatingMethod] = useState({});
+  const [exporting, setExporting] = useState(false);
   const [success, setSuccess] = useState("");
 
   const loadAudit = useCallback(async () => {
@@ -280,6 +292,226 @@ export default function AuditUangPendaftaranPage() {
     return { online, offline, withoutProof, total };
   }, [rows, fees]);
 
+  const downloadXls = useCallback(async () => {
+    if (!filteredRows.length || exporting) return;
+    setExporting(true);
+    setError("");
+    setSuccess("");
+
+    try {
+      const xlsxModule = await import("xlsx-js-style");
+      const XLSX = xlsxModule.default || xlsxModule;
+      const generatedAt = new Date();
+      const methodLabel = method === "all" ? "Semua metode" : method === "online" ? "Online" : "Offline";
+      const levelLabel = level === "all" ? "Semua jenjang" : level;
+      const proofLabel = proof === "all" ? "Semua bukti" : proof === "with" ? "Ada bukti" : "Tanpa bukti";
+
+      const filteredSummary = filteredRows.reduce((result, row) => {
+        const paymentMethod = normalizeRegistrationPaymentMethod(row.registrationPaymentMethod);
+        const amount = Number(fees.get(row.registrationLevel) || 0);
+        result.total += amount;
+        if (paymentMethod === "online") {
+          result.online += 1;
+          result.onlineAmount += amount;
+        } else if (paymentMethod === "offline") {
+          result.offline += 1;
+          result.offlineAmount += amount;
+        }
+        if (!row.registrationPaymentProof) result.withoutProof += 1;
+
+        const levelName = String(row.registrationLevel || "Tanpa jenjang");
+        const levelRow = result.byLevel.get(levelName) || { count: 0, online: 0, offline: 0, amount: 0 };
+        levelRow.count += 1;
+        levelRow.amount += amount;
+        if (paymentMethod === "online") levelRow.online += 1;
+        if (paymentMethod === "offline") levelRow.offline += 1;
+        result.byLevel.set(levelName, levelRow);
+        return result;
+      }, {
+        total: 0,
+        online: 0,
+        offline: 0,
+        onlineAmount: 0,
+        offlineAmount: 0,
+        withoutProof: 0,
+        byLevel: new Map(),
+      });
+
+      const summaryRows = [
+        ["AUDIT UANG PENDAFTARAN"],
+        [`Dibuat: ${generatedAt.toLocaleString("id-ID")}`],
+        [`Filter: ${methodLabel} | ${levelLabel} | ${proofLabel}${search.trim() ? ` | Pencarian: ${search.trim()}` : ""}`],
+        [],
+        ["RINGKASAN DATA"],
+        ["Keterangan", "Jumlah Peserta", "Nominal"],
+        ["Total hasil filter", filteredRows.length, filteredSummary.total],
+        ["Pembayaran online", filteredSummary.online, filteredSummary.onlineAmount],
+        ["Pembayaran offline", filteredSummary.offline, filteredSummary.offlineAmount],
+        ["Tanpa bukti upload", filteredSummary.withoutProof, ""],
+        [],
+        ["REKAP PER JENJANG"],
+        ["Jenjang", "Jumlah Peserta", "Online", "Offline", "Nominal"],
+        ...[...filteredSummary.byLevel.entries()]
+          .sort(([a], [b]) => a.localeCompare(b, "id"))
+          .map(([levelName, item]) => [levelName, item.count, item.online, item.offline, item.amount]),
+      ];
+
+      const summarySheet = XLSX.utils.aoa_to_sheet(summaryRows);
+      summarySheet["!merges"] = [
+        XLSX.utils.decode_range("A1:E1"),
+        XLSX.utils.decode_range("A2:E2"),
+        XLSX.utils.decode_range("A3:E3"),
+        XLSX.utils.decode_range("A5:E5"),
+        XLSX.utils.decode_range("A12:E12"),
+      ];
+      summarySheet["!cols"] = [
+        { wch: 34 },
+        { wch: 18 },
+        { wch: 16 },
+        { wch: 16 },
+        { wch: 22 },
+      ];
+      summarySheet["!rows"] = [{ hpt: 30 }, { hpt: 20 }, { hpt: 20 }];
+
+      const titleStyle = {
+        font: { bold: true, color: { rgb: "FFFFFF" }, sz: 16 },
+        fill: { fgColor: { rgb: "1E293B" } },
+        alignment: { horizontal: "center", vertical: "center" },
+      };
+      const sectionStyle = {
+        font: { bold: true, color: { rgb: "FFFFFF" }, sz: 11 },
+        fill: { fgColor: { rgb: "4F46E5" } },
+        alignment: { horizontal: "left", vertical: "center" },
+      };
+      const headerStyle = {
+        font: { bold: true, color: { rgb: "FFFFFF" } },
+        fill: { fgColor: { rgb: "334155" } },
+        alignment: { horizontal: "center", vertical: "center", wrapText: true },
+        border: {
+          top: { style: "thin", color: { rgb: "CBD5E1" } },
+          bottom: { style: "thin", color: { rgb: "CBD5E1" } },
+          left: { style: "thin", color: { rgb: "CBD5E1" } },
+          right: { style: "thin", color: { rgb: "CBD5E1" } },
+        },
+      };
+      summarySheet.A1.s = titleStyle;
+      summarySheet.A2.s = { font: { italic: true, color: { rgb: "475569" } }, alignment: { horizontal: "center" } };
+      summarySheet.A3.s = { font: { color: { rgb: "475569" } }, alignment: { horizontal: "center" } };
+      summarySheet.A5.s = sectionStyle;
+      summarySheet.A12.s = sectionStyle;
+      ["A6", "B6", "C6", "A13", "B13", "C13", "D13", "E13"].forEach((cell) => {
+        if (summarySheet[cell]) summarySheet[cell].s = headerStyle;
+      });
+
+      for (let rowIndex = 6; rowIndex <= 9; rowIndex += 1) {
+        const fill = rowIndex % 2 === 0 ? "F8FAFC" : "EEF2FF";
+        for (let columnIndex = 0; columnIndex < 3; columnIndex += 1) {
+          const cell = summarySheet[XLSX.utils.encode_cell({ r: rowIndex, c: columnIndex })];
+          if (cell) cell.s = { fill: { fgColor: { rgb: fill } }, border: { bottom: { style: "thin", color: { rgb: "E2E8F0" } } } };
+        }
+      }
+      ["C7", "C8", "C9"].forEach((cell) => {
+        if (summarySheet[cell] && typeof summarySheet[cell].v === "number") summarySheet[cell].z = '"Rp" #,##0';
+      });
+      for (let rowIndex = 13; rowIndex < summaryRows.length; rowIndex += 1) {
+        const excelRow = rowIndex + 1;
+        const amountCell = summarySheet[`E${excelRow}`];
+        if (amountCell) amountCell.z = '"Rp" #,##0';
+        for (let columnIndex = 0; columnIndex < 5; columnIndex += 1) {
+          const cell = summarySheet[XLSX.utils.encode_cell({ r: rowIndex, c: columnIndex })];
+          if (cell) cell.s = {
+            fill: { fgColor: { rgb: rowIndex % 2 === 0 ? "F8FAFC" : "FFFFFF" } },
+            border: { bottom: { style: "thin", color: { rgb: "E2E8F0" } } },
+          };
+        }
+      }
+
+      const detailRows = filteredRows.map((row, index) => {
+        const paymentMethod = normalizeRegistrationPaymentMethod(row.registrationPaymentMethod);
+        return [
+          index + 1,
+          safeExcelText(row.fullName || "-"),
+          safeExcelText(row.username || row.nisn || row.id),
+          safeExcelText(row.registrationId || "-"),
+          safeExcelText(row.registrationLevel || "-"),
+          paymentMethod === "online" ? "Online" : paymentMethod === "offline" ? "Offline" : "Belum tercatat",
+          Number(fees.get(row.registrationLevel) || 0),
+          registrationPaymentDate(row) || "",
+          safeExcelText(row.registrationPaymentVerifiedBy || "-"),
+          row.registrationPaymentProof ? "Ada" : "Tidak Ada",
+          row.registrationPaymentProof ? "Buka Bukti" : "-",
+        ];
+      });
+      const detailData = [
+        ["DATA AUDIT UANG PENDAFTARAN"],
+        [`Dibuat: ${generatedAt.toLocaleString("id-ID")} | Total: ${filteredRows.length.toLocaleString("id-ID")} peserta`],
+        [],
+        ["No.", "Nama Peserta", "NISN / Username", "ID Pendaftaran", "Jenjang", "Metode", "Nominal", "Waktu Verifikasi", "Verifikator", "Status Bukti", "Bukti Pembayaran"],
+        ...detailRows,
+      ];
+      const detailSheet = XLSX.utils.aoa_to_sheet(detailData, { cellDates: true });
+      detailSheet["!merges"] = [XLSX.utils.decode_range("A1:K1"), XLSX.utils.decode_range("A2:K2")];
+      detailSheet["!autofilter"] = { ref: `A4:K${detailData.length}` };
+      detailSheet["!cols"] = [
+        { wch: 7 }, { wch: 34 }, { wch: 20 }, { wch: 20 }, { wch: 30 },
+        { wch: 13 }, { wch: 18 }, { wch: 22 }, { wch: 30 }, { wch: 15 }, { wch: 22 },
+      ];
+      detailSheet["!rows"] = [{ hpt: 30 }, { hpt: 20 }, { hpt: 8 }, { hpt: 28 }];
+      detailSheet.A1.s = titleStyle;
+      detailSheet.A2.s = { font: { italic: true, color: { rgb: "475569" } }, alignment: { horizontal: "center" } };
+      for (let columnIndex = 0; columnIndex < 11; columnIndex += 1) {
+        const headerCell = detailSheet[XLSX.utils.encode_cell({ r: 3, c: columnIndex })];
+        if (headerCell) headerCell.s = headerStyle;
+      }
+      filteredRows.forEach((row, index) => {
+        const sheetRow = index + 5;
+        const fill = index % 2 === 0 ? "FFFFFF" : "F8FAFC";
+        for (let columnIndex = 0; columnIndex < 11; columnIndex += 1) {
+          const cell = detailSheet[XLSX.utils.encode_cell({ r: index + 4, c: columnIndex })];
+          if (cell) cell.s = {
+            fill: { fgColor: { rgb: fill } },
+            alignment: { vertical: "center", wrapText: columnIndex === 1 || columnIndex === 4 || columnIndex === 8 },
+            border: { bottom: { style: "thin", color: { rgb: "E2E8F0" } } },
+          };
+        }
+        const amountCell = detailSheet[`G${sheetRow}`];
+        if (amountCell) amountCell.z = '"Rp" #,##0';
+        const dateCell = detailSheet[`H${sheetRow}`];
+        if (dateCell && dateCell.v) dateCell.z = "dd/mm/yyyy hh:mm";
+        const proofCell = detailSheet[`K${sheetRow}`];
+        if (proofCell && row.registrationPaymentProof) {
+          proofCell.l = { Target: row.registrationPaymentProof, Tooltip: "Buka bukti pembayaran" };
+          proofCell.s = {
+            ...(proofCell.s || {}),
+            font: { color: { rgb: "4F46E5" }, underline: true, bold: true },
+            alignment: { horizontal: "center", vertical: "center" },
+          };
+        }
+      });
+
+      const workbook = XLSX.utils.book_new();
+      workbook.Props = {
+        Title: "Audit Uang Pendaftaran",
+        Subject: "Rekap pembayaran pendaftaran online dan offline",
+        Author: adminEmail || "Admin SPMB",
+        CreatedDate: generatedAt,
+      };
+      XLSX.utils.book_append_sheet(workbook, summarySheet, "Ringkasan");
+      XLSX.utils.book_append_sheet(workbook, detailSheet, "Data Audit");
+      XLSX.writeFile(workbook, `audit-uang-pendaftaran-${fileDateStamp(generatedAt)}.xls`, {
+        bookType: "biff8",
+        bookSST: true,
+        cellStyles: true,
+      });
+      setSuccess(`${filteredRows.length.toLocaleString("id-ID")} data audit berhasil diekspor ke Excel.`);
+    } catch (exportError) {
+      console.error(exportError);
+      setError("Gagal membuat file Excel. Silakan coba kembali.");
+    } finally {
+      setExporting(false);
+    }
+  }, [adminEmail, exporting, fees, filteredRows, level, method, proof, search]);
+
   return (
     <div className="w-full max-w-none space-y-6">
       <div className="flex flex-col justify-between gap-4 md:flex-row md:items-end">
@@ -290,14 +522,25 @@ export default function AuditUangPendaftaranPage() {
           <h1 className="text-2xl font-bold tracking-tight text-slate-900 md:text-3xl">Audit Uang Pendaftaran</h1>
           <p className="mt-1 text-sm text-slate-500">Daftar nama, jenjang, metode pembayaran, nominal, dan bukti unggahan.</p>
         </div>
-        <button
-          type="button"
-          onClick={loadAudit}
-          disabled={loading}
-          className="inline-flex items-center justify-center gap-2 rounded-xl border border-slate-300 bg-white px-4 py-2.5 text-sm font-semibold text-slate-700 shadow-sm hover:bg-slate-50 disabled:opacity-60"
-        >
-          <RefreshCw size={17} className={loading ? "animate-spin" : ""} /> Muat ulang
-        </button>
+        <div className="flex flex-col gap-2 sm:flex-row">
+          <button
+            type="button"
+            onClick={downloadXls}
+            disabled={loading || exporting || filteredRows.length === 0}
+            className="inline-flex items-center justify-center gap-2 rounded-xl bg-emerald-600 px-4 py-2.5 text-sm font-bold text-white shadow-sm transition hover:bg-emerald-700 disabled:cursor-not-allowed disabled:opacity-60"
+          >
+            <Download size={17} className={exporting ? "animate-bounce" : ""} />
+            {exporting ? "Membuat XLS…" : "Download XLS"}
+          </button>
+          <button
+            type="button"
+            onClick={loadAudit}
+            disabled={loading}
+            className="inline-flex items-center justify-center gap-2 rounded-xl border border-slate-300 bg-white px-4 py-2.5 text-sm font-semibold text-slate-700 shadow-sm hover:bg-slate-50 disabled:opacity-60"
+          >
+            <RefreshCw size={17} className={loading ? "animate-spin" : ""} /> Muat ulang
+          </button>
+        </div>
       </div>
 
       <div className="grid grid-cols-1 gap-4 sm:grid-cols-2 xl:grid-cols-4">
