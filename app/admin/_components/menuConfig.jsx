@@ -4,7 +4,7 @@
 import {
   Home, Users, CreditCard, UserCheck, Trophy, Calendar,
   FileText, BarChart3, MessageSquare, CheckCircle2,
-  BookOpenCheck, Megaphone, KeyRound, LineChart, Wallet, ClipboardList, PieChart, MapPin, Table, MessageCircle, PlusCircle 
+  BookOpenCheck, Megaphone, KeyRound, LineChart, Wallet, ClipboardList, PieChart, MapPin, Table, MessageCircle, PlusCircle, ReceiptText
 } from "lucide-react";
 
 // Sumber menu tunggal (dipakai sidebar & bottom bar)
@@ -40,6 +40,7 @@ export const BASE_MENU_GROUPS = [
       { label: "Verifikasi Daftar Ulang", shortLabel: "Rekap Daful", href: "/admin/daftar-ulang", icon: ClipboardList },
       { label: "Data Daftar Ulang", shortLabel: "Data Daful", href: "/admin/data-daftar-ulang", icon: Table },
       { label: "Statistik Daftar Ulang", shortLabel: "Stat Daful", href: "/admin/statistik-daftar-ulang", icon: PieChart },
+      { label: "Audit Uang Pendaftaran", shortLabel: "Audit Bayar", href: "/admin/audit-uang-pendaftaran", icon: ReceiptText },
     ],
   },
   {

@@ -5,16 +5,10 @@ import { useEffect, useMemo, useState } from "react";
 import { initializeApp, getApp, getApps } from "firebase/app";
 import {
   getFirestore,
-  collectionGroup,
-  query,
-  where,
-  limit,
-  getDocs,
-  doc,
-  getDoc,
 } from "firebase/firestore";
 import { getAuth, onAuthStateChanged } from "firebase/auth";
 import { BarChart3, CreditCard, Wallet, Users, Filter, RefreshCw } from "lucide-react";
+import { loadCanonicalDaftarUlang } from "@/app/admin/data-daftar-ulang/data/canonical";
 
 /* ==== Firebase init (reuse env config) ==== */
 const firebaseConfig = {
@@ -89,64 +83,6 @@ function resolvePaymentMethod(pLike) {
   }
 
   return "ONLINE";
-}
-
-
-/**
- * Lengkapi data pembayaran dengan info user dari koleksi users_app/{nisn}
- * - fullName  -> userFullName
- * - registrationLevel -> userRegistrationLevel
- */
-async function enrichPaymentsWithUserInfo(rows) {
-  if (!rows?.length) return rows || [];
-
-  const nisnSet = new Set();
-  for (const p of rows) {
-    if (p?.nisn) {
-      nisnSet.add(String(p.nisn));
-    }
-  }
-
-  if (!nisnSet.size) return rows;
-
-  const userMap = {};
-
-  await Promise.all(
-    Array.from(nisnSet).map(async (nisn) => {
-      try {
-        const snap = await getDoc(doc(db, "users_app", nisn));
-        if (snap.exists()) {
-          const d = snap.data() || {};
-          userMap[nisn] = {
-            fullName: d.fullName || "",
-            registrationLevel: d.registrationLevel || "",
-          };
-        }
-      } catch (err) {
-        console.error("Gagal mengambil users_app untuk NISN", nisn, err);
-      }
-    })
-  );
-
-  return rows.map((p) => {
-    const key = p?.nisn ? String(p.nisn) : null;
-    const meta = key ? userMap[key] : null;
-
-    return {
-      ...p,
-      userFullName:
-        meta?.fullName ||
-        p.userFullName ||
-        p.student?.name ||
-        "",
-      userRegistrationLevel:
-        meta?.registrationLevel ||
-        p.userRegistrationLevel ||
-        p.student?.jenjang ||
-        p.registrationLevel ||
-        "",
-    };
-  });
 }
 
 
@@ -302,10 +238,17 @@ export default function StatistikDaftarUlangPage() {
   const [authReady, setAuthReady] = useState(false);
 
   const [allPayments, setAllPayments] = useState([]);
+  const [canonicalStats, setCanonicalStats] = useState({
+    totalParticipants: 0,
+    totalTagihanNet: 0,
+    totalPaid: 0,
+    totalSisa: 0,
+  });
   const [loading, setLoading] = useState(false);
   const [loadError, setLoadError] = useState("");
 
-  const [range, setRange] = useState("7d"); // 'today' | '7d' | '30d' | 'all' | 'custom'
+  const [range, setRange] = useState("all"); // default sama dengan Data Daftar Ulang & dashboard
+  const [reloadKey, setReloadKey] = useState(0);
   const [customStart, setCustomStart] = useState("");
   const [customEnd, setCustomEnd] = useState("");
     const [detailOpen, setDetailOpen] = useState(false);
@@ -322,7 +265,6 @@ export default function StatistikDaftarUlangPage() {
 
   useEffect(() => {
     if (!authReady) return;
-
     let alive = true;
 
     async function fetchPayments() {
@@ -330,38 +272,10 @@ export default function StatistikDaftarUlangPage() {
       setLoadError("");
 
       try {
-        const paymentsGroup = collectionGroup(db, "payments");
-        const q = query(
-          paymentsGroup,
-          where("status", "==", "APPROVED"),
-          limit(5000)
-        );
-        const snap = await getDocs(q);
-
+        const dataset = await loadCanonicalDaftarUlang(db);
         if (!alive) return;
-
-                const rows = [];
-        snap.forEach((docSnap) => {
-          const data = docSnap.data() || {};
-
-          // Ambil NISN dari path: users_app/{nisn}/payments/{paymentId}
-          const ref = docSnap.ref;
-          const parentUserDoc = ref.parent && ref.parent.parent;
-          const nisnFromPath = parentUserDoc ? parentUserDoc.id : null;
-
-          rows.push({
-            id: docSnap.id,
-            ...data,
-            // Simpan nisn supaya bisa dipakai enrichPaymentsWithUserInfo
-            nisn: data.nisn || nisnFromPath || null,
-          });
-        });
-
-        // Lengkapi dengan fullName & registrationLevel dari users_app
-        const enriched = await enrichPaymentsWithUserInfo(rows);
-
-
-        setAllPayments(enriched);
+        setAllPayments(dataset.payments);
+        setCanonicalStats(dataset.stats);
       } catch (err) {
         console.error("Failed to load statistik daftar ulang", err);
         setLoadError("Gagal memuat data pembayaran. Silakan coba lagi.");
@@ -375,7 +289,7 @@ export default function StatistikDaftarUlangPage() {
     return () => {
       alive = false;
     };
-  }, [authReady]);
+  }, [authReady, reloadKey]);
 
   const filteredPayments = useMemo(
     () => applyTimeFilter(allPayments, range, customStart, customEnd),
@@ -548,14 +462,11 @@ export default function StatistikDaftarUlangPage() {
 
           <button
             type="button"
-            onClick={() => {
-              if (typeof window !== "undefined") {
-                window.location.reload();
-              }
-            }}
+            onClick={() => setReloadKey((current) => current + 1)}
+            disabled={loading}
             className="inline-flex items-center justify-center gap-2 rounded-full border border-slate-300 bg-white px-4 py-2 text-xs md:text-sm font-medium text-slate-700 hover:bg-slate-50 shadow-sm"
           >
-            <RefreshCw className="h-4 w-4" />
+            <RefreshCw className={`h-4 w-4 ${loading ? "animate-spin" : ""}`} />
             Segarkan
           </button>
         </div>
@@ -622,8 +533,37 @@ export default function StatistikDaftarUlangPage() {
           )}
         </div>
 
-        {/* Ringkasan utama */}
-        <div className="mt-6 grid gap-4 md:grid-cols-3">
+        {/* Ringkasan kanonis: sama persis dengan /admin/data-daftar-ulang */}
+        <div className="mt-6 grid gap-4 md:grid-cols-2 xl:grid-cols-4">
+          <StatCard
+            icon={Users}
+            label="Peserta daftar ulang (LULUS)"
+            value={canonicalStats.totalParticipants.toLocaleString("id-ID")}
+            sub="Patokan Data Daftar Ulang"
+          />
+          <StatCard
+            icon={Wallet}
+            label="Total tagihan (net)"
+            value={fmtIDR(canonicalStats.totalTagihanNet)}
+            sub="Setelah seluruh potongan"
+          />
+          <StatCard
+            icon={CreditCard}
+            label="Total pembayaran"
+            value={fmtIDR(canonicalStats.totalPaid)}
+            sub="Hanya pembayaran disetujui"
+          />
+          <StatCard
+            icon={Wallet}
+            label="Total sisa tagihan"
+            value={fmtIDR(canonicalStats.totalSisa)}
+            sub="Tagihan net dikurangi pembayaran"
+          />
+        </div>
+
+        <div className="mt-4">
+          <p className="mb-3 text-sm font-semibold text-slate-800">Rincian transaksi sesuai filter waktu</p>
+          <div className="grid gap-4 md:grid-cols-3">
           <StatCard
             icon={CreditCard}
             label="Total disetujui"
@@ -644,6 +584,7 @@ export default function StatistikDaftarUlangPage() {
             sub={fmtIDR(stats.onlineAmount)}
             onClick={() => handleOpenDetail("ONLINE")}
           />
+          </div>
         </div>
 
         {/* Info jumlah data */}

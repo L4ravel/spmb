@@ -5,13 +5,14 @@ import { getApp, getApps, initializeApp } from "firebase/app";
 import {
   getFirestore,
   collection,
-  getCountFromServer,
   getDocs,
-  query,
-  where,
-  limit as qLimit,
 } from "firebase/firestore";
 import { CreditCard, Landmark } from "lucide-react";
+import {
+  isVerifiedRegistrationPayment,
+  normalizeRegistrationPaymentMethod,
+  registrationCreatedDate,
+} from "@/app/admin/_lib/registrationPayment";
 
 /* ================== Firebase ================== */
 function getFirebaseApp() {
@@ -75,28 +76,9 @@ function buildMonthlyBuckets(count = 12) {
   return res;
 }
 
-/* ================== Count helpers ================== */
-async function countPaidRange(start, end, method, timeField = "createdAt") {
-  const col = collection(db, "users_app");
-  const qPaid = query(
-    col,
-    where("registrationPaymentMethod", "==", method),
-    where(timeField, ">=", start),
-    where(timeField, "<=", end)
-  );
-  const snap = await getCountFromServer(qPaid);
-  return snap.data().count || 0;
-}
-async function countTotalRange(start, end, timeField = "createdAt") {
-  const col = collection(db, "users_app");
-  const qT = query(col, where(timeField, ">=", start), where(timeField, "<=", end));
-  const snap = await getCountFromServer(qT);
-  return snap.data().count || 0;
-}
-
 /* ====== fees: ambil label → fee ====== */
 async function fetchFeesMap() {
-  const snap = await getDocs(query(collection(db, "fees"), qLimit(2000)));
+  const snap = await getDocs(collection(db, "fees"));
   const map = new Map();
   snap.forEach((d) => {
     const data = d.data() || {};
@@ -107,30 +89,11 @@ async function fetchFeesMap() {
   return map;
 }
 
-/* ====== count paid by level ====== */
-async function countPaidByLevelInRange(level, start, end, timeField = "createdAt") {
-  const col = collection(db, "users_app");
-  const qLvPaid = query(
-    col,
-    where("registrationPaymentMethod", "in", ["online", "offline"]),
-    where("registrationLevel", "==", level),
-    where(timeField, ">=", start),
-    where(timeField, "<=", end)
-  );
-  const snap = await getCountFromServer(qLvPaid);
-  return snap.data().count || 0;
-}
-async function countPaidByLevelAndMethodInRange(level, start, end, method, timeField = "createdAt") {
-  const col = collection(db, "users_app");
-  const qLvPaid = query(
-    col,
-    where("registrationPaymentMethod", "==", method),
-    where("registrationLevel", "==", level),
-    where(timeField, ">=", start),
-    where(timeField, "<=", end)
-  );
-  const snap = await getCountFromServer(qLvPaid);
-  return snap.data().count || 0;
+function isInBucket(row, bucket) {
+  const createdAt = registrationCreatedDate(row);
+  if (!createdAt) return false;
+  const time = createdAt.getTime();
+  return time >= bucket.start.getTime() && time <= bucket.end.getTime();
 }
 
 /* ================== Charts ================== */
@@ -320,71 +283,49 @@ export default function StatistikPembayaranPage() {
       }
       setLabels(buckets.map((b) => b.label));
 
-      const PERIOD_FIELD = "createdAt";
       const resOn = [], resOff = [], resTotReg = [], resTotPaid = [], resUnpaid = [];
+      const [usersSnap, feesMap] = await Promise.all([
+        getDocs(collection(db, "users_app")),
+        fetchFeesMap(),
+      ]);
+      const allUsers = usersSnap.docs.map((userDoc) => ({
+        id: userDoc.id,
+        ...userDoc.data(),
+      }));
+      const revAll = [];
+      const revOff = [];
 
-      const CONCURRENCY = 6;
-      for (let i = 0; i < buckets.length; i += CONCURRENCY) {
-        const slice = buckets.slice(i, i + CONCURRENCY);
-        const part = await Promise.all(
-          slice.map(async (b) => {
-            const [on, off, ttReg] = await Promise.all([
-              countPaidRange(b.start, b.end, "online",  PERIOD_FIELD),
-              countPaidRange(b.start, b.end, "offline", PERIOD_FIELD),
-              countTotalRange(b.start, b.end,  PERIOD_FIELD),
-            ]);
-            return { on, off, ttReg };
-          })
+      for (const b of buckets) {
+        // Statistik berbasis cohort tanggal pendaftaran. Dengan begitu total
+        // pendaftar = sudah bayar + belum bayar pada setiap bucket.
+        const cohort = allUsers.filter((row) => isInBucket(row, b));
+        const paid = cohort.filter(isVerifiedRegistrationPayment);
+        const online = paid.filter(
+          (row) => normalizeRegistrationPaymentMethod(row.registrationPaymentMethod) === "online"
         );
-        part.forEach(({ on, off, ttReg }) => {
-          const totPaid = on + off;
-          const unp = Math.max(0, ttReg - totPaid);
-          resOn.push(on);
-          resOff.push(off);
-          resTotReg.push(ttReg);
-          resTotPaid.push(totPaid);
-          resUnpaid.push(unp);
-        });
+        const offline = paid.filter(
+          (row) => normalizeRegistrationPaymentMethod(row.registrationPaymentMethod) === "offline"
+        );
+
+        const revenueFor = (paymentRows) => paymentRows.reduce(
+          (sum, row) => sum + Number(feesMap.get(String(row.registrationLevel || "").trim()) || 0),
+          0
+        );
+
+        resOn.push(online.length);
+        resOff.push(offline.length);
+        resTotReg.push(cohort.length);
+        resTotPaid.push(paid.length);
+        resUnpaid.push(Math.max(0, cohort.length - paid.length));
+        revAll.push(revenueFor(paid));
+        revOff.push(revenueFor(offline));
       }
+
       setPaidOnline(resOn);
       setPaidOffline(resOff);
       setTotalRegistrants(resTotReg);
       setTotalPaidSeries(resTotPaid);
       setUnpaid(resUnpaid);
-
-      // REVENUE
-      const feesMap = await fetchFeesMap();
-      const feeLabels = Array.from(feesMap.keys());
-      const revAll = [];
-      const revOff = [];
-
-      for (const b of buckets) {
-        let sumRpAll = 0;
-        let sumRpOff = 0;
-        const LCHUNK = 8;
-
-        for (let i = 0; i < feeLabels.length; i += LCHUNK) {
-          const slice = feeLabels.slice(i, i + LCHUNK);
-          const countsPaid = await Promise.all(
-            slice.map((label) => countPaidByLevelInRange(label, b.start, b.end, PERIOD_FIELD))
-          );
-          const countsOff = await Promise.all(
-            slice.map((label) => countPaidByLevelAndMethodInRange(label, b.start, b.end, "offline", PERIOD_FIELD))
-          );
-          countsPaid.forEach((cnt, idx) => {
-            const label = slice[idx];
-            const fee = feesMap.get(label) || 0;
-            sumRpAll += Number(cnt || 0) * Number(fee || 0);
-          });
-          countsOff.forEach((cnt, idx) => {
-            const label = slice[idx];
-            const fee = feesMap.get(label) || 0;
-            sumRpOff += Number(cnt || 0) * Number(fee || 0);
-          });
-        }
-        revAll.push(sumRpAll);
-        revOff.push(sumRpOff);
-      }
       setRevenue(revAll);
       setRevenueOffline(revOff);
     } catch (e) {

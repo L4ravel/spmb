@@ -32,6 +32,7 @@ export const EMAIL_ACCESS = {
     "/admin/daftar-ulang",
     "/admin/data-daftar-ulang",
     "/admin/statistik-daftar-ulang",
+    "/admin/audit-uang-pendaftaran",
     "/admin/kelengkapan-berkas",
   ],   
    "bendahara1@gmail.com": [ 
@@ -39,6 +40,7 @@ export const EMAIL_ACCESS = {
     "/admin/daftar-ulang",
     "/admin/data-daftar-ulang",
     "/admin/statistik-daftar-ulang",
+    "/admin/audit-uang-pendaftaran",
     "/admin/kelengkapan-berkas",
   ],   
    "kelengkapan@gmail.com": [  
@@ -49,6 +51,7 @@ export const EMAIL_ACCESS = {
     "/admin/daftar-ulang",
     "/admin/data-daftar-ulang",
     "/admin/statistik-daftar-ulang",
+    "/admin/audit-uang-pendaftaran",
     "/admin/kelengkapan-berkas",
   ],  
 

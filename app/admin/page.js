@@ -1,113 +1,21 @@
 // app/admin/page.js
 'use client';
 
-import React, { useEffect, useMemo, useRef, useState, useCallback } from 'react';
+import React, { useEffect, useRef, useState, useCallback } from 'react';
 import Link from 'next/link';
 import {
   Users, CreditCard, UserCheck, Calendar, FileText, BarChart3, MessageSquare,
   BookOpenCheck, DollarSign, Megaphone, KeyRound, LineChart, Wallet, ClipboardList,
-  PieChart, MapPin, Table, RefreshCw, MessageCircle, PlusCircle
+  PieChart, MapPin, Table, RefreshCw, MessageCircle, PlusCircle, ReceiptText
 } from 'lucide-react';
 
 import { db } from '@/lib/firebase';
+import { collection, getDocs } from 'firebase/firestore';
 import {
-  collection,
-  getCountFromServer,
-  query,
-  where,
-  getDocs,
-  doc, getDoc, collection as fbCollection, getDocs as fbGetDocs,
-  orderBy, limit as fbLimit, startAfter
-} from 'firebase/firestore';
-
-// ===== Ambil pager yang sama persis dengan halaman Statistik Daftar Ulang =====
-import { listUsersWithPaymentPage } from '@/app/admin/data-daftar-ulang/data/firestore'; // pastikan path ini sama seperti di page statistikmu
-
-/* ================== UTIL LOGIKA: disamakan dengan halaman Statistik Daful ================== */
-// normalisasi teks
-const up = (v) => (v ?? '').toString().trim().toUpperCase();
-// normalisasi status PTK
-const normPTK = (v) => {
-  const s = up(v);
-  if (['APPROVED','VERIFIED','ACCEPTED','CONFIRMED'].includes(s)) return 'APPROVED';
-  if (['REJECTED','DENIED','DECLINED'].includes(s)) return 'REJECTED';
-  return s || 'PENDING';
-};
-// kandidat kunci dokumen
-const pickDocKeys = (r) =>
-  [r?.id, r?.docId, r?.username, r?.uid, r?.userId, r?.NIS, r?.NISN, r?.nisn]
-    .map((x) => (x ?? '').toString().trim())
-    .filter(Boolean);
-
-// prefetch finalDecision & status ptk_confirmation/current → sama persis seperti di statistik
-async function prefetchMetaForKeys(keys, cache) {
-  const unique = Array.from(new Set(keys)).filter(Boolean);
-  const missing = unique.filter((k) => !cache.has(k));
-  if (missing.length === 0) return cache;
-
-  await Promise.all(
-    missing.map(async (k) => {
-      let fd = ''; let ptkApproved = false;
-      try {
-        const [userDoc, ptkDoc] = await Promise.all([
-          getDoc(doc(db, 'users_app', k)),
-          getDoc(doc(db, 'users_app', k, 'ptk_confirmation', 'current')),
-        ]);
-        if (userDoc.exists()) fd = up(userDoc.data()?.finalDecision);
-        if (ptkDoc.exists())  ptkApproved = normPTK(ptkDoc.data()?.status) === 'APPROVED';
-      } catch {}
-      cache.set(k, { fd, ptkApproved });
-    })
-  );
-
-  // fallback cari finalDecision terbaru di subkoleksi finalDecision
-  const needFd = missing.filter((k) => !cache.get(k)?.fd);
-  const CONCURRENCY = 6;
-  for (let i = 0; i < needFd.length; i += CONCURRENCY) {
-    const slice = needFd.slice(i, i + CONCURRENCY);
-    await Promise.all(
-      slice.map(async (k) => {
-        try {
-          const qref = query(
-            fbCollection(db, 'users_app', k, 'finalDecision'),
-            orderBy('finalDecidedAt', 'desc'),
-            fbLimit(1)
-          );
-          const snap = await fbGetDocs(qref);
-          if (!snap.empty) {
-            const fd = up(snap.docs[0].data()?.finalDecision);
-            const prev = cache.get(k) || { fd:'', ptkApproved:false };
-            cache.set(k, { ...prev, fd });
-          }
-        } catch {}
-      })
-    );
-  }
-  return cache;
-}
-
-async function enrichBatch(rows, cache) {
-  const allKeys = rows.flatMap((r) => pickDocKeys(r));
-  await prefetchMetaForKeys(allKeys, cache);
-  return rows.map((r) => {
-    const keys = pickDocKeys(r);
-    let fd = up(r?.finalDecision);
-    let ptkApproved = false;
-    for (const k of keys) {
-      const m = cache.get(k);
-      if (!m) continue;
-      if (!fd && m.fd) fd = m.fd;
-      if (m.ptkApproved) ptkApproved = true;
-      if (fd && ptkApproved) break;
-    }
-    return { ...r, __finalDecision: fd, __ptkApproved: !!ptkApproved };
-  });
-}
-
-const isRowPTK     = (r) => !!r.__ptkApproved;
-const isRowNonPTK  = (r) => !r.__ptkApproved && up(r.__finalDecision) === 'LULUS';
-const isRowValid   = (r) => isRowPTK(r) || isRowNonPTK(r); // dataset "total" persis seperti statistik
-const isLunas      = (r) => Number(r?.tunggakan || 0) <= 0 && Number(r?.kewajibanTotal || 0) > 0;
+  isPendingRegistrationPayment,
+  isVerifiedRegistrationPayment,
+} from '@/app/admin/_lib/registrationPayment';
+import { loadCanonicalDaftarUlang } from '@/app/admin/data-daftar-ulang/data/canonical';
 
 /* ================== HALAMAN DASHBOARD (UI dipertahankan) ================== */
 export default function AdminDashboard() {
@@ -136,6 +44,7 @@ export default function AdminDashboard() {
         { label: 'Verifikasi Daftar Ulang', shortLabel: 'Rekap Daful', href: '/admin/daftar-ulang', icon: ClipboardList },
         { label: 'Data Daftar Ulang', shortLabel: 'Data Daful', href: '/admin/data-daftar-ulang', icon: Table },
         { label: 'Statistik Daftar Ulang', shortLabel: 'Stat Daful', href: '/admin/statistik-daftar-ulang', icon: PieChart },
+        { label: 'Audit Uang Pendaftaran', shortLabel: 'Audit Bayar', href: '/admin/audit-uang-pendaftaran', icon: ReceiptText },
       ],
     },
     {
@@ -176,29 +85,25 @@ export default function AdminDashboard() {
     },
   ];
 
-  const [leftGroups, rightGroups] = useMemo(() => {
-    const L = [], R = [];
-    shortcutGroups.forEach((g, i) => (i % 2 === 0 ? L : R).push(g));
-    return [L, R];
-  }, [shortcutGroups]);
+  const leftGroups = shortcutGroups.filter((_, index) => index % 2 === 0);
+  const rightGroups = shortcutGroups.filter((_, index) => index % 2 !== 0);
 
   // === STATE Statistik umum (tetap, UI kamu)
   const [loading, setLoading] = useState(true);
   const [totalPeserta, setTotalPeserta] = useState(0);
   const [verifiedCount, setVerifiedCount] = useState(0);
   const [pendingRegistrations, setPendingRegistrations] = useState(0);
-  const [quotaTotal, setQuotaTotal] = useState(0);
-  const [quotaUsed, setQuotaUsed] = useState(0);
   const [totalPembayaran, setTotalPembayaran] = useState(0);       // uang masuk (registrasi)
   const [totalTargetPayment, setTotalTargetPayment] = useState(0); // potensi (pendaftar × fee)
-  const [potentialCount, setPotentialCount] = useState(0);
+  const [statsReloadKey, setStatsReloadKey] = useState(0);
 
   // === Tambahan: angka Daftar Ulang dari LOGIKA STATISTIK (dataset TOTAL) ===
   const [totalDafulPendapatan, setTotalDafulPendapatan] = useState(0);
   const [totalDafulTunggakan, setTotalDafulTunggakan]   = useState(0);
   const [totalDafulPotensi, setTotalDafulPotensi]       = useState(0);
-  const metaCacheRef = useRef(new Map());
+  const dafulRequestRef = useRef(false);
   const [loadingDaful, setLoadingDaful] = useState(false);
+  const [dafulLoaded, setDafulLoaded] = useState(false);
 
   // === Mode tampilan kartu uang (UI tetap)
   const [moneyCardMode, setMoneyCardMode] = useState('pembayaran'); // 'pembayaran' | 'daful_pendapatan' | 'daful_tunggakan'
@@ -214,13 +119,18 @@ export default function AdminDashboard() {
   useEffect(() => {
     let alive = true;
     async function fetchStats() {
+      setLoading(true);
       try {
         const usersCol   = collection(db, 'users_app');
-        const quotasCol  = collection(db, 'quotas');
         const feesCol    = collection(db, 'fees');
 
+        // Kedua koleksi independen: ambil paralel agar dashboard cepat tampil.
+        const [feesSnap, allUsersSnap] = await Promise.all([
+          getDocs(feesCol),
+          getDocs(usersCol),
+        ]);
+
         // --- Ambil semua fees sekali: build map label -> fee
-        const feesSnap = await getDocs(feesCol);
         const feeByLabel = new Map();
         feesSnap.forEach((d) => {
           const x = d.data() || {};
@@ -229,66 +139,21 @@ export default function AdminDashboard() {
           if (label) feeByLabel.set(label, fee);
         });
 
-        // --- Query counts dasar
-        const pendingQ  = query(usersCol, where('registrationPaymentStatus', '==', 'waiting_review'));
-        const verifiedQ = query(usersCol, where('registrationPaymentStatus', '==', 'verified'));
-
-        const [totalSnap, pendingSnap, quotasSnap, verifiedSnap, allUsersSnap] = await Promise.all([
-          getCountFromServer(usersCol),
-          getCountFromServer(pendingQ),
-          getDocs(quotasCol),
-          getDocs(verifiedQ),
-          getDocs(usersCol),
-        ]);
-
         if (!alive) return;
 
-        // === Index user & hitung per level
-        const existingIds = new Set();
-        const countByLevel = new Map();
-        allUsersSnap.forEach((s) => {
-          const id = s.id;
-          existingIds.add(id);
-          const u = s.data() || {};
-          const level = (u.registrationLevel || '').trim();
-          if (level) countByLevel.set(level, (countByLevel.get(level) || 0) + 1);
-        });
+        const allUsers = allUsersSnap.docs.map((userDoc) => ({
+          id: userDoc.id,
+          ...userDoc.data(),
+        }));
+        const verifiedUsers = allUsers.filter(isVerifiedRegistrationPayment);
 
-        // === Kuota tervalidasi
-        let limitSum = 0;
-        let usedSum  = 0;
-
-        quotasSnap.forEach((d) => {
-          const q = d.data() || {};
-          const label = (q.label ?? d.id ?? '').trim();
-          const limit = Number(q.limit ?? 0);
-          limitSum += limit;
-
-          if (Array.isArray(q.assignedUsernames)) {
-            const validUsed = q.assignedUsernames.filter((u) => existingIds.has(String(u))).length;
-            usedSum += validUsed;
-            return;
-          }
-
-          if (q.usedBy && typeof q.usedBy === 'object') {
-            const validUsed = Object.keys(q.usedBy).filter((u) => existingIds.has(String(u))).length;
-            usedSum += validUsed;
-            return;
-          }
-
-          if (label) usedSum += Number(countByLevel.get(label) || 0);
-        });
-
-        setTotalPeserta(totalSnap.data().count || 0);
-        setPendingRegistrations(pendingSnap.data().count || 0);
-        setQuotaTotal(limitSum);
-        setQuotaUsed(usedSum);
-        setVerifiedCount(verifiedSnap.size || 0);
+        setTotalPeserta(allUsers.length);
+        setPendingRegistrations(allUsers.filter(isPendingRegistrationPayment).length);
+        setVerifiedCount(verifiedUsers.length);
 
         // === Total Pembayaran (uang real) = jumlah verified per level × fee(label)
         const countVerifiedByLevel = new Map();
-        verifiedSnap.forEach((docSnap) => {
-          const u = docSnap.data() || {};
+        verifiedUsers.forEach((u) => {
           const levelLabel = (u.registrationLevel || '').trim();
           if (!levelLabel) return;
           countVerifiedByLevel.set(levelLabel, (countVerifiedByLevel.get(levelLabel) || 0) + 1);
@@ -302,13 +167,11 @@ export default function AdminDashboard() {
 
         // === Target Pembayaran (potensi)
         const countAllByLevel = new Map();
-        let totalPotentialUsers = 0;
         allUsersSnap.forEach((s) => {
           const u = s.data() || {};
           const label = (u.registrationLevel || '').trim();
           if (!label) return;
           countAllByLevel.set(label, (countAllByLevel.get(label) || 0) + 1);
-          totalPotentialUsers += 1;
         });
 
         let target = 0;
@@ -316,7 +179,6 @@ export default function AdminDashboard() {
           target += Number(feeByLabel.get(label) || 0) * Number(cnt || 0);
         });
 
-        setPotentialCount(totalPotentialUsers);
         setTotalTargetPayment(target);
       } catch (err) {
         console.error('[AdminDashboard] fetchStats error:', err);
@@ -327,56 +189,41 @@ export default function AdminDashboard() {
 
     fetchStats();
     return () => { alive = false; };
-  }, []);
-
-  // ====== Ambil angka Daftar Ulang via pager (PERSIS seperti page statistik) ======
+  }, [statsReloadKey]);
+  // ====== Ringkasan kanonis dari Data Daftar Ulang ======
   const reloadDaful = useCallback(async () => {
+    if (dafulRequestRef.current) return;
+    dafulRequestRef.current = true;
     setLoadingDaful(true);
     try {
-      const cache = metaCacheRef.current;
-      let local = [];
-      let cursor = null;
-      let safety = 0;
-      const SAFETY_LIMIT = 200;
-
-      while (safety < SAFETY_LIMIT) {
-        safety += 1;
-        const res = await listUsersWithPaymentPage({ pageSize: 200, cursor });
-        const batch = res?.list || [];
-        if (!batch.length) break;
-        const enriched = await enrichBatch(batch, cache);
-        local = local.concat(enriched);
-        cursor = res?.lastDoc || null;
-        if (!cursor) break;
-      }
-
-      // dataset TOTAL: PTK + NonPTK LULUS (identik statistik)
-      const effectiveRows = local.filter(isRowValid); // :contentReference[oaicite:2]{index=2}
-      let totalTunggakan = 0, totalPendapatan = 0;
-
-      for (const r of effectiveRows) {
-        const tunggakan = Number(r?.tunggakan || 0);
-        const tagihan   = Number(r?.kewajibanTotal || 0);
-        const pendapatan = Math.max(tagihan - tunggakan, 0);
-        totalTunggakan  += Math.max(tunggakan, 0);
-        totalPendapatan += pendapatan;
-      }
-      const potensi = totalPendapatan + totalTunggakan; // :contentReference[oaicite:3]{index=3}
-
-      setTotalDafulPendapatan(totalPendapatan);
-      setTotalDafulTunggakan(totalTunggakan);
-      setTotalDafulPotensi(potensi);
+      const { stats } = await loadCanonicalDaftarUlang(db);
+      setTotalDafulPendapatan(stats.totalPaid);
+      setTotalDafulTunggakan(stats.totalSisa);
+      setTotalDafulPotensi(stats.totalTagihanNet);
+      setDafulLoaded(true);
     } catch (e) {
       console.error('[AdminDashboard] reloadDaful error:', e);
     } finally {
+      dafulRequestRef.current = false;
       setLoadingDaful(false);
     }
   }, []);
 
-  useEffect(() => { reloadDaful(); }, [reloadDaful]);
+  // Data daftar ulang jauh lebih berat. Muat hanya saat mode tersebut dibuka,
+  // sehingga angka pembayaran pendaftaran tidak ikut tertahan.
+  useEffect(() => {
+    if (moneyCardMode !== 'pembayaran' && !dafulLoaded) reloadDaful();
+  }, [moneyCardMode, dafulLoaded, reloadDaful]);
+
+  // Setelah kartu utama selesai, siapkan ringkasan daftar ulang di belakang layar.
+  // Ini tidak menahan render dashboard, tetapi membuat perpindahan kartu terasa cepat.
+  useEffect(() => {
+    if (loading || dafulLoaded) return;
+    const timer = window.setTimeout(() => reloadDaful(), 300);
+    return () => window.clearTimeout(timer);
+  }, [loading, dafulLoaded, reloadDaful]);
 
   // === Derive untuk progress bars & label (UI tetap)
-  const quotaAvailable = Math.max(0, quotaTotal - quotaUsed);
   const percentVerified = totalPeserta > 0 ? Math.min(100, Math.round((verifiedCount / totalPeserta) * 100)) : 0;
   const percentPending  = totalPeserta > 0 ? Math.min(100, Math.round((pendingRegistrations / totalPeserta) * 100)) : 0;
   const percentRevenue  = totalTargetPayment > 0 ? Math.min(100, Math.round((totalPembayaran / totalTargetPayment) * 100)) : 0;
@@ -385,26 +232,28 @@ export default function AdminDashboard() {
   const percentUnpaid  = totalPeserta > 0 ? Math.min(100, Math.round((unpaidCount / totalPeserta) * 100)) : 0;
 
   const moneyLabel = (() => {
-    if (moneyCardMode === 'daful_pendapatan') return 'Pendapatan Daftar Ulang';
+    if (moneyCardMode === 'daful_pendapatan') return 'Total Pembayaran Daftar Ulang';
     if (moneyCardMode === 'daful_tunggakan')  return 'Tunggakan Daftar Ulang';
     return 'Total Pembayaran Pendaftaran';
   })();
 
+  const moneyLoading = moneyCardMode === 'pembayaran' ? loading : loadingDaful || !dafulLoaded;
+
   const moneyValue = (() => {
-    if (loading || loadingDaful) return '…';
+    if (moneyLoading) return '…';
     if (moneyCardMode === 'daful_pendapatan') return formatCurrency(totalDafulPendapatan);
     if (moneyCardMode === 'daful_tunggakan')  return formatCurrency(totalDafulTunggakan);
     return formatCurrency(totalPembayaran);
   })();
 
-  const dafulTotal = Math.max(0, totalDafulPendapatan + totalDafulTunggakan);
+  const dafulTotal = Math.max(0, totalDafulPotensi);
   const percentDafulPendapatan = dafulTotal > 0 ? Math.min(100, Math.round((totalDafulPendapatan / dafulTotal) * 100)) : 0;
   const percentDafulTunggakan  = dafulTotal > 0 ? Math.min(100, Math.round((totalDafulTunggakan  / dafulTotal) * 100)) : 0;
 
   const moneySub = (() => {
-    if (loading || loadingDaful) return ' ';
-    if (moneyCardMode === 'daful_pendapatan') return `Share: ${percentDafulPendapatan}% dari total Daful`;
-    if (moneyCardMode === 'daful_tunggakan')  return `Share: ${percentDafulTunggakan}% dari total Daful`;
+    if (moneyLoading) return ' ';
+    if (moneyCardMode === 'daful_pendapatan') return `Terbayar: ${percentDafulPendapatan}% dari tagihan net`;
+    if (moneyCardMode === 'daful_tunggakan')  return `Sisa: ${percentDafulTunggakan}% dari tagihan net`;
     return `Potensi: ${formatCurrency(totalTargetPayment)}`;
   })();
 
@@ -417,7 +266,7 @@ export default function AdminDashboard() {
         icon: 'text-green-600 group-hover:text-white',
         gradient: 'from-green-50',
         bar: 'bg-green-500 group-hover:bg-green-600',
-        progressPct: `${loading || loadingDaful ? 0 : percentDafulPendapatan}%`,
+        progressPct: `${moneyLoading ? 0 : percentDafulPendapatan}%`,
       };
     }
     if (moneyCardMode === 'daful_tunggakan') {
@@ -427,7 +276,7 @@ export default function AdminDashboard() {
         icon: 'text-yellow-600 group-hover:text-white',
         gradient: 'from-yellow-50',
         bar: 'bg-yellow-500 group-hover:bg-yellow-600',
-        progressPct: `${loading || loadingDaful ? 0 : percentDafulTunggakan}%`,
+        progressPct: `${moneyLoading ? 0 : percentDafulTunggakan}%`,
       };
     }
     return {
@@ -436,7 +285,7 @@ export default function AdminDashboard() {
       icon: 'text-purple-600 group-hover:text-white',
       gradient: 'from-purple-50',
       bar: 'bg-purple-500 group-hover:bg-purple-600',
-      progressPct: `${loading ? 0 : percentRevenue}%`,
+      progressPct: `${moneyLoading ? 0 : percentRevenue}%`,
     };
   })();
 
@@ -447,10 +296,14 @@ export default function AdminDashboard() {
         <div className="ml-auto" />
         <button
           type="button"
-          onClick={() => { setLoading(true); setLoadingDaful(true); Promise.all([/* umum */ (async()=>{})(), reloadDaful()]).finally(()=>setLoading(false)); }}
+          onClick={() => {
+            setStatsReloadKey((current) => current + 1);
+            if (dafulLoaded) reloadDaful();
+          }}
+          disabled={loading || loadingDaful}
           className="inline-flex items-center gap-2 rounded-xl border border-slate-200 bg-white px-3 py-2 text-sm hover:bg-slate-50 text-black"
         >
-          <RefreshCw className="h-4 w-4" /> Muat ulang
+          <RefreshCw className={`h-4 w-4 ${loading || loadingDaful ? 'animate-spin' : ''}`} /> Muat ulang
         </button>
       </div>
 
@@ -554,13 +407,13 @@ export default function AdminDashboard() {
             <div className="w-full bg-slate-200 rounded-full h-2 mt-3 overflow-hidden">
               <div
                 className={`h-2 rounded-full transition-all duration-500 ${modeStyles.bar}`}
-                style={{ width: loading || loadingDaful ? '0%' : modeStyles.progressPct }}
+                style={{ width: moneyLoading ? '0%' : modeStyles.progressPct }}
               />
             </div>
 
             {/* Hint kecil mode */}
             <div className="mt-2 text-[11px] text-slate-400">
-              Klik untuk ganti: {moneyCardMode === 'pembayaran' ? 'Pendapatan Daful' : moneyCardMode === 'daful_pendapatan' ? 'Tunggakan Daful' : 'Total Pembayaran'}
+              Klik untuk ganti: {moneyCardMode === 'pembayaran' ? 'Pembayaran Daful' : moneyCardMode === 'daful_pendapatan' ? 'Tunggakan Daful' : 'Total Pembayaran Pendaftaran'}
             </div>
           </div>
         </button>
