@@ -85,6 +85,24 @@
 .spmb-info-bar a:hover { color: #f6f3eb; }
 .spmb-info-bar .rounded-full { background: var(--spmb-orange); }
 .spmb-mobile-menu > div { overflow-y: auto; background: #f6f3eb; }
+.spmb-mobile-drawer { overscroll-behavior: contain; }
+.spmb-mobile-logo { border: 1px solid #d4cfc4; }
+.spmb-mobile-contact { background: #154e91; color: #fff; }
+.spmb-mobile-contact .spmb-mobile-contact-title { color: #fff; }
+.spmb-mobile-contact .spmb-mobile-contact-link {
+  min-height: 44px;
+  color: #fff;
+  line-height: 1.5;
+}
+.spmb-mobile-contact .spmb-mobile-contact-link:hover { color: #fff; }
+.spmb-mobile-contact .spmb-mobile-contact-icon { background: #fff; color: #154e91; }
+.spmb-mobile-contact .spmb-mobile-contact-icon svg { color: #154e91; }
+
+@media (max-width: 479px) {
+  .spmb-mobile-drawer { max-width: calc(100% - 16px); }
+  .spmb-mobile-drawer > div:first-child { padding: 20px; }
+  .spmb-mobile-drawer > nav { padding: 20px; }
+}
 
 .spmb-container { width: min(1240px, calc(100% - 40px)); margin-inline: auto; }
 .spmb-section { padding-block: 88px; scroll-margin-top: 125px; }

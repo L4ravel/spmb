@@ -3,7 +3,6 @@
 import { useState, useEffect } from "react";
 import Link from "next/link";
 import { 
-  GraduationCap, 
   Menu, 
   X,
   Phone,
@@ -223,15 +222,22 @@ const navLinks = [
           onClick={() => setIsMobileMenuOpen(false)}
         >
           <div
-            className="fixed right-0 top-0 h-full w-full max-w-sm bg-white shadow-2xl"
+            className="spmb-mobile-drawer fixed right-0 top-0 h-full w-full max-w-sm bg-white shadow-2xl"
             onClick={(e) => e.stopPropagation()}
           >
             {/* Mobile Menu Header */}
             <div className="border-b border-slate-200 p-6">
               <div className="flex items-center justify-between">
                 <div className="flex items-center gap-3">
-                  <div className="flex h-12 w-12 items-center justify-center rounded-xl bg-gradient-to-br from-violet-500 to-indigo-600 shadow-lg">
-                    <GraduationCap className="h-6 w-6 text-white" />
+                  <div className="spmb-mobile-logo relative h-14 w-14 shrink-0 overflow-hidden rounded-xl bg-white">
+                    <Image
+                      src="/logo/pondok-assunnah.png"
+                      alt="Logo Pondok Pesantren Assunnah"
+                      fill
+                      sizes="56px"
+                      className="object-contain p-1"
+                      priority
+                    />
                   </div>
                   <div>
                     <p className="text-xs font-bold uppercase tracking-wider text-violet-600">
@@ -243,6 +249,7 @@ const navLinks = [
                 <button
                   onClick={() => setIsMobileMenuOpen(false)}
                   className="rounded-lg p-2 text-slate-400 hover:bg-slate-100"
+                  aria-label="Tutup menu"
                 >
                   <X className="h-6 w-6" />
                 </button>
@@ -283,15 +290,15 @@ const navLinks = [
               </div>
 
               {/* Mobile Contact Info */}
-              <div className="mt-8 space-y-4 rounded-2xl bg-gradient-to-br from-violet-50 to-indigo-50 p-5">
-                <p className="text-sm font-bold uppercase tracking-wider text-violet-700">
+              <div className="spmb-mobile-contact mt-8 space-y-4 rounded-2xl p-5">
+                <p className="spmb-mobile-contact-title text-sm font-bold uppercase tracking-wider">
                   Hubungi Kami
                 </p>
                 <a
                   href="tel:+6287720242025"
-                  className="flex items-center gap-3 text-slate-700"
+                  className="spmb-mobile-contact-link flex items-center gap-3"
                 >
-                  <div className="flex h-10 w-10 items-center justify-center rounded-lg bg-white shadow-sm">
+                  <div className="spmb-mobile-contact-icon flex h-10 w-10 shrink-0 items-center justify-center rounded-lg bg-white shadow-sm">
                     <Phone className="h-5 w-5 text-violet-600" />
                   </div>
                   <span className="font-medium">(+62) 877 2024 2025</span>
@@ -300,9 +307,9 @@ const navLinks = [
                   href="https://maps.google.com/?q=Pondok+Pesantren+Assunnah+lombok"
                   target="_blank"
                   rel="noreferrer"
-                  className="flex items-center gap-3 text-slate-700"
+                  className="spmb-mobile-contact-link flex items-center gap-3"
                 >
-                  <div className="flex h-10 w-10 items-center justify-center rounded-lg bg-white shadow-sm">
+                  <div className="spmb-mobile-contact-icon flex h-10 w-10 shrink-0 items-center justify-center rounded-lg bg-white shadow-sm">
                     <MapPin className="h-5 w-5 text-violet-600" />
                   </div>
                   <span className="font-medium">Bagik Nyaka, Lombok Timur</span>
