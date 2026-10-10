@@ -9,7 +9,7 @@ const STEPS_ONLINE = [
   { no: 3, title: "Login ke Akun Anda", desc: "Login menggunakan username dan password yang diberikan.", icon: LogIn },
   { no: 4, title: "Melakukan Pembayaran", desc: "Melakukan pembayaran melalui rekening yang tersedia.", icon: Wallet },
   { no: 5, title: "Upload Bukti Pembayaran", desc: "Upload bukti pembayaran setelah login.", icon: Upload },
-  { no: 6, title: "Verifikasi dan Ujian Online", desc: "Tunggu akun diverifikasi dan bersiap mengikuti ujian online.", icon: CheckCircle },
+  { no: 6, title: "Verifikasi dan Ujian", desc: "Setelah diverifikasi, selanjutnya peserta memilih waktu ujian yang telah ditentukan oleh panitia.", icon: CheckCircle },
 ];
 const STEPS_OFFLINE = [
   { no: 1, title: "Datang ke Stand Pendaftaran", desc: "Datang ke stand pendaftaran yang berada di pondok.", icon: MousePointerClick },
@@ -17,7 +17,7 @@ const STEPS_OFFLINE = [
   { no: 3, title: "Panitia Membantu Upload", desc: "Panitia akan membantu upload data dan berkas ke website.", icon: Upload },
   { no: 4, title: "Menerima Akun Login", desc: "Panitia akan memberi akun untuk login.", icon: LogIn },
   { no: 5, title: "Pembayaran ke Panitia", desc: "Melakukan proses pembayaran ke panitia.", icon: Wallet },
-  { no: 6, title: "Verifikasi dan Ujian Online", desc: "Tunggu akun diverifikasi dan bersiap mengikuti ujian online.", icon: CheckCircle },
+  { no: 6, title: "Verifikasi dan Ujian", desc: "Setelah diverifikasi, selanjutnya peserta memilih waktu ujian yang telah ditentukan oleh panitia.", icon: CheckCircle },
 ];
 
 const ONLINE_HELP = [
