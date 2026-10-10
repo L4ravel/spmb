@@ -77,7 +77,7 @@ export default function AdminDashboard() {
       items: [
         { label: 'Input Biaya Pendaftaran', href: '/admin/input-pembayaran', icon: CreditCard },
         { label: 'Input Biaya Daftar Ulang', shortLabel: 'Input Bayar', href: '/admin/biaya-daftar-ulang', icon: Wallet },
-        { label: 'Kuota', href: '/admin/kuota', icon: UserCheck },
+        { label: 'Kuota Peserta', href: '/admin/spmb/kuota-peserta', icon: UserCheck },
         { label: 'WhatsApp', href: '/admin/whatshap', icon: MessageSquare },
         { label: 'Kelengkapan Berkas', href: '/admin/kelengkapan-berkas', icon: FileText },
         { label: 'Reset Password Peserta', href: '/admin/reset-password', icon: KeyRound },
@@ -332,7 +332,7 @@ export default function AdminDashboard() {
         </Link>
 
         {/* Sudah Bayar */}
-        <Link href="/admin/kuota" className="group bg-white rounded-xl shadow-sm hover:shadow-xl p-5 border-l-4 border-green-500 transition-all duration-300 hover:scale-[1.02] hover:-translate-y-1 cursor-pointer hover:border-green-600 relative overflow-hidden">
+        <Link href="/admin/spmb/kuota-peserta" className="group bg-white rounded-xl shadow-sm hover:shadow-xl p-5 border-l-4 border-green-500 transition-all duration-300 hover:scale-[1.02] hover:-translate-y-1 cursor-pointer hover:border-green-600 relative overflow-hidden">
           <div className="absolute inset-0 bg-gradient-to-br from-green-50 to-transparent opacity-0 group-hover:opacity-100 transition-opacity duration-300" />
           <div className="relative z-10">
             <div className="flex items-center justify-between">

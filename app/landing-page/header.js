@@ -105,7 +105,7 @@ const navLinks = [
   return (
     <>
       <header
-        className={`fixed top-0 z-50 w-full transition-all duration-300 ${
+        className={`spmb-public spmb-header fixed top-0 z-50 w-full transition-all duration-300 ${
           isScrolled
             ? "border-b border-slate-200/80 bg-white/95 shadow-lg backdrop-blur-xl"
             : "border-b border-transparent bg-white/90 backdrop-blur-md"
@@ -153,14 +153,14 @@ const navLinks = [
             {/* CTA Buttons - Desktop */}
             <div className="hidden items-center gap-3 lg:flex">
               <Link
-                href="/login"
+                href="https://ahsan.pontrenassunnah.com/login"
                 className="group inline-flex items-center gap-2 rounded-xl border-2 border-violet-200 bg-white px-5 py-2.5 font-semibold text-violet-700 transition-all hover:border-violet-300 hover:bg-violet-50"
               >
                 <LogIn className="h-4 w-4 transition-transform group-hover:scale-110" />
                 Login
               </Link>
               <Link
-                href="/spmb"
+                href="https://ahsan.pontrenassunnah.com/spmb/daftar"
                 className="group relative overflow-hidden rounded-xl bg-gradient-to-r from-violet-600 to-indigo-600 px-6 py-2.5 font-bold text-white shadow-lg transition-all hover:scale-105 hover:shadow-xl"
               >
                 <span className="relative z-10">Daftar Sekarang</span>
@@ -173,6 +173,8 @@ const navLinks = [
               onClick={() => setIsMobileMenuOpen(!isMobileMenuOpen)}
               className="flex h-10 w-10 items-center justify-center rounded-lg border border-slate-200 bg-white text-slate-700 transition-colors hover:bg-slate-50 lg:hidden"
               aria-label="Toggle menu"
+              aria-expanded={isMobileMenuOpen}
+              aria-controls="spmb-mobile-navigation"
             >
               {isMobileMenuOpen ? (
                 <X className="h-5 w-5" />
@@ -184,7 +186,7 @@ const navLinks = [
         </div>
 
         {/* Top Info Bar (Optional - shows on desktop only) */}
-        <div className="hidden border-b border-violet-100 bg-gradient-to-r from-violet-50 to-indigo-50 py-2 lg:block">
+        <div className="spmb-info-bar hidden border-b border-violet-100 bg-gradient-to-r from-violet-50 to-indigo-50 py-2 lg:block">
           <div className="mx-auto flex max-w-7xl items-center justify-between px-4 md:px-6">
             <div className="flex items-center gap-6 text-sm">
               <a
@@ -217,7 +219,7 @@ const navLinks = [
       {/* Mobile Menu Overlay */}
       {isMobileMenuOpen && (
         <div
-          className="fixed inset-0 z-40 bg-black/60 backdrop-blur-sm lg:hidden"
+          className="spmb-public spmb-mobile-menu fixed inset-0 z-[60] bg-black/60 backdrop-blur-sm lg:hidden"
           onClick={() => setIsMobileMenuOpen(false)}
         >
           <div
@@ -248,7 +250,7 @@ const navLinks = [
             </div>
 
             {/* Mobile Navigation */}
-            <nav className="p-6">
+            <nav id="spmb-mobile-navigation" className="p-6">
               <div className="space-y-2">
                 {navLinks.map((link) => (
                   <button
@@ -264,7 +266,7 @@ const navLinks = [
               {/* Mobile CTA Buttons */}
               <div className="mt-6 space-y-3">
                 <Link
-                  href="/login"
+                  href="https://ahsan.pontrenassunnah.com/login"
                   onClick={() => setIsMobileMenuOpen(false)}
                   className="flex w-full items-center justify-center gap-2 rounded-xl border-2 border-violet-200 bg-white px-5 py-3 font-semibold text-violet-700 transition-colors hover:bg-violet-50"
                 >
@@ -272,7 +274,7 @@ const navLinks = [
                   Login
                 </Link>
                 <Link
-                  href="/spmb"
+                  href="https://ahsan.pontrenassunnah.com/spmb/daftar"
                   onClick={() => setIsMobileMenuOpen(false)}
                   className="flex w-full items-center justify-center rounded-xl bg-gradient-to-r from-violet-600 to-indigo-600 px-5 py-3 font-bold text-white shadow-lg"
                 >
@@ -312,7 +314,7 @@ const navLinks = [
       )}
 
       {/* Spacer to prevent content jump */}
-      <div className="h-20 lg:h-[88px]" />
+      <div className="h-20 lg:h-[117px]" />
     </>
   );
 }

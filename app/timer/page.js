@@ -6,7 +6,7 @@ import Image from 'next/image';
 // ====== CONFIG ======
 // WITA = +08:00
 const TARGET_ISO = '2025-11-01T00:00:00+08:00';
-const TITLE = 'SPMB 2026';
+const TITLE = 'SPMB 2027';
 const SUBTITLE = 'Sistem Penerimaan Murid Baru Pondok As-Sunnah Bagik Nyaka';
 
 // ---- util waktu ----

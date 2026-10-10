@@ -73,7 +73,7 @@ export const BASE_MENU_GROUPS = [
     items: [
       { label: "Input Biaya Pendaftaran", shortLabel: "Input Bayar", href: "/admin/input-pembayaran", icon: CreditCard },
       { label: "Input Biaya Daftar Ulang", shortLabel: "Input Bayar", href: "/admin/biaya-daftar-ulang", icon: Wallet },      
-      { label: "Kuota", shortLabel: "Kuota", href: "/admin/kuota", icon: UserCheck },
+      { label: "Kuota Peserta", shortLabel: "Kuota", href: "/admin/spmb/kuota-peserta", icon: UserCheck },
       { label: "WhatsApp", shortLabel: "WA", href: "/admin/whatshap", icon: MessageSquare },
       { label: "Kelengkapan Berkas", shortLabel: "Berkas", href: "/admin/kelengkapan-berkas", icon: FileText },
       { label: "Reset Password Peserta", shortLabel: "Reset Pass", href: "/admin/reset-password", icon: KeyRound },

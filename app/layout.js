@@ -2,7 +2,7 @@
 import "./globals.css";
 
 export const metadata = {
-  title: "SPMB 2026",
+  title: "SPMB 2027",
   description: "Sistem Penerimaan Murid Baru Pondok Pondok pesantren Assunnah Lombok",
 };
 

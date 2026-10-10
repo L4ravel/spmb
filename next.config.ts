@@ -22,7 +22,16 @@ const nextConfig: NextConfig = {
 
   async redirects() {
     return [
-      // { source: "/spmb-old", destination: "/spmb", permanent: true },
+      {
+        source: "/login",
+        destination: "https://ahsan.pontrenassunnah.com/login",
+        permanent: false,
+      },
+      {
+        source: "/spmb",
+        destination: "https://ahsan.pontrenassunnah.com/spmb/daftar",
+        permanent: false,
+      },
     ];
   },
 

@@ -76,7 +76,7 @@ export default function Footer() {
   const year = new Date().getFullYear();
 
   return (
-    <footer className="relative w-full overflow-hidden">
+    <footer className="spmb-public spmb-footer relative w-full overflow-hidden">
       {/* ===== Divider Line ===== */}
       <div className="h-px w-full bg-gradient-to-r from-transparent via-violet-300 to-transparent" />
 
