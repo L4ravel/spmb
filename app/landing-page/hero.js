@@ -1,13 +1,48 @@
 "use client";
 
+import { useEffect, useState } from "react";
 import Link from "next/link";
-import { ArrowRight, Award, GraduationCap, Users, ShieldCheck } from "lucide-react";
+import Image from "next/image";
+import { ArrowRight } from "lucide-react";
 import Section from "./SectionsPPDB";
 
+const heroPhotos = [
+  "/images/hero/pondok-assunnah-gerbang.webp",
+  "/images/hero/pondok-assunnah-lapangan-1.webp",
+  "/images/hero/pondok-assunnah-lapangan-2.webp",
+];
+
 export default function Hero() {
+  const [activePhoto, setActivePhoto] = useState(0);
+
+  useEffect(() => {
+    if (window.matchMedia("(prefers-reduced-motion: reduce)").matches) return;
+
+    const interval = window.setInterval(() => {
+      setActivePhoto((current) => (current + 1) % heroPhotos.length);
+    }, 8000);
+
+    return () => window.clearInterval(interval);
+  }, []);
+
   return (
     <>
       <section className="spmb-hero">
+        <div className="spmb-hero-media" aria-hidden="true">
+          {heroPhotos.map((src, index) => (
+            <Image
+              key={src}
+              src={src}
+              alt=""
+              fill
+              priority={index === 0}
+              sizes="100vw"
+              quality={75}
+              className={index === activePhoto ? "is-active" : ""}
+            />
+          ))}
+        </div>
+        <div className="spmb-hero-overlay" aria-hidden="true" />
         <div className="spmb-hero-pattern" aria-hidden="true">
           <svg viewBox="0 0 1440 900" fill="none" preserveAspectRatio="xMidYMid slice">
             <g className="spmb-pattern-orbit">
@@ -28,49 +63,54 @@ export default function Hero() {
         </div>
         <div className="spmb-container spmb-hero-layout">
           <div className="spmb-hero-copy">
-            <p className="spmb-hero-eyebrow">Pondok Pesantren Assunnah</p>
-            <h1>SPMB 2027</h1>
-            <p className="spmb-hero-subtitle">Sistem Penerimaan Murid Baru</p>
-            <p className="spmb-hero-year">Tahun Pelajaran 2026/2027</p>
-            <div className="spmb-hero-description">
-              <p>
-                Bergabunglah dengan{" "}
-                <span className="font-bold">ribuan santri</span>{" "}
-                yang telah menempuh pendidikan Islam berkualitas dengan kurikulum{" "}
-                <span className="font-bold">Mu&apos;adalah</span> dari
-                Universitas Islam Madinah.
-              </p>
+            <div className="spmb-hero-primary">
+              <p className="spmb-hero-eyebrow">Pondok Pesantren Assunnah</p>
+              <h1>SPMB 2027</h1>
             </div>
-            <div className="spmb-hero-actions">
-              <Link href="https://ahsan.pontrenassunnah.com/spmb/daftar" className="spmb-button spmb-button-orange">
-                Daftar Sekarang <ArrowRight className="h-5 w-5" />
-              </Link>
-              <Link href="https://ahsan.pontrenassunnah.com/login" className="spmb-button spmb-button-outline">
-                Login <ArrowRight className="h-5 w-5" />
-              </Link>
-            </div>
-            <div className="spmb-trust">
-              <div><Award className="h-5 w-5" /><span>Terakreditasi A</span></div>
-              <div><GraduationCap className="h-5 w-5" /><span>Mu&apos;adalah Madinah</span></div>
-              <div><Users className="h-5 w-5" /><span>10.000+ Alumni</span></div>
+            <div className="spmb-hero-details">
+              <p className="spmb-hero-subtitle">Sistem Penerimaan Murid Baru</p>
+              <p className="spmb-hero-year">Tahun Pelajaran 2026/2027</p>
+              <div className="spmb-hero-description">
+                <p>
+                  Bergabunglah dengan{" "}
+                  <span className="font-bold">ribuan santri</span>{" "}
+                  yang telah menempuh pendidikan Islam berkualitas dengan kurikulum{" "}
+                  <span className="font-bold">Mu&apos;adalah</span> dari
+                  Universitas Islam Madinah.
+                </p>
+              </div>
+              <div className="spmb-hero-actions">
+                <Link href="https://ahsan.pontrenassunnah.com/spmb/daftar" className="spmb-button spmb-button-orange">
+                  Daftar Sekarang <ArrowRight className="h-5 w-5" />
+                </Link>
+                <Link href="https://ahsan.pontrenassunnah.com/login" className="spmb-button spmb-button-outline">
+                  Login <ArrowRight className="h-5 w-5" />
+                </Link>
+              </div>
             </div>
           </div>
         </div>
         <div className="spmb-container spmb-hero-credentials">
             <div className="spmb-credential">
-              <div className="spmb-credential-icon" aria-hidden="true"><GraduationCap /></div>
+              <div className="spmb-credential-logo spmb-credential-logo-iu">
+                <Image src="/logo/official/universitas-islam-madinah.svg" alt="Logo resmi Universitas Islam Madinah" width={56} height={56} />
+              </div>
               <p>Mu&apos;adalah</p>
               <p>Universitas Islam Madinah</p>
             </div>
             <div className="spmb-credential">
-              <div className="spmb-credential-icon" aria-hidden="true"><ShieldCheck /></div>
+              <div className="spmb-credential-logo spmb-credential-logo-kemenag">
+                <Image src="/logo/official/kementerian-agama-bangka-tengah.png" alt="Logo Kementerian Agama Republik Indonesia" width={3694} height={3513} />
+              </div>
               <p>Kementerian Agama RI</p>
               <p>Direktorat Jenderal Pendidikan Islam</p>
             </div>
             <div className="spmb-credential">
-              <div className="spmb-credential-icon" aria-hidden="true"><Award /></div>
+              <div className="spmb-credential-logo spmb-credential-logo-bansm">
+                <Image src="/logo/official/ban-sm.jpg" alt="Logo Badan Akreditasi Nasional Sekolah dan Madrasah" width={600} height={404} />
+              </div>
               <p>Terakreditasi A</p>
-              <p>Badan Akreditasi Nasional</p>
+              <p>Badan Akreditasi Nasional Sekolah/Madrasah</p>
             </div>
         </div>
       </section>

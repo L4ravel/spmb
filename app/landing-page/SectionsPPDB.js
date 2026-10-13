@@ -1,6 +1,6 @@
 "use client";
 
-import { ArrowRight, BadgeCheck, GraduationCap, UsersRound, Award, BookOpen, MessageCircle } from "lucide-react";
+import { ArrowRight, BadgeCheck, GraduationCap, UsersRound, Award, BookOpen } from "lucide-react";
 import Jenjang from "./Jenjang";
 import CaraDaftar from "./CaraDaftar";
 import LayananInformasi from "./LayananInformasi";
@@ -33,11 +33,6 @@ const LULUSAN = [
 export default function SectionsPPDB() {
   return (
     <div className="spmb-sections">
-      <nav className="spmb-container spmb-quick-links" aria-label="Akses cepat pendaftaran">
-        <a href="#jenjang"><GraduationCap size={22} aria-hidden="true" /><span>Pilih program<small>Lihat jenjang dan jurusan</small></span><ArrowRight size={18} aria-hidden="true" /></a>
-        <a href="#cara-daftar"><BookOpen size={22} aria-hidden="true" /><span>Panduan daftar<small>Ikuti langkah pendaftaran</small></span><ArrowRight size={18} aria-hidden="true" /></a>
-        <a href="#kontak"><MessageCircle size={22} aria-hidden="true" /><span>Tanya panitia<small>Dapatkan bantuan langsung</small></span><ArrowRight size={18} aria-hidden="true" /></a>
-      </nav>
       {/* LexTour's introduction: a large headline beside the supporting media. */}
       <section className="spmb-section spmb-introduction">
         <div className="spmb-container spmb-intro-layout">

@@ -281,12 +281,18 @@
 .spmb-trust { grid-column: 1 / -1; margin-top: 40px; gap: 24px; }
 .spmb-trust > div { font-size: 11px; }
 .spmb-trust svg { width: 16px; height: 16px; }
-.spmb-hero-credentials { border-top: 1px solid #4777ad; gap: 0; }
-.spmb-credential { border: 0; border-radius: 0; padding: 26px 0; background: #103b6d; grid-template-columns: 26px minmax(0, 1fr); gap: 5px 12px; }
-.spmb-credential + .spmb-credential { border-left: 1px solid #4777ad; padding-left: 28px; }
-.spmb-credential-icon svg { width: 21px; height: 21px; }
-.spmb-credential p:first-of-type { font-size: 16px; font-weight: 400; }
-.spmb-credential p:last-child { font-size: 11px; }
+.spmb-hero-credentials { border-top: 1px solid rgba(255, 255, 255, .24); gap: 0; }
+.spmb-credential { border: 0; border-radius: 0; padding: 18px 28px; background: rgba(16, 59, 109, .92); grid-template-columns: 46px minmax(0, 1fr); gap: 3px 14px; }
+.spmb-credential + .spmb-credential { border-left: 1px solid #4777ad; }
+.spmb-credential-logo { grid-row: span 2; display: flex; width: 46px; height: 46px; align-items: center; justify-content: center; overflow: hidden; border: 1px solid rgba(255, 255, 255, .72); border-radius: 50%; background: #fff; padding: 6px; box-shadow: 0 5px 16px rgba(4, 25, 49, .18); }
+.spmb-credential-logo img { display: block; max-width: 100%; max-height: 100%; width: auto; height: auto; object-fit: contain; }
+.spmb-credential-logo-iu img { width: 34px; height: 34px; }
+.spmb-credential-logo.spmb-credential-logo-kemenag { justify-content: center; padding: 6px; }
+.spmb-credential-logo-kemenag img { width: 36px; height: auto; }
+.spmb-credential-logo-bansm { padding: 0; }
+.spmb-credential-logo-bansm img { width: auto; max-width: none; height: 42px; transform: translateY(1px); }
+.spmb-credential p:first-of-type { align-self: end; font-size: 15px; font-weight: 600; line-height: 1.25; }
+.spmb-credential p:last-child { align-self: start; font-size: 11px; line-height: 1.4; color: rgba(246, 243, 235, .78); }
 .spmb-introduction { padding-block: 80px; }
 .spmb-intro-detail > p { font-size: 17px; line-height: 1.9; }
 .spmb-wide-panel { background: #f6f3eb; color: #1f332a; width: min(1240px, calc(100% - 40px)); padding: 0; border-radius: 0; }
@@ -361,9 +367,10 @@
   .spmb-section { padding-block: 64px; scroll-margin-top: 90px; }
   #cara-daftar, #jenjang { scroll-margin-top: 90px; }
   .spmb-hero-layout { min-height: 620px; padding-top: 56px; }
-  .spmb-hero-credentials { gap: 10px; }
-  .spmb-credential { grid-template-columns: 1fr; padding: 20px; }
+  .spmb-hero-credentials { gap: 0; }
+  .spmb-credential { grid-template-columns: 46px minmax(0, 1fr); padding: 18px; }
   .spmb-credential-icon { grid-row: auto; margin-bottom: 12px; }
+  .spmb-credential-logo { grid-row: span 2; justify-content: center; margin-bottom: 0; }
   .spmb-credential p:first-of-type { font-size: 17px; }
   .spmb-intro-layout, .spmb-preparation-layout { gap: 36px; }
   .spmb-intro-detail { padding-left: 24px; }
@@ -384,8 +391,8 @@
   .spmb-contact-details > div { padding-bottom: 24px; border-bottom: 1px solid #d4cfc4; }
   .spmb-contact-details h3 { margin-top: 12px; }
   .spmb-hero-credentials { grid-template-columns: 1fr; }
-  .spmb-credential { grid-template-columns: 32px minmax(0, 1fr); gap: 4px 12px; }
-  .spmb-credential-icon { grid-row: span 2; margin: 0; }
+  .spmb-credential { grid-template-columns: 46px minmax(0, 1fr); gap: 3px 14px; }
+  .spmb-credential-logo { grid-row: span 2; margin: 0; }
 }
 @media (max-width: 639px) {
   .spmb-container { width: calc(100% - 32px); }
@@ -435,7 +442,7 @@
   .spmb-hero-layout { padding-block: 48px 36px; }
   .spmb-trust { margin-top: 28px; }
   .spmb-hero-credentials { grid-template-columns: 1fr; }
-  .spmb-credential { padding: 20px 0; grid-template-columns: 26px 1fr; }
+  .spmb-credential { padding: 18px 0; grid-template-columns: 46px 1fr; }
   .spmb-credential + .spmb-credential { padding-left: 0; border-left: 0; border-top: 1px solid #4777ad; }
       .spmb-mission-grid { grid-template-columns: 1fr; }
   .spmb-catalogue { grid-template-columns: 1fr; gap: 32px; }
@@ -459,8 +466,21 @@
 }
 
 /* Single-column video, a cleaner hero face and gentle motion. */
-.spmb-hero { position: relative; isolation: isolate; overflow: hidden; }
-.spmb-hero-pattern { position: absolute; inset: 0; z-index: -1; pointer-events: none; }
+.spmb-hero {
+  position: relative;
+  isolation: isolate;
+  overflow: hidden;
+  background-color: #103b6d;
+}
+.spmb-hero-media { position: absolute; inset: 0; z-index: -2; background: #103b6d; }
+.spmb-hero-media img { object-fit: cover; object-position: center; opacity: 0; transform: scale(1.02); transition: opacity 900ms ease-in-out, transform 5s ease-out; }
+.spmb-hero-media img:nth-child(1) { object-position: center 68%; }
+.spmb-hero-media img:nth-child(2) { object-position: center 42%; }
+.spmb-hero-media img:nth-child(3) { object-position: center 22%; }
+.spmb-hero-media img.is-active { opacity: 1; transform: scale(1); }
+.spmb-hero-overlay { position: absolute; inset: 0; z-index: -1; pointer-events: none; background: linear-gradient(90deg, rgba(8, 35, 68, .76) 0%, rgba(8, 35, 68, .58) 48%, rgba(8, 35, 68, .36) 100%); }
+.spmb-hero-copy { text-shadow: 0 2px 16px rgba(3, 18, 36, .38); }
+.spmb-hero-pattern { display: none; }
 .spmb-hero-pattern svg { width: 100%; height: 100%; stroke: #7db7e8; stroke-width: 1.5; }
 .spmb-pattern-orbit { transform-origin: 1120px 340px; animation: spmb-pattern-orbit 48s linear infinite; }
 .spmb-pattern-drift { animation: spmb-pattern-drift 18s ease-in-out infinite alternate; }
@@ -478,15 +498,16 @@
 .spmb-introduction .spmb-display-title { max-width: none; }
 .spmb-introduction .spmb-video-frame { width: min(100%, 900px); margin: 24px auto 0; border-radius: 24px; }
 .spmb-hero-layout { min-height: 540px; padding-block: 80px 68px; }
-.spmb-hero-copy { grid-template-columns: minmax(0, 1fr) minmax(0, 1fr); column-gap: 64px; }
-.spmb-hero h1 { font-family: ui-sans-serif, system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif; font-style: normal; font-weight: 650; font-size: clamp(3.3rem, 5.5vw, 5.5rem); line-height: 1.05; letter-spacing: -.055em; white-space: nowrap; grid-row: 2 / 4; margin-top: 18px; }
-.spmb-hero .spmb-trust { grid-column: 1; grid-row: 4; margin-top: 26px; gap: 20px; align-self: center; flex-wrap: wrap; }
-.spmb-hero-eyebrow { grid-row: 1; }
-.spmb-hero-subtitle { grid-row: 1; }
-.spmb-hero-year { grid-row: 2; }
-.spmb-hero-description { grid-row: 3; }
-.spmb-hero-actions { grid-row: 4; }
-.spmb-hero-subtitle { font-family: Arial, Helvetica, sans-serif; font-weight: 400; font-size: 32px; line-height: 1.25; letter-spacing: -.035em; }
+.spmb-hero-copy { grid-template-columns: minmax(0, .95fr) minmax(420px, .8fr); align-items: center; column-gap: clamp(48px, 7vw, 100px); }
+.spmb-hero-primary { min-width: 0; }
+.spmb-hero h1 { font-family: ui-sans-serif, system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif; font-style: normal; font-weight: 700; font-size: clamp(4.1rem, 6.3vw, 7rem); line-height: .9; letter-spacing: -.065em; white-space: nowrap; margin-top: 28px; }
+.spmb-hero-eyebrow { display: flex; align-items: center; gap: 12px; font-size: 12px; font-weight: 700; letter-spacing: .17em; }
+.spmb-hero-eyebrow::before { content: ""; width: 34px; height: 2px; flex: 0 0 auto; background: #f39a38; }
+.spmb-hero-details { border-left: 1px solid rgba(255, 255, 255, .38); padding-left: clamp(32px, 4vw, 52px); }
+.spmb-hero-subtitle { font-family: Arial, Helvetica, sans-serif; font-weight: 500; font-size: clamp(28px, 2.4vw, 36px); line-height: 1.2; letter-spacing: -.035em; }
+.spmb-hero-year { margin-top: 18px; padding: 0; font-size: 11px; font-weight: 700; letter-spacing: .11em; text-transform: uppercase; }
+.spmb-hero-description { margin-top: 24px; }
+.spmb-hero-actions { margin-top: 28px; }
 @keyframes spmb-enter {
   from { opacity: 0; transform: translateY(18px); }
   to { opacity: 1; transform: translateY(0); }
@@ -508,12 +529,21 @@
 .spmb-hero-actions a { transition: transform .2s, background-color .2s, color .2s; }
 .spmb-hero-actions a:hover { transform: translateY(-3px); }
 @media (max-width: 767px) {
+  .spmb-hero-media img { object-position: 58% center; }
+  .spmb-hero-media img:nth-child(1) { object-position: 58% center; }
+  .spmb-hero-media img:nth-child(3) { object-position: 48% center; }
+  .spmb-hero-overlay { background: linear-gradient(rgba(8, 35, 68, .70), rgba(8, 35, 68, .76)); }
   .spmb-hero-layout { min-height: 0; padding-block: 56px 48px; }
-  .spmb-hero h1 { font-size: clamp(2.2rem, 11vw, 5.3rem); }
-  .spmb-hero-subtitle { margin-top: 28px; font-size: 28px; }
+  .spmb-hero h1 { font-size: clamp(2.1rem, 10vw, 4.6rem); }
+  .spmb-hero-details { margin-top: 34px; padding: 28px 0 0; border-left: 0; border-top: 1px solid rgba(255, 255, 255, .38); }
+  .spmb-hero-subtitle { margin-top: 0; font-size: 27px; }
+  .spmb-hero-credentials { overflow: hidden; border: 1px solid rgba(255, 255, 255, .28); border-radius: 18px; background: rgba(16, 59, 109, .92); }
+  .spmb-credential { padding: 18px; background: transparent; }
+  .spmb-credential + .spmb-credential { padding-left: 18px; }
 }
 @media (prefers-reduced-motion: reduce) {
   .spmb-hero-copy > *, .spmb-hero-credentials, .spmb-status-dot { animation: none !important; }
+  .spmb-hero-media img { transform: none; transition: none; }
   .spmb-hero-actions a:hover { transform: none; }
 }
 
@@ -524,11 +554,6 @@
 .spmb-intro-detail > p, .spmb-section-copy, .spmb-panel-heading > p { font-size: 16px; line-height: 1.8; }
 .spmb-mission-cell p, .spmb-graduate-item p, .spmb-step-item > p, .spmb-contact-details p, .spmb-contact-details a { font-size: 15px; line-height: 1.8; }
 .spmb-section:not(.spmb-teachers-section) .spmb-mission-cell p, .spmb-step-item > p { color: #4c554e; }
-.spmb-quick-links { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 16px; padding-block: 28px; }
-.spmb-quick-links a { display: flex; align-items: center; gap: 16px; border: 1px solid #d4cfc4; border-radius: 16px; padding: 20px; color: #154e91; transition: border-color .2s, background-color .2s; }
-.spmb-quick-links a:hover { border-color: #154e91; background: #fff; }
-.spmb-quick-links a > span { flex: 1; font-size: 16px; font-weight: 700; }
-.spmb-quick-links small { display: block; margin-top: 4px; font-size: 13px; font-weight: 400; color: #4c554e; }
 .spmb-catalogue > .spmb-catalogue-heading { display: block; }
 .spmb-catalogue > .spmb-catalogue-grid { display: flex; }
 .spmb-catalogue-heading > p:not(.spmb-eyebrow) { margin-top: 20px; line-height: 1.8; font-size: 16px; }
@@ -562,15 +587,10 @@
 .spmb-catalogue .spmb-level-card { min-height: 106px; }
 @media (max-width: 1023px) {
   .spmb-catalogue { gap: 32px; }
-  .spmb-quick-links { gap: 10px; }
-  .spmb-quick-links a { padding: 16px; gap: 10px; }
 }
 @media (max-width: 767px) {
   .spmb-section { padding-block: 52px; }
   .spmb-profile-section, .spmb-online-section { padding-top: 16px; }
-  .spmb-quick-links { grid-template-columns: 1fr; gap: 10px; padding-block: 20px; }
-  .spmb-quick-links a { padding: 16px 20px; }
-  .spmb-quick-links small { margin-top: 2px; }
   .spmb-level-card { grid-template-columns: 28px minmax(0, 1fr) 22px; gap: 8px 12px; padding: 20px 16px; }
   .spmb-level-card h3 { font-size: 22px; }
   .spmb-step-item, .spmb-online-grid .spmb-step-item { grid-template-columns: 32px minmax(0, 1fr); gap: 8px 16px; }
@@ -611,8 +631,6 @@
 .spmb-intro-layout, .spmb-preparation-layout, .spmb-panel-heading, .spmb-catalogue { gap: var(--spmb-layout-space); }
 .spmb-introduction .spmb-intro-layout { gap: var(--spmb-content-space); }
 .spmb-introduction .spmb-video-frame { margin-top: var(--spmb-content-space); }
-.spmb-quick-links { padding-block: 20px; gap: 12px; }
-.spmb-quick-links a { padding: 16px; }
 .spmb-panel-heading { padding-bottom: 20px; }
 .spmb-dewan-grid, .spmb-mission-grid { margin-top: var(--spmb-content-space); }
 .spmb-dewan-grid { gap: 24px; }
@@ -637,7 +655,6 @@
 .spmb-program-info-note { margin-top: 16px; }
 @media (max-width: 767px) {
   .spmb-public { --spmb-section-space: 24px; --spmb-layout-space: 20px; }
-  .spmb-quick-links { gap: 10px; }
   .spmb-dewan-grid { gap: 0; }
   .spmb-contact-details { gap: 16px; }
   .spmb-contact-details > div { padding-bottom: 16px; }
