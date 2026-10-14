@@ -69,7 +69,7 @@ export default function Hero() {
             </div>
             <div className="spmb-hero-details">
               <p className="spmb-hero-subtitle">Sistem Penerimaan Murid Baru</p>
-              <p className="spmb-hero-year">Tahun Pelajaran 2026/2027</p>
+              <p className="spmb-hero-year">Tahun Pelajaran 2027/2028</p>
               <div className="spmb-hero-description">
                 <p>
                   Bergabunglah dengan{" "}
