@@ -63,7 +63,7 @@ export default function SectionsPPDB() {
           <div className="spmb-panel-heading">
             <div>
               <p className="spmb-eyebrow">Pembimbing</p>
-              <h2 className="spmb-display-title">Dewan Pengasuh</h2>
+              <h2 className="spmb-display-title">Dewan Pembina</h2>
             </div>
             <p>Para ustadz berpengalaman yang membimbing santri dengan penuh dedikasi</p>
           </div>
@@ -72,7 +72,7 @@ export default function SectionsPPDB() {
               <article className="spmb-dewan-cell" key={name}>
                 <UsersRound aria-hidden="true" size={28} strokeWidth={1.5} />
                 <h3>{name}</h3>
-                <p>Dewan Pengasuh</p>
+                <p>Dewan Pembina</p>
               </article>
             ))}
           </div>
