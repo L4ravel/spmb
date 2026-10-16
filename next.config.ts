@@ -32,6 +32,12 @@ const nextConfig: NextConfig = {
         destination: "https://ahsan.pontrenassunnah.com/spmb/daftar",
         permanent: false,
       },
+      {
+        source: "/brosur",
+        destination:
+          "https://firebasestorage.googleapis.com/v0/b/sidip-4b28d.firebasestorage.app/o/spmb%2Fbrosur%2FBrosur%20spmb%202027-2028%20.pdf?alt=media&token=52764724-3251-4651-8d91-4192d53b671b",
+        permanent: true,
+      },
     ];
   },
 
