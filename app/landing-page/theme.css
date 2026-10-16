@@ -507,6 +507,10 @@
 .spmb-hero-subtitle { font-family: Arial, Helvetica, sans-serif; font-weight: 500; font-size: clamp(28px, 2.4vw, 36px); line-height: 1.2; letter-spacing: -.035em; }
 .spmb-hero-year { margin-top: 18px; padding: 0; font-size: 11px; font-weight: 700; letter-spacing: .11em; text-transform: uppercase; }
 .spmb-hero-description { margin-top: 24px; }
+.spmb-hero-description .spmb-hero-invitation { position: relative; padding-left: 18px; font-size: 13px; font-weight: 700; line-height: 1.6; letter-spacing: .055em; text-transform: uppercase; }
+.spmb-hero-invitation::before { content: ""; position: absolute; top: .35em; bottom: .35em; left: 0; width: 3px; border-radius: 999px; background: #f39a38; }
+.spmb-hero-invitation span { display: block; }
+.spmb-hero-description .spmb-hero-vision { margin-top: 14px; color: rgba(246, 243, 235, .9); line-height: 1.75; }
 .spmb-hero-actions { margin-top: 28px; }
 @keyframes spmb-enter {
   from { opacity: 0; transform: translateY(18px); }

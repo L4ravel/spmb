@@ -71,12 +71,13 @@ export default function Hero() {
               <p className="spmb-hero-subtitle">Sistem Penerimaan Murid Baru</p>
               <p className="spmb-hero-year">Tahun Pelajaran 2027/2028</p>
               <div className="spmb-hero-description">
-                <p>
-                  Bergabunglah dengan{" "}
-                  <span className="font-bold">ribuan santri</span>{" "}
-                  yang telah menempuh pendidikan Islam berkualitas dengan kurikulum{" "}
-                  <span className="font-bold">Mu&apos;adalah</span> dari
-                  Universitas Islam Madinah.
+                <p className="spmb-hero-invitation">
+                  Mari bergabung bersama keluarga besar
+                  <span>Pondok Pesantren Assunnah</span>
+                </p>
+                <p className="spmb-hero-vision">
+                  Membentuk generasi Qur&apos;ani yang berilmu, berakhlak mulia,
+                  dan beraqidah Ahlus Sunnah wal Jama&apos;ah.
                 </p>
               </div>
               <div className="spmb-hero-actions">
