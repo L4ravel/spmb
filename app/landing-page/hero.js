@@ -7,7 +7,6 @@ import { ArrowRight } from "lucide-react";
 import Section from "./SectionsPPDB";
 
 const heroPhotos = [
-  "/images/hero/pondok-assunnah-gerbang.webp",
   "/images/hero/pondok-assunnah-lapangan-1.webp",
   "/images/hero/pondok-assunnah-lapangan-2.webp",
 ];

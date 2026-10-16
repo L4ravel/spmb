@@ -98,6 +98,11 @@ const navLinks = [
       setIsMobileMenuOpen(false);
     }
   },
+  { label: "BROSUR", href: "https://spmb.pontrenassunnah.com/brosur", action: () => {
+      window.location.href = "https://spmb.pontrenassunnah.com/brosur";
+      setIsMobileMenuOpen(false);
+    }
+  },
 ];
 
 

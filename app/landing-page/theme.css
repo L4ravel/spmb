@@ -474,9 +474,8 @@
 }
 .spmb-hero-media { position: absolute; inset: 0; z-index: -2; background: #103b6d; }
 .spmb-hero-media img { object-fit: cover; object-position: center; opacity: 0; transform: scale(1.02); transition: opacity 900ms ease-in-out, transform 5s ease-out; }
-.spmb-hero-media img:nth-child(1) { object-position: center 68%; }
-.spmb-hero-media img:nth-child(2) { object-position: center 42%; }
-.spmb-hero-media img:nth-child(3) { object-position: center 22%; }
+.spmb-hero-media img:nth-child(1) { object-position: center 42%; }
+.spmb-hero-media img:nth-child(2) { object-position: center 22%; }
 .spmb-hero-media img.is-active { opacity: 1; transform: scale(1); }
 .spmb-hero-overlay { position: absolute; inset: 0; z-index: -1; pointer-events: none; background: linear-gradient(90deg, rgba(8, 35, 68, .76) 0%, rgba(8, 35, 68, .58) 48%, rgba(8, 35, 68, .36) 100%); }
 .spmb-hero-copy { text-shadow: 0 2px 16px rgba(3, 18, 36, .38); }
@@ -535,7 +534,7 @@
 @media (max-width: 767px) {
   .spmb-hero-media img { object-position: 58% center; }
   .spmb-hero-media img:nth-child(1) { object-position: 58% center; }
-  .spmb-hero-media img:nth-child(3) { object-position: 48% center; }
+  .spmb-hero-media img:nth-child(2) { object-position: 48% center; }
   .spmb-hero-overlay { background: linear-gradient(rgba(8, 35, 68, .70), rgba(8, 35, 68, .76)); }
   .spmb-hero-layout { min-height: 0; padding-block: 56px 48px; }
   .spmb-hero h1 { font-size: clamp(2.1rem, 10vw, 4.6rem); }
