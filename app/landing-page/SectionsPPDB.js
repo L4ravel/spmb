@@ -44,7 +44,7 @@ export default function SectionsPPDB() {
             <p>Mengenal lebih dekat Pondok Pesantren Assunnah</p>
             <div className="spmb-video-frame">
               <iframe
-                src="https://www.youtube.com/embed/T_6j_q5pWpI"
+                src="https://www.youtube.com/embed/vHNObZZVgV8"
                 title="YouTube video"
                 loading="lazy"
                 allow="accelerometer; autoplay; clipboard-write; encrypted-media; gyroscope; picture-in-picture; web-share"
@@ -52,7 +52,7 @@ export default function SectionsPPDB() {
                 allowFullScreen
               />
             </div>
-            <a className="spmb-help-link spmb-video-link" href="https://www.youtube.com/watch?v=T_6j_q5pWpI" target="_blank" rel="noreferrer">Video tidak tampil? Tonton di YouTube<ArrowRight size={16} aria-hidden="true" /></a>
+            <a className="spmb-help-link spmb-video-link" href="https://www.youtube.com/watch?v=vHNObZZVgV8" target="_blank" rel="noreferrer">Video tidak tampil? Tonton di YouTube<ArrowRight size={16} aria-hidden="true" /></a>
           </div>
         </div>
       </section>
